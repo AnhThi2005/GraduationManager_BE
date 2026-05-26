@@ -3,6 +3,7 @@
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;//Sử dụng để loại trừ các tuyến đường API khỏi việc kiểm tra CSRF
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -23,6 +24,15 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
         'quyen' => \App\Http\Middleware\KiemTraQuyen::class,
+        ]);
+
+        $middleware->statefulApi();
+
+        $middleware->validateCsrfTokens(except: [
+        'api/*',
+        'docs',
+        'docs/*',
+        'api/documentation',
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

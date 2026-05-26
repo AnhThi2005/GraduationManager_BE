@@ -1,0 +1,130 @@
+{
+    "openapi": "3.0.0",
+    "info": {
+        "title": "Graduation Manager API",
+        "description": "API hệ thống quản lý thực tập và đồ án",
+        "version": "1.0.0"
+    },
+    "servers": [
+        {
+            "url": "http://127.0.0.1:8000",
+            "description": "Local Server"
+        }
+    ],
+    "paths": {
+        "/api/dang-nhap-gia-lap": {
+            "post": {
+                "tags": [
+                    "Xác thực"
+                ],
+                "summary": "Đăng nhập giả lập hệ thống bằng Email mẫu",
+                "operationId": "b08bf19d22b9305a62b4161d62529604",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "email"
+                                ],
+                                "properties": {
+                                    "email": {
+                                        "type": "string",
+                                        "format": "email",
+                                        "example": "0306231001@caothang.edu.vn"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Đăng nhập thành công, trả về cặp Token và thông tin User"
+                    },
+                    "422": {
+                        "description": "Sai định dạng dữ liệu truyền lên"
+                    },
+                    "404": {
+                        "description": "Email không tồn tại trong dữ liệu mẫu"
+                    }
+                }
+            }
+        },
+        "/api/lam-moi-token": {
+            "post": {
+                "tags": [
+                    "Xác thực"
+                ],
+                "summary": "Làm mới Access Token khi bị hết hạn",
+                "operationId": "7cf21183472ef9bdc9f2c7b76d4602e4",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "refresh_token"
+                                ],
+                                "properties": {
+                                    "refresh_token": {
+                                        "type": "string",
+                                        "example": "2|4scHRrHGQ..."
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Cấp mới access_token thành công"
+                    },
+                    "401": {
+                        "description": "Refresh Token không hợp lệ hoặc đã hết hạn"
+                    }
+                }
+            }
+        },
+        "/api/dang-xuat": {
+            "post": {
+                "tags": [
+                    "Xác thực"
+                ],
+                "summary": "Đăng xuất hệ thống (Thu hồi toàn bộ Token)",
+                "operationId": "5f30efd197fc57ec7eb860511fe6dfaa",
+                "responses": {
+                    "200": {
+                        "description": "Đăng xuất và hủy bỏ Token thành công"
+                    },
+                    "401": {
+                        "description": "Chưa truyền Token hoặc Token không hợp lệ"
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ]
+            }
+        }
+    },
+    "components": {
+        "securitySchemes": {
+            "BearerAuth": {
+                "type": "apiKey",
+                "description": "Nhập token dạng: Bearer {token}",
+                "name": "Authorization",
+                "in": "header"
+            }
+        }
+    },
+    "tags": [
+        {
+            "name": "Xác thực",
+            "description": "Xác thực"
+        }
+    ]
+}
