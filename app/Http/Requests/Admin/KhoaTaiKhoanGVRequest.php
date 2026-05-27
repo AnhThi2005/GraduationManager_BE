@@ -6,23 +6,36 @@ use Illuminate\Foundation\Http\FormRequest;
 
 class KhoaTaiKhoanGVRequest extends FormRequest
 {
-    /**
-     * Determine if the user is authorized to make this request.
-     */
     public function authorize(): bool
     {
-        return false;
+        $authUser = auth()->user();
+        
+        if (!$authUser || !$authUser->hasRole('ADMIN')) {
+            return false;
+        }
+
+        if ($this->input('dang_hoat_dong') == 0 && $this->input('id') == $authUser->giang_vien_id) {
+            return false;
+        }
+
+        return true;
     }
 
-    /**
-     * Get the validation rules that apply to the request.
-     *
-     * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array<mixed>|string>
-     */
     public function rules(): array
     {
         return [
-            //
+            'id'             => 'required|integer|exists:giangvien,giang_vien_id',
+            'dang_hoat_dong' => 'required|boolean',
+        ];
+    }
+
+    public function messages(): array
+    {
+        return [
+            'id.required'             => 'ID giảng viên không được để trống.',
+            'id.exists'               => 'Giảng viên không tồn tại trong hệ thống.',
+            'dang_hoat_dong.required' => 'Vui lòng cung cấp trạng thái hoạt động mới.',
+            'dang_hoat_dong.boolean'  => 'Trạng thái hoạt động phải là đúng hoặc sai (1 hoặc 0).'
         ];
     }
 }
