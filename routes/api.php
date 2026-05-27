@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\NguoiDungController;
 use App\Http\Controllers\Auth\MockAuthController;
 
 Route::post('/dang-nhap-gia-lap', [MockAuthController::class, 'dangNhap']);
@@ -24,14 +25,13 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/sinh-vien', [NguoiDungController::class, 'layDanhSachSinhVien']);
         Route::post('/sinh-vien', [NguoiDungController::class, 'themSinhVien']);
         Route::put('/sinh-vien/{id}', [NguoiDungController::class, 'capNhatSinhVien']);
+        Route::patch('/sinh-vien/{id}/khoa-tai-khoan', [NguoiDungController::class, 'khoaTaiKhoanSinhVien']);
 
         // Quản lý giảng viên
         Route::get('/giang-vien', [NguoiDungController::class, 'layDanhSachGiangVien']);
         Route::post('/giang-vien', [NguoiDungController::class, 'themGiangVien']);
         Route::put('/giang-vien/{id}', [NguoiDungController::class, 'capNhatGiangVien']);
-
-        // Đổi trạng thái hoạt động của người dùng
-        Route::patch('/doi-trang-thai-hoat-dong', [NguoiDungController::class, 'doiTrangThaiNguoiDung']);
+        Route::patch('/giang-vien/{id}/khoa-tai-khoan', [NguoiDungController::class, 'khoaTaiKhoanGiangVien']);
 
         // 2. Chức năng quản lý công ty thực tập
     });
