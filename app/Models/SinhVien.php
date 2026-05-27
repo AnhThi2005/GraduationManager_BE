@@ -30,4 +30,9 @@ class SinhVien extends Model
         'dang_hoat_dong', 
         'google_id'
     ];
+    // Khai báo giá trị mặc định ở tầng Model để đồng bộ với DB
+    // trang thái hoạt động mặc định là 1 (đang hoạt động) khi tạo mới sinh viên
+    protected $attributes = [
+        'dang_hoat_dong' => 1, 
+    ];
 }
