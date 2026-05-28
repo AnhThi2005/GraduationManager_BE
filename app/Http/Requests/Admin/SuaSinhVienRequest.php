@@ -9,12 +9,12 @@ class SuaSinhVienRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return auth()->check() && auth()->user()->hasRole('ADMIN');
+        return auth()->check() && auth()->user()->tokenCan('ADMIN');
     }
 
     public function rules(): array
     {
-        $id = $this->route('id');
+        $sinh_vien_id = $this->route('sinh_vien_id'); // Lấy ID sinh viên từ route parameter
 
         return [
             'ma_so_sinh_vien' => [
@@ -22,7 +22,7 @@ class SuaSinhVienRequest extends FormRequest
                 'string',
                 'min:8',
                 'max:10',
-                Rule::unique('sinhvien', 'ma_so_sinh_vien')->ignore($id, 'sinh_vien_id')
+                Rule::unique('sinhvien', 'ma_so_sinh_vien')->ignore($sinh_vien_id, 'sinh_vien_id')
             ],
             'ho_ten'          => 'required|string|min:3|max:255',
             'email'           => [

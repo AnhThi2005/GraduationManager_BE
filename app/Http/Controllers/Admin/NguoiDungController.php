@@ -109,7 +109,7 @@ class NguoiDungController extends Controller
         $id = $request->input('id');
         $trangThaiMoi = $request->input('dang_hoat_dong');
 
-        $sinhVien = $this->nguoiDungService->khoaTaiKhoanSinhVien($id, $trangThaiMoi);
+        $sinhVien = $this->nguoiDungService->doiTrangThaiSinhVien($id, $trangThaiMoi);
 
         if (!$sinhVien) {
             return response()->json([
@@ -137,7 +137,7 @@ class NguoiDungController extends Controller
         $id = $request->input('id');
         $trangThaiMoi = $request->input('dang_hoat_dong');
 
-        $giangVien = $this->nguoiDungService->khoaTaiKhoanGiangVien($id, $trangThaiMoi);
+        $giangVien = $this->nguoiDungService->doiTrangThaiGiangVien($id, $trangThaiMoi);
 
         if (!$giangVien) {
             return response()->json([

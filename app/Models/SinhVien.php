@@ -12,9 +12,7 @@ class SinhVien extends Model
     protected $table = 'sinhvien';
     protected $primaryKey = 'sinh_vien_id';
     
-    public $timestamps = true;
-    const CREATED_AT = 'thoi_gian_tao';
-    const UPDATED_AT = 'ngay_cap_nhat';
+    public $timestamps = false;
 
     protected $fillable = [
         'ma_so_sinh_vien',

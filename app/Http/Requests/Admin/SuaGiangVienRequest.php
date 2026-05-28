@@ -9,16 +9,16 @@ class SuaGiangVienRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return auth()->check() && auth()->user()->hasRole('ADMIN');
+        return auth()->check() && auth()->user()->tokenCan('ADMIN');
     }
 
     public function rules(): array
     {
-        $id = $this->route('id');
+        $giang_vien_id = $this->route('giang_vien_id'); // Lấy ID giảng viên từ route parameter
 
         return [
             'ho_ten'        => 'required|string|min:3|max:255',
-            'email'         => ['required','email','max:255',Rule::unique('giangvien', 'email')->ignore($id, 'giang_vien_id')],
+            'email'         => ['required','email','max:255',Rule::unique('giangvien', 'email')->ignore($giang_vien_id, 'giang_vien_id')],
             'so_dien_thoai' => 'nullable|string|regex:/^([0-9]*)$/|size:10',
             'gioi_tinh'     => 'nullable|in:Nam,Nu,Khac',
             'ngay_sinh'     => 'nullable|date',

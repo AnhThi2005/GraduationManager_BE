@@ -8,19 +8,26 @@ use Symfony\Component\HttpFoundation\Response;
 
 class KiemTraQuyen
 {
-    /**
-     * Handle an incoming request.
-     *
-     * @param  \Closure(\Illuminate\Http\Request): (\Symfony\Component\HttpFoundation\Response)  $next
-     */
-    public function handle(Request $request, Closure $next): Response
+    public function handle(Request $request, Closure $next, ...$quyens): Response
     {
-        if (!$request->user() || !$request->user()->tokenCan($quyen)) {
+        $user = $request->user();
+
+        if (!$user) {
             return response()->json([
                 'success' => false,
-                'message' => 'Từ chối truy cập: Bạn không có quyền hạn thực hiện hành động này!'
-            ], 403);
+                'message' => 'Bạn chưa đăng nhập vào hệ thống.'
+            ], 401);
         }
-        return $next($request);
+
+        foreach ($quyens as $quyen) {
+            if ($user->tokenCan($quyen)) {
+                return $next($request);
+            }
+        }
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Từ chối truy cập: Bạn không có quyền hạn thực hiện hành động này!'
+        ], 403);
     }
 }

@@ -8,7 +8,7 @@ class ThemGiangVienRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return auth()->check() && auth()->user()->hasRole('ADMIN');
+        return auth()->check() && auth()->user()->tokenCan('ADMIN');
     }
 
     public function rules(): array

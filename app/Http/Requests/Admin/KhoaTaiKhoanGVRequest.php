@@ -10,7 +10,7 @@ class KhoaTaiKhoanGVRequest extends FormRequest
     {
         $authUser = auth()->user();
         
-        if (!$authUser || !$authUser->hasRole('ADMIN')) {
+        if (!$authUser || !$authUser->tokenCan('ADMIN')) {
             return false;
         }
 
