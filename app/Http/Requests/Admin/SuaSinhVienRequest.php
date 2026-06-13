@@ -34,10 +34,7 @@ class SuaSinhVienRequest extends FormRequest
             'so_dien_thoai'   => 'nullable|string|regex:/^([0-9]*)$/|size:10',
             'gioi_tinh'       => 'nullable|in:Nam,Nu,Khac',
             'ngay_sinh'       => 'nullable|date',
-            'lop'             => 'required|string|max:50',
-            'bac_dao_tao'     => 'required|in:CAO_DANG,CAO_DANG_NGHE',
-            'khoa_hoc'        => 'required|string|max:10',
-            'chuyen_nganh'    => 'nullable|string|max:100',
+            'lop_id'          => 'required|integer|exists:lop,lop_id',
         ];
     }
 
@@ -61,11 +58,7 @@ class SuaSinhVienRequest extends FormRequest
 
             'gioi_tinh.in'             => 'Giới tính phải là: Nam, Nu hoặc Khac.',
             'ngay_sinh.date'           => 'Ngày sinh phải đúng định dạng ngày tháng.',
-            'lop.required'             => 'Lớp học là bắt buộc.',
-
-            'bac_dao_tao.required'     => 'Vui lòng chọn bậc đào tạo.',
-            'bac_dao_tao.in'           => 'Bậc đào tạo đã chọn không hợp lệ.',
-            'khoa_hoc.required'        => 'Vui lòng nhập khóa học.',
+            'lop_id.required'          => 'Vui lòng chọn lớp học.',
         ];
     }
 }

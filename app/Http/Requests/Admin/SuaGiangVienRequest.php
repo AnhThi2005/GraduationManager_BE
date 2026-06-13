@@ -22,7 +22,6 @@ class SuaGiangVienRequest extends FormRequest
             'so_dien_thoai' => 'nullable|string|regex:/^([0-9]*)$/|size:10',
             'gioi_tinh'     => 'nullable|in:Nam,Nu,Khac',
             'ngay_sinh'     => 'nullable|date',
-            'khoa'          => 'nullable|string|max:100',
             'hoc_vi'        => 'nullable|string|max:50',
             'chuyen_mon'    => 'required|string|max:255',
             'vai_tro'       => 'nullable|in:GIANG_VIEN,ADMIN',

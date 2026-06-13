@@ -20,7 +20,6 @@ class GiangVien extends Model
         'so_dien_thoai', 
         'gioi_tinh', 
         'ngay_sinh', 
-        'khoa', 
         'hoc_vi', 
         'chuyen_mon', 
         'vai_tro', 

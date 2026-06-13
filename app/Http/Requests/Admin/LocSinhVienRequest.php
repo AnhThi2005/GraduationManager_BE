@@ -16,7 +16,8 @@ class LocSinhVienRequest extends FormRequest
         return [
             'ho_ten'          => 'nullable|string|max:255',
             'ma_so_sinh_vien' => 'nullable|string|max:20',
-            'lop'             => 'nullable|string|max:50',
+            'lop_id'          => 'nullable|integer',
+            'ten_lop'         => 'nullable|string|max:50',
             // 'per_page' sẽ được xử lý trong prepareForValidation để đặt giá trị mặc định  
             'per_page'        => 'nullable|integer|min:1|max:100',
         ];

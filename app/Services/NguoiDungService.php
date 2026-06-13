@@ -9,10 +9,9 @@ class NguoiDungService
 {
     public function locSinhVien(array $filters, $perPage = 20)
     {
-        $query = SinhVien::query();
-
+        $query = SinhVien::query()->with('lop');
         // 1. Chỉ bốc các trường lọc liên quan và loại bỏ hoàn toàn các phần tử rỗng "", null
-        $searchCriteria = array_filter(array_intersect_key($filters, array_flip(['ho_ten', 'ma_so_sinh_vien', 'lop'])));
+        $searchCriteria = array_filter(array_intersect_key($filters, array_flip(['ho_ten', 'ma_so_sinh_vien', 'lop_id   '])));
 
         // 2. Nếu Admin có truyền params lọc lên nhưng mảng sau khi dọn dẹp lại trống rỗng (Admin gõ dấu cách hoặc xóa trống input)
         if (count($searchCriteria) === 0 && (array_key_exists('ho_ten', $filters) || array_key_exists('ma_so_sinh_vien', $filters) || array_key_exists('lop', $filters))) {
@@ -23,14 +22,21 @@ class NguoiDungService
         $query->when(!empty($searchCriteria['ho_ten']), function ($q) use ($searchCriteria) {
             return $q->where('ho_ten', 'LIKE', '%' . trim($searchCriteria['ho_ten']) . '%');
         });
-
+        
         $query->when(!empty($searchCriteria['ma_so_sinh_vien']), function ($q) use ($searchCriteria) {
             return $q->where('ma_so_sinh_vien', 'LIKE', '%' . trim($searchCriteria['ma_so_sinh_vien']) . '%');
         });
 
-        $query->when(!empty($searchCriteria['lop']), function ($q) use ($searchCriteria) {
-            return $q->where('lop', 'LIKE', '%' . trim($searchCriteria['lop']) . '%');
+        $query->when(!empty($searchCriteria['lop_id']), function ($q) use ($searchCriteria) {
+            return $q->where('lop_id', $searchCriteria['lop_id']);
         });
+        
+        $query->when(!empty($filters['ten_lop']), function ($q) use ($filters) {
+            return $q->whereHas('lop', function ($subQuery) use ($filters) {
+                $subQuery->where('ten_lop', 'LIKE', '%' . trim($filters['ten_lop']) . '%');
+            });
+        });
+
         return $query->paginate($perPage);
     }
 

@@ -21,10 +21,7 @@ class SinhVien extends Model
         'so_dien_thoai', 
         'gioi_tinh', 
         'ngay_sinh', 
-        'lop', 
-        'bac_dao_tao', 
-        'khoa_hoc', 
-        'chuyen_nganh', 
+        'lop_id', 
         'dang_hoat_dong', 
         'google_id'
     ];
@@ -33,4 +30,9 @@ class SinhVien extends Model
     protected $attributes = [
         'dang_hoat_dong' => 1, 
     ];
+    // Mối quan hệ kết nối ngược sang bảng Lớp học
+    public function lop()
+    {
+        return $this->belongsTo(Lop::class, 'lop_id', 'lop_id');
+    }
 }
