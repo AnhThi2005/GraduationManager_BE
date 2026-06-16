@@ -20,14 +20,20 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     Route::middleware('quyen:ADMIN')->prefix('admin')->group(function () {
-        // 1. Chức năng quản lý người dùng
-        // Quản lý sinh viên
-        Route::get('/sinh-vien', [NguoiDungController::class, 'layDanhSachSinhVien']);
+        // 1. Chức năng quản lý người dùng (Đồng bộ với Frontend)
+        Route::get('/sinh-vien', [NguoiDungController::class, 'layDanhSach']);
+        Route::get('/sinh-vien/{id}', [NguoiDungController::class, 'xemChiTiet']);
+        Route::post('/sinh-vien', [NguoiDungController::class, 'themMoi']);
+        Route::patch('/sinh-vien/{id}', [NguoiDungController::class, 'capNhat']);
+        Route::delete('/sinh-vien/{id}', [NguoiDungController::class, 'xoaNguoiDung']);
+        Route::post('/sinh-vien/{id}/reset-password', [NguoiDungController::class, 'resetPassword']);
+
+        // Các route cũ (Legacy) đề phòng tương thích ngược
+        Route::get('/sinh-vien-legacy', [NguoiDungController::class, 'layDanhSachSinhVien']);
         Route::post('/them-sinh-vien', [NguoiDungController::class, 'themSinhVien']);
         Route::put('/cap-nhat-sinh-vien/{sinh_vien_id}', [NguoiDungController::class, 'capNhatSinhVien']);
         Route::patch('/sinh-vien/khoa-tai-khoan', [NguoiDungController::class, 'khoaTaiKhoanSinhVien']);
-
-        // Quản lý giảng viên
+        
         Route::get('/giang-vien', [NguoiDungController::class, 'layDanhSachGiangVien']);
         Route::post('/them-giang-vien', [NguoiDungController::class, 'themGiangVien']);
         Route::put('/cap-nhat-giang-vien/{giang_vien_id}', [NguoiDungController::class, 'capNhatGiangVien']);
