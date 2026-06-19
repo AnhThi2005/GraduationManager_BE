@@ -29,12 +29,13 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->statefulApi();
 
         $middleware->validateCsrfTokens(except: [
-        'api/*',
-        'private/*',
-        'private/v1/*',
-        'docs',
-        'docs/*',
-        'api/documentation',
+            'api/*',
+            'private/*',
+            'private/v1/*',
+            'v1/file-upload/upload',
+            'docs',
+            'docs/*',
+            'api/documentation',
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
