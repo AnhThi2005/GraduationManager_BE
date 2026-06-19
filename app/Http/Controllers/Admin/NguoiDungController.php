@@ -160,7 +160,9 @@ class NguoiDungController extends Controller
         if ($role === 'teacher') {
             $request->validate([
                 'name' => 'required|string|max:255',
-                'email' => 'required|email',
+                'email' => 'required|email|unique:giangvien,email',
+            ], [
+                'email.unique' => 'Email này đã được đăng ký bởi giảng viên khác!',
             ]);
 
             $gv = GiangVien::create([
@@ -175,6 +177,12 @@ class NguoiDungController extends Controller
                 'dang_hoat_dong' => $request->status === 'inactive' ? 0 : 1
             ]);
 
+            \App\Services\RealtimeService::broadcast('slot_updated', [
+                'type' => 'user_created',
+                'role' => 'teacher',
+                'payload' => $this->transformTeacher($gv)
+            ]);
+
             return response()->json([
                 'code' => 200,
                 'results' => [
@@ -183,9 +191,12 @@ class NguoiDungController extends Controller
             ], 200);
         } else {
             $request->validate([
-                'id' => 'required|string|max:20', // ma_so_sinh_vien
+                'id' => 'required|string|max:20|unique:sinhvien,ma_so_sinh_vien',
                 'name' => 'required|string|max:255',
-                'email' => 'required|email',
+                'email' => 'required|email|unique:sinhvien,email',
+            ], [
+                'id.unique' => 'Mã số sinh viên (MSSV) này đã tồn tại trong hệ thống!',
+                'email.unique' => 'Email này đã được đăng ký bởi sinh viên khác!',
             ]);
 
             $lopId = null;
@@ -203,6 +214,12 @@ class NguoiDungController extends Controller
                 'ngay_sinh' => $request->dateOfBirth,
                 'lop_id' => $lopId,
                 'dang_hoat_dong' => $request->status === 'inactive' ? 0 : 1
+            ]);
+
+            \App\Services\RealtimeService::broadcast('slot_updated', [
+                'type' => 'user_created',
+                'role' => 'student',
+                'payload' => $this->transformStudent($sv)
             ]);
 
             return response()->json([

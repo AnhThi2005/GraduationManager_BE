@@ -1,0 +1,39 @@
+<?php
+
+namespace App\Http\Controllers\Admin;
+
+use App\Http\Controllers\Controller;
+use Illuminate\Http\Request;
+use App\Services\DashboardService;
+
+class DashboardController extends Controller
+{
+    protected $dashboardService;
+
+    public function __construct(DashboardService $dashboardService)
+    {
+        $this->dashboardService = $dashboardService;
+    }
+
+    /**
+     * API Lấy dữ liệu thống kê tổng hợp hiển thị trên Dashboard Admin
+     */
+    public function getDashboardData(Request $request)
+    {
+        try {
+            $data = $this->dashboardService->getDashboardData();
+
+            return response()->json([
+                'code' => 200,
+                'results' => [
+                    'object' => $data
+                ]
+            ], 200);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Có lỗi xảy ra khi lấy dữ liệu thống kê: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+}

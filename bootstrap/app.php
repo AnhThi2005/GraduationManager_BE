@@ -30,6 +30,8 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->validateCsrfTokens(except: [
         'api/*',
+        'private/*',
+        'private/v1/*',
         'docs',
         'docs/*',
         'api/documentation',
