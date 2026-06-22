@@ -6,6 +6,7 @@ use App\Models\CongTy;
 use App\Models\DangKyThucTap;
 use App\Models\SinhVien;
 use App\Models\Dot;
+use App\Models\PhanCongHdtt;
 use Illuminate\Support\Facades\DB;
 
 class CompanyService
@@ -298,6 +299,12 @@ class CompanyService
         // Truy vấn tất cả sinh viên thuộc các lớp này
         $students = SinhVien::with('lop')->whereIn('lop_id', $classIds)->get();
 
+        // Lấy phân công theo đợt
+        $assignments = PhanCongHdtt::with('giangVien')
+            ->where('dot_id', $periodId)
+            ->get()
+            ->keyBy('sinh_vien_id');
+
         $rows = [];
         foreach ($students as $sv) {
             // Kiểm tra xem sinh viên đã có đăng ký thực tập được duyệt hay chưa
@@ -305,16 +312,15 @@ class CompanyService
                 ->where('dot_id', $periodId)
                 ->first();
 
-            // Nếu đã duyệt đăng ký thì không nằm trong danh sách "chưa có nơi thực tập"
-            if ($reg && $reg->trang_thai === 'DA_DUYET') {
-                continue;
-            }
-
             // Trạng thái tìm kiếm
             $status = 'not_registered';
-            if ($reg && ($reg->trang_thai === 'CHO_DUYET' || $reg->trang_thai === 'TU_CHOI')) {
+            if ($reg && $reg->trang_thai === 'DA_DUYET') {
+                $status = 'has_company';
+            } elseif ($reg && ($reg->trang_thai === 'CHO_DUYET' || $reg->trang_thai === 'TU_CHOI')) {
                 $status = 'searching';
             }
+
+            $assign = $assignments->get($sv->sinh_vien_id);
 
             $rows[] = [
                 'id' => (string)$sv->sinh_vien_id,
@@ -322,7 +328,9 @@ class CompanyService
                 'studentName' => $sv->ho_ten,
                 'className' => $sv->lop ? $sv->lop->ten_lop : '',
                 'phone' => $sv->so_dien_thoai ?? '',
-                'status' => $status
+                'status' => $status,
+                'supervisor' => $assign ? $assign->giangVien->ho_ten : null,
+                'assignmentStatus' => $assign ? 'assigned' : 'unassigned'
             ];
         }
 
@@ -345,8 +353,24 @@ class CompanyService
         // Lấy đăng ký gần nhất của sinh viên
         $reg = DangKyThucTap::where('sinh_vien_id', $id)->orderBy('dang_ky_id', 'desc')->first();
         $status = 'not_registered';
-        if ($reg && ($reg->trang_thai === 'CHO_DUYET' || $reg->trang_thai === 'TU_CHOI')) {
+        if ($reg && $reg->trang_thai === 'DA_DUYET') {
+            $status = 'has_company';
+        } elseif ($reg && ($reg->trang_thai === 'CHO_DUYET' || $reg->trang_thai === 'TU_CHOI')) {
             $status = 'searching';
+        }
+
+        $dotId = $reg ? $reg->dot_id : null;
+        if (!$dotId) {
+            $activePeriod = Dot::where('loai_dot', 'TTTN')->orderBy('dot_id', 'desc')->first();
+            $dotId = $activePeriod ? $activePeriod->dot_id : null;
+        }
+
+        $assign = null;
+        if ($dotId) {
+            $assign = PhanCongHdtt::with('giangVien')
+                ->where('sinh_vien_id', $id)
+                ->where('dot_id', $dotId)
+                ->first();
         }
 
         return [
@@ -355,7 +379,9 @@ class CompanyService
             'studentName' => $sv->ho_ten,
             'className' => $sv->lop ? $sv->lop->ten_lop : '',
             'phone' => $sv->so_dien_thoai ?? '',
-            'status' => $status
+            'status' => $status,
+            'supervisor' => $assign ? $assign->giangVien->ho_ten : null,
+            'assignmentStatus' => $assign ? 'assigned' : 'unassigned'
         ];
     }
 

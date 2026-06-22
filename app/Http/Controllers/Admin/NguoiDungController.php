@@ -15,6 +15,7 @@ use App\Http\Requests\Admin\SuaSinhVienRequest;
 use App\Http\Requests\Admin\SuaGiangVienRequest;
 use App\Http\Requests\Admin\KhoaTaiKhoanSVRequest;
 use App\Http\Requests\Admin\KhoaTaiKhoanGVRequest;
+use App\Http\Requests\Admin\ThemNguoiDungRequest;
 use App\Services\NguoiDungService;
 
 class NguoiDungController extends Controller
@@ -153,17 +154,11 @@ class NguoiDungController extends Controller
     /**
      * Tạo mới người dùng (SV hoặc GV tùy theo role)
      */
-    public function themMoi(Request $request)
+    public function themMoi(ThemNguoiDungRequest $request)
     {
         $role = $request->input('role', 'student');
 
         if ($role === 'teacher') {
-            $request->validate([
-                'name' => 'required|string|max:255',
-                'email' => 'required|email|unique:giangvien,email',
-            ], [
-                'email.unique' => 'Email này đã được đăng ký bởi giảng viên khác!',
-            ]);
 
             $gv = GiangVien::create([
                 'ho_ten' => $request->name,
@@ -190,14 +185,6 @@ class NguoiDungController extends Controller
                 ]
             ], 200);
         } else {
-            $request->validate([
-                'id' => 'required|string|max:20|unique:sinhvien,ma_so_sinh_vien',
-                'name' => 'required|string|max:255',
-                'email' => 'required|email|unique:sinhvien,email',
-            ], [
-                'id.unique' => 'Mã số sinh viên (MSSV) này đã tồn tại trong hệ thống!',
-                'email.unique' => 'Email này đã được đăng ký bởi sinh viên khác!',
-            ]);
 
             $lopId = null;
             if ($request->className) {

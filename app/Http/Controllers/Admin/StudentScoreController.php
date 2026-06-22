@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Services\StudentScoreService;
+use App\Http\Requests\Admin\CapNhatDiemSinhVienRequest;
 
 class StudentScoreController extends Controller
 {
@@ -67,18 +68,8 @@ class StudentScoreController extends Controller
     /**
      * API Cập nhật điểm tốt nghiệp/thực tập của 1 sinh viên
      */
-    public function capNhat(Request $request, $id)
+    public function capNhat(CapNhatDiemSinhVienRequest $request, $id)
     {
-        $request->validate([
-            'status' => 'sometimes|string|in:draft,reviewing,finalized',
-            'finalScore' => 'sometimes|numeric|min:0|max:10',
-            'defenseScore' => 'sometimes|numeric|min:0|max:3',
-            'demoScore' => 'sometimes|numeric|min:0|max:5',
-            'qaScore' => 'sometimes|numeric|min:0|max:2',
-            'reportScore' => 'sometimes|numeric|min:0|max:10',
-            'mode' => 'required|string|in:internship,project',
-            'dot_id' => 'sometimes|integer'
-        ]);
 
         $score = $this->studentScoreService->updateScore($id, $request->all());
 

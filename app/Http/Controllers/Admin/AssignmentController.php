@@ -14,32 +14,72 @@ class AssignmentController extends Controller
 {
     public function layDanhSach(Request $request)
     {
-        // Lấy đợt tốt nghiệp mới nhất hoặc theo bộ lọc
-        $activePeriod = Dot::orderBy('dot_id', 'desc')->first();
-        $dotId = $activePeriod ? $activePeriod->dot_id : 1;
+        // Lấy đợt tốt nghiệp từ tham số truyền lên, nếu không có thì lấy đợt mới nhất
+        $dotId = $request->input('periodId') ?? $request->input('period_id');
+        if (empty($dotId)) {
+            $activePeriod = Dot::orderBy('dot_id', 'desc')->first();
+            $dotId = $activePeriod ? $activePeriod->dot_id : 1;
+        }
 
-        // Lấy tất cả sinh viên
-        $students = SinhVien::with('lop')->get();
+        // Lấy danh sách lớp học được gán cho đợt này
+        $lopIdsInPeriod = DB::table('dot_lop')->where('dot_id', $dotId)->pluck('lop_id');
 
-        // Lấy tất cả phân công
+        // Lấy danh sách sinh viên có phân công trong đợt này
+        $assignedStudentIds = PhanCongHdtt::where('dot_id', $dotId)->pluck('sinh_vien_id');
+
+        // Lấy danh sách sinh viên có nhóm trong đợt này
+        $groupStudentIds = DB::table('thanhviennhom')
+            ->join('nhomsvda', 'thanhviennhom.nhom_id', '=', 'nhomsvda.nhom_id')
+            ->where('nhomsvda.dot_id', $dotId)
+            ->pluck('thanhviennhom.sinh_vien_id');
+
+        // Lấy danh sách sinh viên đăng ký thực tập trong đợt này
+        $internshipStudentIds = DB::table('dangkythuctap')
+            ->where('dot_id', $dotId)
+            ->pluck('sinh_vien_id');
+
+        // Gộp tất cả các nguồn ID sinh viên lại
+        $studentIds = collect()
+            ->concat($assignedStudentIds)
+            ->concat($groupStudentIds)
+            ->concat($internshipStudentIds)
+            ->unique();
+
+        $query = SinhVien::query()->with('lop');
+
+        if ($lopIdsInPeriod->isNotEmpty() || $studentIds->isNotEmpty()) {
+            $query->where(function($q) use ($lopIdsInPeriod, $studentIds) {
+                $q->whereIn('lop_id', $lopIdsInPeriod)
+                  ->orWhereIn('sinh_vien_id', $studentIds);
+            });
+        } else {
+            // Nếu không có bất cứ liên kết nào trong đợt này, trả về rỗng để đúng nghiệp vụ lọc đợt
+            $query->whereNull('sinh_vien_id');
+        }
+
+        $students = $query->get();
+
+        // Lấy phân công theo đợt
         $assignments = PhanCongHdtt::with('giangVien')
             ->where('dot_id', $dotId)
             ->get()
             ->keyBy('sinh_vien_id');
 
-        // Lấy tất cả nhóm sinh viên để điền thông tin đề tài
+        // Lấy nhóm sinh viên theo đợt để điền thông tin đề tài
         $groupMembers = DB::table('thanhviennhom')
             ->join('nhomsvda', 'thanhviennhom.nhom_id', '=', 'nhomsvda.nhom_id')
             ->leftJoin('detai', 'nhomsvda.de_tai_id', '=', 'detai.de_tai_id')
             ->select('thanhviennhom.sinh_vien_id', 'detai.ten_de_tai', 'nhomsvda.nhom_id')
+            ->where('nhomsvda.dot_id', $dotId)
             ->get()
             ->keyBy('sinh_vien_id');
 
-        // Lấy tất cả đăng ký thực tập
+        // Lấy đăng ký thực tập theo đợt
         $internshipRegs = DB::table('dangkythuctap')
             ->join('congty', 'dangkythuctap.cong_ty_id', '=', 'congty.cong_ty_id')
             ->select('dangkythuctap.sinh_vien_id', 'congty.ten_cong_ty')
             ->where('dangkythuctap.trang_thai', 'DA_DUYET')
+            ->where('dangkythuctap.dot_id', $dotId)
             ->get()
             ->keyBy('sinh_vien_id');
 

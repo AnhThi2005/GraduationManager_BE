@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Services\CompanyService;
+use App\Http\Requests\Admin\ThemDoanhNghiepRequest;
+use App\Http\Requests\Admin\ThemMoiXacNhanRequest;
 
 class CompanyController extends Controller
 {
@@ -52,12 +54,8 @@ class CompanyController extends Controller
         ], 200);
     }
 
-    public function themMoi(Request $request)
+    public function themMoi(ThemDoanhNghiepRequest $request)
     {
-        $request->validate([
-            'name' => 'required|string|max:255',
-            'taxId' => 'required|string|max:255',
-        ]);
 
         $company = $this->companyService->createCompany($request->all());
 
@@ -144,13 +142,8 @@ class CompanyController extends Controller
         ], 200);
     }
 
-    public function themMoiXacNhan(Request $request)
+    public function themMoiXacNhan(ThemMoiXacNhanRequest $request)
     {
-        $request->validate([
-            'studentId' => 'required|string',
-            'companyName' => 'required|string',
-            'taxId' => 'required|string',
-        ]);
 
         $periodId = $request->query('periodId');
 

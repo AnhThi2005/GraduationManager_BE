@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Services\TopicService;
+use App\Http\Requests\Admin\ThemDeTaiRequest;
+use App\Http\Requests\Admin\CapNhatDeTaiRequest;
 
 class TopicController extends Controller
 {
@@ -73,17 +75,8 @@ class TopicController extends Controller
     /**
      * API Tạo mới đề tài
      */
-    public function themMoi(Request $request)
+    public function themMoi(ThemDeTaiRequest $request)
     {
-        $request->validate([
-            'name' => 'required|string|max:255',
-            'teacher' => 'required|string',
-            'slots' => 'required|string',
-            'status' => 'sometimes|string|in:pending,approved,rejected',
-            'rejectReason' => 'required_if:status,rejected|nullable|string|max:1000',
-        ], [
-            'rejectReason.required_if' => 'Lý do từ chối là bắt buộc khi chuyển trạng thái đề tài sang Từ chối!',
-        ]);
 
         $periodId = $request->query('periodId');
 
@@ -107,17 +100,8 @@ class TopicController extends Controller
     /**
      * API Cập nhật đề tài
      */
-    public function capNhat(Request $request, $id)
+    public function capNhat(CapNhatDeTaiRequest $request, $id)
     {
-        $request->validate([
-            'name' => 'sometimes|required|string|max:255',
-            'teacher' => 'sometimes|required|string',
-            'slots' => 'sometimes|required|string',
-            'status' => 'sometimes|string|in:pending,approved,rejected',
-            'rejectReason' => 'required_if:status,rejected|nullable|string|max:1000',
-        ], [
-            'rejectReason.required_if' => 'Lý do từ chối là bắt buộc khi chuyển trạng thái đề tài sang Từ chối!',
-        ]);
 
         $topic = $this->topicService->updateTopic($id, $request->all());
         if (!$topic) {

@@ -8,6 +8,7 @@ use App\Models\HoiDong;
 use App\Models\GiangVien;
 use App\Models\Dot;
 use Illuminate\Support\Facades\DB;
+use App\Http\Requests\Admin\ThemHoiDongRequest;
 
 class CouncilController extends Controller
 {
@@ -45,12 +46,8 @@ class CouncilController extends Controller
         ], 200);
     }
 
-    public function themMoi(Request $request)
+    public function themMoi(ThemHoiDongRequest $request)
     {
-        $request->validate([
-            'title' => 'required|string',
-            'room' => 'required|string',
-        ]);
 
         $activePeriod = Dot::orderBy('dot_id', 'desc')->first();
         $dotId = $activePeriod ? $activePeriod->dot_id : 1;

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Services\PeriodService;
+use App\Http\Requests\Admin\ThemDotRequest;
 
 class PeriodController extends Controller
 {
@@ -73,15 +74,8 @@ class PeriodController extends Controller
     /**
      * API Tạo mới đợt tốt nghiệp
      */
-    public function themMoi(Request $request)
+    public function themMoi(ThemDotRequest $request)
     {
-        $request->validate([
-            'name' => 'required|string|max:255',
-            'type' => 'required|string|in:tttn,datn',
-            'startDate' => 'required|string',
-            'endDate' => 'required|string',
-            'regDeadline' => 'required|string',
-        ]);
 
         $period = $this->periodService->createPeriod($request->all());
 

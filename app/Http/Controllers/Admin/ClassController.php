@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Services\ClassService;
+use App\Http\Requests\Admin\ThemLopRequest;
 
 class ClassController extends Controller
 {
@@ -57,13 +58,8 @@ class ClassController extends Controller
     /**
      * API Tạo mới lớp học
      */
-    public function themMoi(Request $request)
+    public function themMoi(ThemLopRequest $request)
     {
-        $request->validate([
-            'code' => 'required|string|max:255',
-            'name' => 'required|string|max:255',
-        ]);
-
         $class = $this->classService->createClass($request->all());
 
         return response()->json([
