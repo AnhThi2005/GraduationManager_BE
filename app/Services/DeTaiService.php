@@ -7,7 +7,7 @@ use App\Models\GiangVien;
 use App\Models\Dot;
 use Illuminate\Support\Facades\DB;
 
-class TopicService
+class DeTaiService
 {
     /**
      * Lấy danh sách đề tài (Có phân trang & bộ lọc)

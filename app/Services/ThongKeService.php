@@ -8,7 +8,7 @@ use App\Models\Lop;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
-class DashboardService
+class ThongKeService
 {
     /**
      * Lấy dữ liệu thống kê tổng quan cho Dashboard từ cơ sở dữ liệu thực tế

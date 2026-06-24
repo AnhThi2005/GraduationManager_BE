@@ -4,16 +4,16 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-use App\Services\PeriodService;
+use App\Services\DotService;
 use App\Http\Requests\Admin\ThemDotRequest;
 
-class PeriodController extends Controller
+class DotController extends Controller
 {
-    protected $periodService;
+    protected $dotService;
 
-    public function __construct(PeriodService $periodService)
+    public function __construct(DotService $dotService)
     {
-        $this->periodService = $periodService;
+        $this->dotService = $dotService;
     }
 
     /**
@@ -28,7 +28,7 @@ class PeriodController extends Controller
             'status' => $request->input('status')
         ];
 
-        $res = $this->periodService->getListPeriod($filters, $limit);
+        $res = $this->dotService->getListPeriod($filters, $limit);
 
         return response()->json([
             'code' => 200,
@@ -55,7 +55,7 @@ class PeriodController extends Controller
      */
     public function xemChiTiet(Request $request, $id)
     {
-        $period = $this->periodService->getPeriodDetail($id);
+        $period = $this->dotService->getPeriodDetail($id);
         if (!$period) {
             return response()->json([
                 'success' => false,
@@ -77,7 +77,7 @@ class PeriodController extends Controller
     public function themMoi(ThemDotRequest $request)
     {
 
-        $period = $this->periodService->createPeriod($request->all());
+        $period = $this->dotService->createPeriod($request->all());
 
         return response()->json([
             'code' => 200,
@@ -92,7 +92,7 @@ class PeriodController extends Controller
      */
     public function capNhat(Request $request, $id)
     {
-        $period = $this->periodService->updatePeriod($id, $request->all());
+        $period = $this->dotService->updatePeriod($id, $request->all());
         if (!$period) {
             return response()->json([
                 'success' => false,
@@ -113,7 +113,7 @@ class PeriodController extends Controller
      */
     public function xoa(Request $request, $id)
     {
-        $success = $this->periodService->deletePeriod($id);
+        $success = $this->dotService->deletePeriod($id);
         if (!$success) {
             return response()->json([
                 'success' => false,

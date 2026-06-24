@@ -4,15 +4,15 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-use App\Services\DashboardService;
+use App\Services\ThongKeService;
 
-class DashboardController extends Controller
+class ThongKeController extends Controller
 {
-    protected $dashboardService;
+    protected $thongKeService;
 
-    public function __construct(DashboardService $dashboardService)
+    public function __construct(ThongKeService $thongKeService)
     {
-        $this->dashboardService = $dashboardService;
+        $this->thongKeService = $thongKeService;
     }
 
     /**
@@ -21,7 +21,7 @@ class DashboardController extends Controller
     public function getDashboardData(Request $request)
     {
         try {
-            $data = $this->dashboardService->getDashboardData();
+            $data = $this->thongKeService->getDashboardData();
 
             return response()->json([
                 'code' => 200,

@@ -6,7 +6,7 @@ use App\Models\Dot;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
-class PeriodService
+class DotService
 {
     /**
      * Lấy danh sách các đợt đăng ký kèm phân trang và bộ lọc
@@ -98,6 +98,10 @@ class PeriodService
             $dot->lops()->sync($data['classIds']);
         }
 
+        if (isset($data['externalStudentIds']) && is_array($data['externalStudentIds'])) {
+            $dot->sinhViens()->sync($data['externalStudentIds']);
+        }
+
         return $this->transformPeriod($dot);
     }
 
@@ -125,6 +129,10 @@ class PeriodService
 
         if (isset($data['classIds']) && is_array($data['classIds'])) {
             $dot->lops()->sync($data['classIds']);
+        }
+
+        if (isset($data['externalStudentIds']) && is_array($data['externalStudentIds'])) {
+            $dot->sinhViens()->sync($data['externalStudentIds']);
         }
 
         return $this->transformPeriod($dot->fresh());
@@ -206,6 +214,23 @@ class PeriodService
             }
         }
 
+        // Lấy danh sách sinh viên ngoài lớp (sinh viên tự do/rớt)
+        $externalStudents = $dot->sinhViens->map(function ($sv) {
+            return [
+                'id' => (string)$sv->ma_so_sinh_vien,
+                'name' => $sv->ho_ten,
+                'email' => $sv->email,
+                'className' => $sv->lop ? $sv->lop->ten_lop : null,
+                'phone' => $sv->so_dien_thoai,
+                'role' => 'student',
+                'status' => $sv->dang_hoat_dong == 1 ? 'active' : 'inactive',
+                'gender' => $sv->gioi_tinh,
+                'dateOfBirth' => $sv->ngay_sinh,
+                'reason' => $sv->pivot->ly_do ?? 'Rớt đợt trước'
+            ];
+        })->all();
+        $externalStudentIds = collect($externalStudents)->pluck('id')->all();
+
         return [
             'id' => (string)$dot->dot_id,
             'name' => $dot->ten_dot,
@@ -216,6 +241,8 @@ class PeriodService
             'studentListFileName' => 'danh-sach-sinh-vien-' . strtolower($dot->loai_dot) . '-' . $dot->dot_id . '.xlsx',
             'studentListUrl' => 'https://example.com/danh-sach-sinh-vien-' . $dot->dot_id . '.xlsx',
             'classIds' => $classIds,
+            'externalStudents' => $externalStudents,
+            'externalStudentIds' => $externalStudentIds,
             'numberDN' => $numberDN,
             'numberSV' => $numberSV,
             'numberTopics' => $numberTopics,

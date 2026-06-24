@@ -4,16 +4,16 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-use App\Services\ClassService;
+use App\Services\LopService;
 use App\Http\Requests\Admin\ThemLopRequest;
 
-class ClassController extends Controller
+class LopController extends Controller
 {
-    protected $classService;
+    protected $lopService;
 
-    public function __construct(ClassService $classService)
+    public function __construct(LopService $lopService)
     {
-        $this->classService = $classService;
+        $this->lopService = $lopService;
     }
 
     /**
@@ -21,7 +21,7 @@ class ClassController extends Controller
      */
     public function layDanhSach(Request $request)
     {
-        $res = $this->classService->getListClass();
+        $res = $this->lopService->getListClass();
 
         return response()->json([
             'code' => 200,
@@ -39,7 +39,7 @@ class ClassController extends Controller
      */
     public function xemChiTiet(Request $request, $id)
     {
-        $class = $this->classService->getClassDetail($id);
+        $class = $this->lopService->getClassDetail($id);
         if (!$class) {
             return response()->json([
                 'success' => false,
@@ -60,7 +60,7 @@ class ClassController extends Controller
      */
     public function themMoi(ThemLopRequest $request)
     {
-        $class = $this->classService->createClass($request->all());
+        $class = $this->lopService->createClass($request->all());
 
         return response()->json([
             'code' => 200,
@@ -75,7 +75,7 @@ class ClassController extends Controller
      */
     public function capNhat(Request $request, $id)
     {
-        $class = $this->classService->updateClass($id, $request->all());
+        $class = $this->lopService->updateClass($id, $request->all());
         if (!$class) {
             return response()->json([
                 'success' => false,
@@ -96,7 +96,7 @@ class ClassController extends Controller
      */
     public function xoa(Request $request, $id)
     {
-        $success = $this->classService->deleteClass($id);
+        $success = $this->lopService->deleteClass($id);
         if (!$success) {
             return response()->json([
                 'success' => false,

@@ -4,17 +4,17 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-use App\Services\CompanyService;
+use App\Services\CongTyService;
 use App\Http\Requests\Admin\ThemDoanhNghiepRequest;
 use App\Http\Requests\Admin\ThemMoiXacNhanRequest;
 
-class CompanyController extends Controller
+class CongTyController extends Controller
 {
-    protected $companyService;
+    protected $congTyService;
 
-    public function __construct(CompanyService $companyService)
+    public function __construct(CongTyService $congTyService)
     {
-        $this->companyService = $companyService;
+        $this->congTyService = $congTyService;
     }
 
     // ==========================================================
@@ -23,7 +23,7 @@ class CompanyController extends Controller
 
     public function layDanhSach(Request $request)
     {
-        $res = $this->companyService->getListCompany();
+        $res = $this->congTyService->getListCompany();
 
         return response()->json([
             'code' => 200,
@@ -38,7 +38,7 @@ class CompanyController extends Controller
 
     public function xemChiTiet(Request $request, $id)
     {
-        $company = $this->companyService->getCompanyDetail($id);
+        $company = $this->congTyService->getCompanyDetail($id);
         if (!$company) {
             return response()->json([
                 'success' => false,
@@ -57,7 +57,7 @@ class CompanyController extends Controller
     public function themMoi(ThemDoanhNghiepRequest $request)
     {
 
-        $company = $this->companyService->createCompany($request->all());
+        $company = $this->congTyService->createCompany($request->all());
 
         return response()->json([
             'code' => 200,
@@ -69,7 +69,7 @@ class CompanyController extends Controller
 
     public function capNhat(Request $request, $id)
     {
-        $company = $this->companyService->updateCompany($id, $request->all());
+        $company = $this->congTyService->updateCompany($id, $request->all());
         if (!$company) {
             return response()->json([
                 'success' => false,
@@ -87,7 +87,7 @@ class CompanyController extends Controller
 
     public function xoa(Request $request, $id)
     {
-        $success = $this->companyService->deleteCompany($id);
+        $success = $this->congTyService->deleteCompany($id);
         if (!$success) {
             return response()->json([
                 'success' => false,
@@ -111,7 +111,7 @@ class CompanyController extends Controller
             'periodId' => $request->query('periodId')
         ];
 
-        $res = $this->companyService->getListConfirmationRequest($filters);
+        $res = $this->congTyService->getListConfirmationRequest($filters);
 
         return response()->json([
             'code' => 200,
@@ -126,7 +126,7 @@ class CompanyController extends Controller
 
     public function xemChiTietXacNhan(Request $request, $id)
     {
-        $reg = $this->companyService->getConfirmationRequestDetail($id);
+        $reg = $this->congTyService->getConfirmationRequestDetail($id);
         if (!$reg) {
             return response()->json([
                 'success' => false,
@@ -147,7 +147,7 @@ class CompanyController extends Controller
 
         $periodId = $request->query('periodId');
 
-        $reg = $this->companyService->createConfirmationRequest($request->all(), $periodId);
+        $reg = $this->congTyService->createConfirmationRequest($request->all(), $periodId);
         if (!$reg) {
             return response()->json([
                 'success' => false,
@@ -172,7 +172,7 @@ class CompanyController extends Controller
 
     public function capNhatXacNhan(Request $request, $id)
     {
-        $reg = $this->companyService->updateConfirmationRequest($id, $request->all());
+        $reg = $this->congTyService->updateConfirmationRequest($id, $request->all());
         if (!$reg) {
             return response()->json([
                 'success' => false,
@@ -197,7 +197,7 @@ class CompanyController extends Controller
 
     public function xoaXacNhan(Request $request, $id)
     {
-        $success = $this->companyService->deleteConfirmationRequest($id);
+        $success = $this->congTyService->deleteConfirmationRequest($id);
         if (!$success) {
             return response()->json([
                 'success' => false,
@@ -221,7 +221,7 @@ class CompanyController extends Controller
             'periodId' => $request->query('periodId')
         ];
 
-        $res = $this->companyService->getListNoCompanyStudent($filters);
+        $res = $this->congTyService->getListNoCompanyStudent($filters);
 
         return response()->json([
             'code' => 200,
@@ -236,7 +236,7 @@ class CompanyController extends Controller
 
     public function xemChiTietChuaThucTap(Request $request, $id)
     {
-        $sv = $this->companyService->getNoCompanyStudentDetail($id);
+        $sv = $this->congTyService->getNoCompanyStudentDetail($id);
         if (!$sv) {
             return response()->json([
                 'success' => false,

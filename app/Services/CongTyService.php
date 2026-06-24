@@ -9,7 +9,7 @@ use App\Models\Dot;
 use App\Models\PhanCongHdtt;
 use Illuminate\Support\Facades\DB;
 
-class CompanyService
+class CongTyService
 {
     // ==========================================================
     // 1. QUẢN LÝ DOANH NGHIỆP (COMPANIES CRUD)

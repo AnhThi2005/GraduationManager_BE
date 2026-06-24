@@ -19,6 +19,8 @@ class ThemDotRequest extends FormRequest
             'startDate'   => 'required|string',
             'endDate'     => 'required|string',
             'regDeadline' => 'required|string',
+            'classIds'    => 'nullable|array',
+            'externalStudentIds' => 'nullable|array',
         ];
     }
 

@@ -10,7 +10,7 @@ use App\Models\PhanCongHdtt;
 use App\Models\Dot;
 use Illuminate\Support\Facades\DB;
 
-class AssignmentController extends Controller
+class PhanCongHdttController extends Controller
 {
     public function layDanhSach(Request $request)
     {

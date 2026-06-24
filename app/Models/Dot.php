@@ -31,4 +31,10 @@ class Dot extends Model
     {
         return $this->belongsToMany(Lop::class, 'dot_lop', 'dot_id', 'lop_id');
     }
+
+    public function sinhViens()
+    {
+        return $this->belongsToMany(SinhVien::class, 'dot_sinhvien', 'dot_id', 'sinh_vien_id')
+            ->withPivot('ly_do');
+    }
 }

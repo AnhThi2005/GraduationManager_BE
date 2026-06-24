@@ -5,7 +5,7 @@ namespace App\Services;
 use App\Models\DiemSinhVien;
 use Illuminate\Support\Facades\DB;
 
-class StudentScoreService
+class DiemSinhVienService
 {
     /**
      * Lấy danh sách điểm tốt nghiệp/thực tập của sinh viên

@@ -4,16 +4,16 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-use App\Services\StudentScoreService;
+use App\Services\DiemSinhVienService;
 use App\Http\Requests\Admin\CapNhatDiemSinhVienRequest;
 
-class StudentScoreController extends Controller
+class DiemSinhVienController extends Controller
 {
-    protected $studentScoreService;
+    protected $diemSinhVienService;
 
-    public function __construct(StudentScoreService $studentScoreService)
+    public function __construct(DiemSinhVienService $diemSinhVienService)
     {
-        $this->studentScoreService = $studentScoreService;
+        $this->diemSinhVienService = $diemSinhVienService;
     }
 
     /**
@@ -29,7 +29,7 @@ class StudentScoreController extends Controller
             'status' => $request->input('status')
         ];
 
-        $res = $this->studentScoreService->getScoresList($filters);
+        $res = $this->diemSinhVienService->getScoresList($filters);
 
         return response()->json([
             'code' => 200,
@@ -48,7 +48,7 @@ class StudentScoreController extends Controller
     public function xemChiTiet(Request $request, $id)
     {
         $mode = $request->input('mode', 'internship');
-        $score = $this->studentScoreService->getScoreDetail($id, $mode);
+        $score = $this->diemSinhVienService->getScoreDetail($id, $mode);
 
         if (!$score) {
             return response()->json([
@@ -71,7 +71,7 @@ class StudentScoreController extends Controller
     public function capNhat(CapNhatDiemSinhVienRequest $request, $id)
     {
 
-        $score = $this->studentScoreService->updateScore($id, $request->all());
+        $score = $this->diemSinhVienService->updateScore($id, $request->all());
 
         if (!$score) {
             return response()->json([

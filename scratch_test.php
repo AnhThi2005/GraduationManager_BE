@@ -6,7 +6,7 @@ $app = require_once __DIR__ . '/bootstrap/app.php';
 $kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
 $kernel->bootstrap();
 
-use App\Http\Controllers\Admin\TopicController;
+use App\Http\Controllers\Admin\DeTaiController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -29,7 +29,7 @@ try {
         'slots' => '0/3'
     ]);
     
-    $controller = app(TopicController::class);
+    $controller = app(DeTaiController::class);
     $response = $controller->capNhat($request, $topicId);
     echo "Status code: " . $response->getStatusCode() . "\n";
     echo "Body: " . $response->getContent() . "\n";
@@ -49,7 +49,7 @@ try {
         'slots' => '0/3'
     ]);
     
-    $controller = app(TopicController::class);
+    $controller = app(DeTaiController::class);
     $response = $controller->capNhat($request, $topicId);
     echo "Status code: " . $response->getStatusCode() . "\n";
     echo "Body: " . $response->getContent() . "\n";
@@ -68,7 +68,7 @@ try {
         'slots' => '0/3'
     ]);
     
-    $controller = app(TopicController::class);
+    $controller = app(DeTaiController::class);
     $response = $controller->capNhat($request, $topicId);
     echo "Status code: " . $response->getStatusCode() . "\n";
     

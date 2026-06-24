@@ -10,7 +10,7 @@ use App\Models\Dot;
 use Illuminate\Support\Facades\DB;
 use App\Http\Requests\Admin\ThemHoiDongRequest;
 
-class CouncilController extends Controller
+class HoiDongController extends Controller
 {
     public function layDanhSach(Request $request)
     {

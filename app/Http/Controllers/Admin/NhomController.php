@@ -8,7 +8,7 @@ use App\Models\Nhom;
 use App\Models\SinhVien;
 use Illuminate\Support\Facades\DB;
 
-class GroupController extends Controller
+class NhomController extends Controller
 {
     public function layDanhSach(Request $request)
     {

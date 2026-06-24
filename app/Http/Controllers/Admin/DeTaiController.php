@@ -4,17 +4,17 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-use App\Services\TopicService;
+use App\Services\DeTaiService;
 use App\Http\Requests\Admin\ThemDeTaiRequest;
 use App\Http\Requests\Admin\CapNhatDeTaiRequest;
 
-class TopicController extends Controller
+class DeTaiController extends Controller
 {
-    protected $topicService;
+    protected $deTaiService;
 
-    public function __construct(TopicService $topicService)
+    public function __construct(DeTaiService $deTaiService)
     {
-        $this->topicService = $topicService;
+        $this->deTaiService = $deTaiService;
     }
 
     /**
@@ -29,7 +29,7 @@ class TopicController extends Controller
             'periodId' => $request->input('periodId')
         ];
 
-        $res = $this->topicService->getListTopic($filters, $limit);
+        $res = $this->deTaiService->getListTopic($filters, $limit);
 
         return response()->json([
             'code' => 200,
@@ -56,7 +56,7 @@ class TopicController extends Controller
      */
     public function xemChiTiet(Request $request, $id)
     {
-        $topic = $this->topicService->getTopicDetail($id);
+        $topic = $this->deTaiService->getTopicDetail($id);
         if (!$topic) {
             return response()->json([
                 'success' => false,
@@ -80,7 +80,7 @@ class TopicController extends Controller
 
         $periodId = $request->query('periodId');
 
-        $topic = $this->topicService->createTopic($request->all(), $periodId);
+        $topic = $this->deTaiService->createTopic($request->all(), $periodId);
 
         \App\Services\RealtimeService::broadcast('notification', [
             'title' => 'Đề tài mới được đề xuất',
@@ -103,7 +103,7 @@ class TopicController extends Controller
     public function capNhat(CapNhatDeTaiRequest $request, $id)
     {
 
-        $topic = $this->topicService->updateTopic($id, $request->all());
+        $topic = $this->deTaiService->updateTopic($id, $request->all());
         if (!$topic) {
             return response()->json([
                 'success' => false,
@@ -130,7 +130,7 @@ class TopicController extends Controller
      */
     public function xoa(Request $request, $id)
     {
-        $success = $this->topicService->deleteTopic($id);
+        $success = $this->deTaiService->deleteTopic($id);
         if (!$success) {
             return response()->json([
                 'success' => false,
