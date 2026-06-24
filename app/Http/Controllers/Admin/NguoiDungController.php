@@ -3,14 +3,14 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\Admin\LocSinhVienRequest;
-use App\Http\Requests\Admin\LocGiangVienRequest;
-use App\Http\Requests\Admin\ThemSinhVienRequest;
-use App\Http\Requests\Admin\ThemGiangVienRequest;
-use App\Http\Requests\Admin\SuaSinhVienRequest;
-use App\Http\Requests\Admin\SuaGiangVienRequest;
-use App\Http\Requests\Admin\KhoaTaiKhoanSVRequest;
-use App\Http\Requests\Admin\KhoaTaiKhoanGVRequest;
+use App\Http\Requests\Admin\QuanLyNguoiDung\LocSinhVienRequest;
+use App\Http\Requests\Admin\QuanLyNguoiDung\LocGiangVienRequest;
+use App\Http\Requests\Admin\QuanLyNguoiDung\ThemSinhVienRequest;
+use App\Http\Requests\Admin\QuanLyNguoiDung\ThemGiangVienRequest;
+use App\Http\Requests\Admin\QuanLyNguoiDung\SuaSinhVienRequest;
+use App\Http\Requests\Admin\QuanLyNguoiDung\SuaGiangVienRequest;
+use App\Http\Requests\Admin\QuanLyNguoiDung\KhoaTaiKhoanSVRequest;
+use App\Http\Requests\Admin\QuanLyNguoiDung\KhoaTaiKhoanGVRequest;
 use App\Services\NguoiDungService;
 
 class NguoiDungController extends Controller
