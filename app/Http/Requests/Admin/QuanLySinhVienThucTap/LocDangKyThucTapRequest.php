@@ -11,7 +11,7 @@ class LocDangKyThucTapRequest extends FormRequest
      */
     public function authorize(): bool
     {
-        return false;
+        return true;
     }
 
     /**
@@ -22,7 +22,13 @@ class LocDangKyThucTapRequest extends FormRequest
     public function rules(): array
     {
         return [
-            //
+            'periodId'    => 'nullable|integer',
+            'dot_id'      => 'nullable|integer',
+            'keyword'     => 'nullable|string',
+            'companyName' => 'nullable|string',
+            'status'      => 'nullable|string',
+            'trang_thai'  => 'nullable|string',
+            'per_page'    => 'nullable|integer'
         ];
     }
 }

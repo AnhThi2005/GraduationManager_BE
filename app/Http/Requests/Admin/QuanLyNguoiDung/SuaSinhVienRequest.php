@@ -29,7 +29,7 @@ class SuaSinhVienRequest extends FormRequest
                 'required',
                 'email',
                 'max:255',
-                Rule::unique('sinhvien', 'email')->ignore($id, 'sinh_vien_id')
+                Rule::unique('sinhvien', 'email')->ignore($sinh_vien_id, 'sinh_vien_id')
             ],
             'so_dien_thoai'   => 'nullable|string|regex:/^([0-9]*)$/|size:10',
             'gioi_tinh'       => 'nullable|in:Nam,Nu,Khac',

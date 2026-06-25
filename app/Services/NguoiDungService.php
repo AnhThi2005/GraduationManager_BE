@@ -4,21 +4,333 @@ namespace App\Services;
 
 use App\Models\SinhVien;
 use App\Models\GiangVien;
+use App\Models\Lop;
 
 class NguoiDungService
 {
+    /**
+     * Lấy danh sách người dùng phân trang và ánh xạ theo định dạng Frontend.
+     */
+    public function layDanhSachNguoiDung(array $filters, $perPage = 20)
+    {
+        $role = $filters['role'] ?? 'student';
+
+        if ($role === 'teacher' || $role === 'GIANG_VIEN') {
+            $query = GiangVien::query();
+
+            if (!empty($filters['keyword'])) {
+                $kw = trim($filters['keyword']);
+                $query->where(function ($q) use ($kw) {
+                    $q->where('ho_ten', 'LIKE', '%' . $kw . '%')
+                      ->orWhere('email', 'LIKE', '%' . $kw . '%')
+                      ->orWhere('so_dien_thoai', 'LIKE', '%' . $kw . '%');
+                });
+            }
+
+            if (isset($filters['status'])) {
+                $statusVal = $filters['status'];
+                if ($statusVal === 'active' || $statusVal === '1') {
+                    $query->where('dang_hoat_dong', 1);
+                } elseif ($statusVal === 'inactive' || $statusVal === '0') {
+                    $query->where('dang_hoat_dong', 0);
+                }
+            }
+
+            $paginator = $query->paginate($perPage);
+
+            $objects = collect($paginator->items())->map(function ($item) {
+                return [
+                    'id' => (string) $item->giang_vien_id,
+                    'name' => $item->ho_ten,
+                    'email' => $item->email,
+                    'role' => 'teacher',
+                    'phone' => $item->so_dien_thoai,
+                    'gender' => $item->gioi_tinh,
+                    'dateOfBirth' => $item->ngay_sinh,
+                    'status' => $item->dang_hoat_dong == 1 ? 'active' : 'inactive',
+                    'academicDegree' => $item->hoc_vi,
+                    'specialization' => $item->chuyen_mon,
+                ];
+            })->all();
+        } else {
+            $query = SinhVien::query()->with('lop');
+
+            if (!empty($filters['keyword'])) {
+                $kw = trim($filters['keyword']);
+                $query->where(function ($q) use ($kw) {
+                    $q->where('ho_ten', 'LIKE', '%' . $kw . '%')
+                      ->orWhere('email', 'LIKE', '%' . $kw . '%')
+                      ->orWhere('ma_so_sinh_vien', 'LIKE', '%' . $kw . '%')
+                      ->orWhere('so_dien_thoai', 'LIKE', '%' . $kw . '%');
+                });
+            }
+
+            if (!empty($filters['className'])) {
+                $cn = trim($filters['className']);
+                $query->whereHas('lop', function ($q) use ($cn) {
+                    $q->where('ten_lop', 'LIKE', '%' . $cn . '%');
+                });
+            }
+
+            if (isset($filters['status'])) {
+                $statusVal = $filters['status'];
+                if ($statusVal === 'active' || $statusVal === '1') {
+                    $query->where('dang_hoat_dong', 1);
+                } elseif ($statusVal === 'inactive' || $statusVal === '0') {
+                    $query->where('dang_hoat_dong', 0);
+                }
+            }
+
+            $paginator = $query->paginate($perPage);
+
+            $objects = collect($paginator->items())->map(function ($item) {
+                return [
+                    'id' => (string) $item->sinh_vien_id,
+                    'name' => $item->ho_ten,
+                    'email' => $item->email,
+                    'role' => 'student',
+                    'phone' => $item->so_dien_thoai,
+                    'gender' => $item->gioi_tinh,
+                    'dateOfBirth' => $item->ngay_sinh,
+                    'status' => $item->dang_hoat_dong == 1 ? 'active' : 'inactive',
+                    'className' => $item->lop?->ten_lop,
+                ];
+            })->all();
+        }
+
+        return [
+            'paginator' => $paginator,
+            'objects'   => $objects,
+            'total'     => $paginator->total(),
+            'rows'      => $objects,
+        ];
+    }
+
+    /**
+     * Lấy thông tin chi tiết của một người dùng bất kỳ (Sinh viên hoặc Giảng viên).
+     */
+    public function layChiTietNguoiDung($id)
+    {
+        $sv = SinhVien::with('lop')->find($id);
+        if ($sv) {
+            return [
+                'id' => (string) $sv->sinh_vien_id,
+                'name' => $sv->ho_ten,
+                'email' => $sv->email,
+                'role' => 'student',
+                'phone' => $sv->so_dien_thoai,
+                'gender' => $sv->gioi_tinh,
+                'dateOfBirth' => $sv->ngay_sinh,
+                'status' => $sv->dang_hoat_dong == 1 ? 'active' : 'inactive',
+                'className' => $sv->lop?->ten_lop,
+            ];
+        }
+
+        $gv = GiangVien::find($id);
+        if ($gv) {
+            return [
+                'id' => (string) $gv->giang_vien_id,
+                'name' => $gv->ho_ten,
+                'email' => $gv->email,
+                'role' => 'teacher',
+                'phone' => $gv->so_dien_thoai,
+                'gender' => $gv->gioi_tinh,
+                'dateOfBirth' => $gv->ngay_sinh,
+                'status' => $gv->dang_hoat_dong == 1 ? 'active' : 'inactive',
+                'academicDegree' => $gv->hoc_vi,
+                'specialization' => $gv->chuyen_mon,
+            ];
+        }
+
+        return null;
+    }
+
+    /**
+     * Thêm mới người dùng bất kỳ.
+     */
+    public function themNguoiDung(array $data)
+    {
+        $role = $data['role'] ?? 'student';
+        if ($role === 'teacher' || $role === 'GIANG_VIEN') {
+            $gv = GiangVien::create([
+                'ho_ten' => $data['name'],
+                'email' => $data['email'],
+                'so_dien_thoai' => $data['phone'] ?? null,
+                'gioi_tinh' => $data['gender'] ?? null,
+                'ngay_sinh' => $data['dateOfBirth'] ?? null,
+                'hoc_vi' => $data['academicDegree'] ?? null,
+                'chuyen_mon' => $data['specialization'] ?? null,
+                'dang_hoat_dong' => 1,
+            ]);
+
+            return [
+                'id' => (string) $gv->giang_vien_id,
+                'name' => $gv->ho_ten,
+                'email' => $gv->email,
+                'role' => 'teacher',
+                'phone' => $gv->so_dien_thoai,
+                'gender' => $gv->gioi_tinh,
+                'dateOfBirth' => $gv->ngay_sinh,
+                'status' => 'active',
+                'academicDegree' => $gv->hoc_vi,
+                'specialization' => $gv->chuyen_mon,
+            ];
+        } else {
+            $lopId = null;
+            if (!empty($data['className'])) {
+                $lop = Lop::firstOrCreate(['ten_lop' => trim($data['className'])]);
+                $lopId = $lop->lop_id;
+            }
+
+            $sv = SinhVien::create([
+                'ma_so_sinh_vien' => $data['id'],
+                'ho_ten' => $data['name'],
+                'email' => $data['email'],
+                'so_dien_thoai' => $data['phone'] ?? null,
+                'gioi_tinh' => $data['gender'] ?? null,
+                'ngay_sinh' => $data['dateOfBirth'] ?? null,
+                'lop_id' => $lopId,
+                'dang_hoat_dong' => 1,
+            ]);
+
+            return [
+                'id' => (string) $sv->sinh_vien_id,
+                'name' => $sv->ho_ten,
+                'email' => $sv->email,
+                'role' => 'student',
+                'phone' => $sv->so_dien_thoai,
+                'gender' => $sv->gioi_tinh,
+                'dateOfBirth' => $sv->ngay_sinh,
+                'status' => 'active',
+                'className' => $data['className'] ?? null,
+            ];
+        }
+    }
+
+    /**
+     * Cập nhật người dùng bất kỳ.
+     */
+    public function capNhatNguoiDung($id, array $data)
+    {
+        $sv = SinhVien::find($id);
+        if ($sv) {
+            $updateData = [];
+            if (isset($data['name'])) $updateData['ho_ten'] = $data['name'];
+            if (isset($data['email'])) $updateData['email'] = $data['email'];
+            if (isset($data['phone'])) $updateData['so_dien_thoai'] = $data['phone'];
+            if (isset($data['gender'])) $updateData['gioi_tinh'] = $data['gender'];
+            if (isset($data['dateOfBirth'])) $updateData['ngay_sinh'] = $data['dateOfBirth'];
+            
+            if (isset($data['status'])) {
+                $updateData['dang_hoat_dong'] = ($data['status'] === 'active' || $data['status'] === '1') ? 1 : 0;
+            }
+
+            if (isset($data['className'])) {
+                $lop = Lop::firstOrCreate(['ten_lop' => trim($data['className'])]);
+                $updateData['lop_id'] = $lop->lop_id;
+            }
+
+            $sv->update($updateData);
+            $sv->refresh();
+
+            return [
+                'id' => (string) $sv->sinh_vien_id,
+                'name' => $sv->ho_ten,
+                'email' => $sv->email,
+                'role' => 'student',
+                'phone' => $sv->so_dien_thoai,
+                'gender' => $sv->gioi_tinh,
+                'dateOfBirth' => $sv->ngay_sinh,
+                'status' => $sv->dang_hoat_dong == 1 ? 'active' : 'inactive',
+                'className' => $sv->lop?->ten_lop,
+            ];
+        }
+
+        $gv = GiangVien::find($id);
+        if ($gv) {
+            $updateData = [];
+            if (isset($data['name'])) $updateData['ho_ten'] = $data['name'];
+            if (isset($data['email'])) $updateData['email'] = $data['email'];
+            if (isset($data['phone'])) $updateData['so_dien_thoai'] = $data['phone'];
+            if (isset($data['gender'])) $updateData['gioi_tinh'] = $data['gender'];
+            if (isset($data['dateOfBirth'])) $updateData['ngay_sinh'] = $data['dateOfBirth'];
+            
+            if (isset($data['status'])) {
+                $updateData['dang_hoat_dong'] = ($data['status'] === 'active' || $data['status'] === '1') ? 1 : 0;
+            }
+
+            if (isset($data['academicDegree'])) $updateData['hoc_vi'] = $data['academicDegree'];
+            if (isset($data['specialization'])) $updateData['chuyen_mon'] = $data['specialization'];
+
+            $gv->update($updateData);
+            $gv->refresh();
+
+            return [
+                'id' => (string) $gv->giang_vien_id,
+                'name' => $gv->ho_ten,
+                'email' => $gv->email,
+                'role' => 'teacher',
+                'phone' => $gv->so_dien_thoai,
+                'gender' => $gv->gioi_tinh,
+                'dateOfBirth' => $gv->ngay_sinh,
+                'status' => $gv->dang_hoat_dong == 1 ? 'active' : 'inactive',
+                'academicDegree' => $gv->hoc_vi,
+                'specialization' => $gv->chuyen_mon,
+            ];
+        }
+
+        return null;
+    }
+
+    /**
+     * Xóa tài khoản người dùng bất kỳ.
+     */
+    public function xoaNguoiDung($id)
+    {
+        $sv = SinhVien::find($id);
+        if ($sv) {
+            $sv->delete();
+            return 'student';
+        }
+
+        $gv = GiangVien::find($id);
+        if ($gv) {
+            $gv->delete();
+            return 'teacher';
+        }
+
+        return null;
+    }
+
+    /**
+     * Đặt lại mật khẩu về mặc định.
+     */
+    public function resetMatKhau($id)
+    {
+        $sv = SinhVien::find($id);
+        if ($sv) {
+            return true;
+        }
+
+        $gv = GiangVien::find($id);
+        if ($gv) {
+            return true;
+        }
+
+        return false;
+    }
+
+    // --- Các hàm cũ giữ lại để tương thích ngược nếu cần ---
+
     public function locSinhVien(array $filters, $perPage = 20)
     {
         $query = SinhVien::query()->with('lop');
-        // 1. Chỉ bốc các trường lọc liên quan và loại bỏ hoàn toàn các phần tử rỗng "", null
-        $searchCriteria = array_filter(array_intersect_key($filters, array_flip(['ho_ten', 'ma_so_sinh_vien', 'lop_id   '])));
+        $searchCriteria = array_filter(array_intersect_key($filters, array_flip(['ho_ten', 'ma_so_sinh_vien', 'lop_id'])));
 
-        // 2. Nếu Admin có truyền params lọc lên nhưng mảng sau khi dọn dẹp lại trống rỗng (Admin gõ dấu cách hoặc xóa trống input)
         if (count($searchCriteria) === 0 && (array_key_exists('ho_ten', $filters) || array_key_exists('ma_so_sinh_vien', $filters) || array_key_exists('lop', $filters))) {
             return $query->whereRaw('1 = 0')->paginate($perPage);
         }
 
-        // 3. Thực hiện gắn câu lệnh tìm kiếm gần đúng (LIKE) cho TẤT CẢ các trường để tránh lệch pha ký tự
         $query->when(!empty($searchCriteria['ho_ten']), function ($q) use ($searchCriteria) {
             return $q->where('ho_ten', 'LIKE', '%' . trim($searchCriteria['ho_ten']) . '%');
         });
@@ -43,16 +355,12 @@ class NguoiDungService
     public function locGiangVien(array $filters, $perPage = 20)
     {
         $query = GiangVien::query();
-
-        // 1. Chỉ bốc các trường lọc liên quan và loại bỏ hoàn toàn các phần tử rỗng "", null
         $searchCriteria = array_filter(array_intersect_key($filters, array_flip(['ho_ten', 'chuyen_mon', 'vai_tro'])));
 
-        // 2. Nếu Admin có truyền params lọc lên nhưng mảng sau khi dọn dẹp lại trống rỗng
         if (count($searchCriteria) === 0 && (array_key_exists('ho_ten', $filters) || array_key_exists('chuyen_mon', $filters) || array_key_exists('vai_tro', $filters))) {
             return $query->whereRaw('1 = 0')->paginate($perPage);
         }
 
-        // 3. Thực hiện gắn câu lệnh tìm kiếm gần đúng (LIKE) cho họ tên và chuyên môn
         $query->when(!empty($searchCriteria['ho_ten']), function ($q) use ($searchCriteria) {
             return $q->where('ho_ten', 'LIKE', '%' . trim($searchCriteria['ho_ten']) . '%');
         });
@@ -61,7 +369,6 @@ class NguoiDungService
             return $q->where('chuyen_mon', 'LIKE', '%' . trim($searchCriteria['chuyen_mon']) . '%');
         });
 
-        // Riêng Vai trò (ADMIN/GIANG_VIEN) là dạng chọn từ thanh thả xuống (Dropdown) nên giữ nguyên so sánh bằng tuyệt đối
         $query->when(!empty($searchCriteria['vai_tro']), function ($q) use ($searchCriteria) {
             return $q->where('vai_tro', $searchCriteria['vai_tro']);
         });
@@ -107,7 +414,7 @@ class NguoiDungService
             return null;
         }
 
-        $sinhVien->dang_hoat_dong = $trangThaiMoi; // Nhận trực tiếp 0 hoặc 1 từ Request gác cổng
+        $sinhVien->dang_hoat_dong = $trangThaiMoi;
         $sinhVien->save();
 
         return $sinhVien;
@@ -120,7 +427,7 @@ class NguoiDungService
             return null;
         }
 
-        $giangVien->dang_hoat_dong = $trangThaiMoi; // Nhận trực tiếp 0 hoặc 1 từ Request gác cổng
+        $giangVien->dang_hoat_dong = $trangThaiMoi;
         $giangVien->save();
 
         return $giangVien;

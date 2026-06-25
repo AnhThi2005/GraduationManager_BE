@@ -20,6 +20,9 @@ class LocSinhVienRequest extends FormRequest
             'ten_lop'         => 'nullable|string|max:50',
             // 'per_page' sẽ được xử lý trong prepareForValidation để đặt giá trị mặc định  
             'per_page'        => 'nullable|integer|min:1|max:100',
+            'role'            => 'nullable|string',
+            'status'          => 'nullable|string',
+            'keyword'         => 'nullable|string',
         ];
     }
 

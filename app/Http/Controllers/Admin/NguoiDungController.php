@@ -11,6 +11,8 @@ use App\Http\Requests\Admin\QuanLyNguoiDung\SuaSinhVienRequest;
 use App\Http\Requests\Admin\QuanLyNguoiDung\SuaGiangVienRequest;
 use App\Http\Requests\Admin\QuanLyNguoiDung\KhoaTaiKhoanSVRequest;
 use App\Http\Requests\Admin\QuanLyNguoiDung\KhoaTaiKhoanGVRequest;
+use App\Http\Requests\Admin\QuanLyNguoiDung\LuuNguoiDungRequest;
+use App\Http\Requests\Admin\QuanLyNguoiDung\CapNhatNguoiDungRequest;
 use App\Http\Requests\Admin\ThemNguoiDungRequest;
 use Illuminate\Http\Request;
 use App\Models\SinhVien;
@@ -372,138 +374,112 @@ class NguoiDungController extends Controller
 
     public function layDanhSachSinhVien(LocSinhVienRequest $request)
     {
-        $perPage = $request->input('per_page', 20);
-        $data = $this->nguoiDungService->locSinhVien($request->validated(), $perPage);
+        $perPage = $request->input('per_page', $request->input('limit', 20));
+        $res = $this->nguoiDungService->layDanhSachNguoiDung($request->all(), $perPage);
 
         return response()->json([
             'success' => true,
-            'message' => 'Lấy danh sách sinh viên thành công!',
-            'data'    => $data
-        ], 200);
-    }
-
-    public function layDanhSachGiangVien(LocGiangVienRequest $request)
-    {
-        $perPage = $request->input('per_page', 20);
-        $data = $this->nguoiDungService->locGiangVien($request->validated(), $perPage);
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Lấy danh sách giảng viên thành công!',
-            'data'    => $data
-        ], 200);
-    }
-
-    public function themSinhVien(ThemSinhVienRequest $request)
-    {
-        $sinhVien = $this->nguoiDungService->themSinhVien($request->validated());
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Thêm mới sinh viên thành công!',
-            'data'    => $sinhVien
-        ], 201);
-    }
-
-    public function themGiangVien(ThemGiangVienRequest $request)
-    {
-        $giangVien = $this->nguoiDungService->themGiangVien($request->validated());
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Thêm mới giảng viên thành công!',
-            'data'    => $giangVien
-        ], 201);
-    }
-
-    public function capNhatSinhVien(SuaSinhVienRequest $request, $sinh_vien_id)
-    {
-        $sinhVien = $this->nguoiDungService->capNhatSinhVien($sinh_vien_id, $request->validated());
-
-        if (!$sinhVien) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Không tìm thấy sinh viên với ID này!'
-            ], 404);
-        }
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Cập nhật thông tin sinh viên thành công!',
-            'data'    => $sinhVien
-        ], 200);
-    }
-
-    public function capNhatGiangVien(SuaGiangVienRequest $request, $giang_vien_id)
-    {
-        $giangVien = $this->nguoiDungService->capNhatGiangVien($giang_vien_id, $request->validated());
-
-        if (!$giangVien) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Không tìm thấy giảng viên với ID này!'
-            ], 404);
-        }
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Cập nhật thông tin giảng viên thành công!',
-            'data'    => $giangVien
-        ], 200);
-    }
-
-    public function khoaTaiKhoanSinhVien(KhoaTaiKhoanSVRequest $request)
-    {
-        $id = $request->input('id');
-        $trangThaiMoi = $request->input('dang_hoat_dong');
-
-        $sinhVien = $this->nguoiDungService->doiTrangThaiSinhVien($id, $trangThaiMoi);
-
-        if (!$sinhVien) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Không tìm thấy sinh viên với ID này!'
-            ], 404);
-        }
-
-        $msg = ($trangThaiMoi == 0) 
-            ? 'Khóa tài khoản sinh viên thành công!' 
-            : 'Mở khóa tài khoản sinh viên thành công!';
-
-        return response()->json([
-            'success' => true,
-            'message' => $msg,
-            'data'    => [
-                'sinh_vien_id'   => $sinhVien->sinh_vien_id,
-                'dang_hoat_dong' => $sinhVien->dang_hoat_dong
+            'message' => 'Lấy danh sách người dùng thành công!',
+            'data'    => $res['paginator'],
+            'results' => [
+                'objects' => $res['objects'],
+                'total' => $res['total'],
+                'rows' => $res['rows'],
             ]
         ], 200);
     }
 
-    public function khoaTaiKhoanGiangVien(KhoaTaiKhoanGVRequest $request)
+    public function layChiTietNguoiDung($id)
     {
-        $id = $request->input('id');
-        $trangThaiMoi = $request->input('dang_hoat_dong');
+        $mapped = $this->nguoiDungService->layChiTietNguoiDung($id);
 
-        $giangVien = $this->nguoiDungService->doiTrangThaiGiangVien($id, $trangThaiMoi);
-
-        if (!$giangVien) {
+        if (!$mapped) {
             return response()->json([
                 'success' => false,
-                'message' => 'Không tìm thấy giảng viên với ID này!'
+                'message' => 'Không tìm thấy người dùng với ID này!'
             ], 404);
         }
 
-        $msg = ($trangThaiMoi == 0) 
-            ? 'Khóa tài khoản giảng viên thành công!' 
-            : 'Mở khóa tài khoản giảng viên thành công!';
+        return response()->json([
+            'success' => true,
+            'message' => 'Lấy chi tiết người dùng thành công!',
+            'data'    => $mapped,
+            'results' => [
+                'object' => $mapped
+            ]
+        ], 200);
+    }
+
+    public function themNguoiDung(LuuNguoiDungRequest $request)
+    {
+        $mapped = $this->nguoiDungService->themNguoiDung($request->validated());
 
         return response()->json([
             'success' => true,
-            'message' => $msg,
-            'data'    => [
-                'giang_vien_id'  => $giangVien->giang_vien_id,
-                'dang_hoat_dong' => $giangVien->dang_hoat_dong
+            'message' => 'Thêm mới người dùng thành công!',
+            'data'    => $mapped,
+            'results' => [
+                'object' => $mapped
+            ]
+        ], 201);
+    }
+
+    public function capNhatNguoiDung(CapNhatNguoiDungRequest $request, $id)
+    {
+        $mapped = $this->nguoiDungService->capNhatNguoiDung($id, $request->validated());
+
+        if (!$mapped) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Không tìm thấy người dùng với ID này!'
+            ], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Cập nhật thông tin người dùng thành công!',
+            'data'    => $mapped,
+            'results' => [
+                'object' => $mapped
+            ]
+        ], 200);
+    }
+
+    public function xoaNguoiDung($id)
+    {
+        $result = $this->nguoiDungService->xoaNguoiDung($id);
+
+        if (!$result) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Không tìm thấy người dùng!'
+            ], 404);
+        }
+
+        $message = $result === 'student' ? 'Xóa tài khoản sinh viên thành công!' : 'Xóa tài khoản giảng viên thành công!';
+
+        return response()->json([
+            'success' => true,
+            'message' => $message
+        ], 200);
+    }
+
+    public function resetMatKhau($id)
+    {
+        $success = $this->nguoiDungService->resetMatKhau($id);
+
+        if (!$success) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Không tìm thấy người dùng!'
+            ], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Đặt lại mật khẩu về mặc định thành công!',
+            'results' => [
+                'object' => true
             ]
         ], 200);
     }
