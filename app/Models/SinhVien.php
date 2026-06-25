@@ -2,10 +2,10 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
+use Illuminate\Foundation\Auth\User as Authenticatable;
 use Laravel\Sanctum\HasApiTokens; // Dùng để cấp Token Sanctum
 
-class SinhVien extends Model
+class SinhVien extends Authenticatable
 {
     use HasApiTokens;
 
