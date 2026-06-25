@@ -32,9 +32,28 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/private/v1/topics', [DeTaiController::class, 'themMoi']);
     Route::patch('/private/v1/topics/{id}', [DeTaiController::class, 'capNhat']);
     Route::delete('/private/v1/topics/{id}', [DeTaiController::class, 'xoa']);
+    
+    // Quản lý đợt học (Periods) - Cho phép mọi vai trò xem danh sách đợt học
+    Route::get('/private/v1/periods', [DotController::class, 'layDanhSach']);
 
-    Route::middleware('quyen:SINH_VIEN')->prefix('sinh-vien')->group(function () {
-        // Tuyến đường viết API cho sinh viên sau này
+    Route::middleware('quyen:SINH_VIEN')->group(function () {
+        Route::get('/private/v1/student/dashboard', [\App\Http\Controllers\SinhVien\TrangChuController::class, 'layThongTinTrangChu']);
+        Route::get('/private/v1/student/companies', [\App\Http\Controllers\SinhVien\ThucTapController::class, 'layDanhSachCongTy']);
+        Route::post('/private/v1/student/internships/declare', [\App\Http\Controllers\SinhVien\ThucTapController::class, 'khaiBaoThucTap']);
+        Route::get('/private/v1/student/internships/my-request', [\App\Http\Controllers\SinhVien\ThucTapController::class, 'xemYeuCauCuaToi']);
+        Route::get('/private/v1/student/thesis/my-registration', [\App\Http\Controllers\SinhVien\DeTaiController::class, 'xemDangKyCuaToi']);
+        Route::post('/private/v1/student/thesis/register', [\App\Http\Controllers\SinhVien\DeTaiController::class, 'dangKyDeTai']);
+        Route::post('/private/v1/student/thesis/cancel', [\App\Http\Controllers\SinhVien\DeTaiController::class, 'huyDangKy']);
+        Route::get('/private/v1/student/thesis/invitations/outgoing', [\App\Http\Controllers\SinhVien\DeTaiController::class, 'xemLoiMoiDaGui']);
+        Route::post('/private/v1/student/thesis/invitations/send', [\App\Http\Controllers\SinhVien\DeTaiController::class, 'guiLoiMoiNhom']);
+        Route::get('/private/v1/student/thesis/invitations/incoming', [\App\Http\Controllers\SinhVien\DeTaiController::class, 'xemLoiMoiNhanDuoc']);
+        Route::post('/private/v1/student/thesis/invitations/{id}/accept', [\App\Http\Controllers\SinhVien\DeTaiController::class, 'chapNhanLoiMoi']);
+        Route::post('/private/v1/student/thesis/invitations/{id}/reject', [\App\Http\Controllers\SinhVien\DeTaiController::class, 'tuChoiLoiMoi']);
+        Route::get('/private/v1/student/reports/tttn', [\App\Http\Controllers\SinhVien\BaoCaoController::class, 'layDanhSachBaoCaoTttn']);
+        Route::post('/private/v1/student/reports/tttn', [\App\Http\Controllers\SinhVien\BaoCaoController::class, 'nopBaoCaoTttn']);
+        Route::get('/private/v1/student/reports/datn', [\App\Http\Controllers\SinhVien\BaoCaoController::class, 'layDanhSachBaoCaoDatn']);
+        Route::post('/private/v1/student/reports/datn', [\App\Http\Controllers\SinhVien\BaoCaoController::class, 'nopBaoCaoDatn']);
+        Route::get('/private/v1/student/results', [\App\Http\Controllers\SinhVien\DiemController::class, 'layKetQuaHocTap']);
     });
 
     Route::middleware('quyen:GIANG_VIEN')->prefix('giang-vien')->group(function () {
@@ -69,7 +88,6 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/private/v1/dashboard', [ThongKeController::class, 'getDashboardData']);
 
         // 4. Chức năng quản lý đợt tốt nghiệp (Periods)
-        Route::get('/private/v1/periods', [DotController::class, 'layDanhSach']);
         Route::get('/private/v1/periods/{id}', [DotController::class, 'xemChiTiet']);
         Route::post('/private/v1/periods', [DotController::class, 'themMoi']);
         Route::patch('/private/v1/periods/{id}', [DotController::class, 'capNhat']);
