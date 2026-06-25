@@ -445,7 +445,7 @@ class NguoiDungController extends Controller
         ], 200);
     }
 
-    public function xoaNguoiDung($id)
+    public function xoaNguoiDungLegacy($id)
     {
         $result = $this->nguoiDungService->xoaNguoiDung($id);
 
