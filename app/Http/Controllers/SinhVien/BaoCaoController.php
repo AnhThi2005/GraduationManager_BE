@@ -63,11 +63,21 @@ class BaoCaoController extends Controller
                 $status = 'Bị từ chối';
             }
 
+            $fileUrl = null;
+            if ($r->duong_dan_file && $r->duong_dan_file !== '—') {
+                if (str_starts_with($r->duong_dan_file, 'http')) {
+                    $fileUrl = $r->duong_dan_file;
+                } else {
+                    $fileUrl = asset('storage/' . $r->duong_dan_file);
+                }
+            }
+
             return [
                 'week' => (int)$r->tuan_so,
                 'title' => $title,
                 'status' => $status,
-                'file' => $r->duong_dan_file ?? '—',
+                'file' => $r->duong_dan_file ? basename($r->duong_dan_file) : '—',
+                'fileUrl' => $fileUrl,
                 'note' => $note,
                 'updated' => $updatedAt
             ];
@@ -95,13 +105,20 @@ class BaoCaoController extends Controller
             'week' => 'required|integer|min:1',
             'title' => 'required|string|max:255',
             'note' => 'required|string',
-            'file' => 'nullable|string'
+            'file' => 'nullable'
         ]);
 
         $week = (int)$request->input('week');
         $title = trim($request->input('title'));
         $note = trim($request->input('note'));
-        $file = $request->input('file');
+
+        $filePath = null;
+        if ($request->hasFile('file')) {
+            $uploadedFile = $request->file('file');
+            $filePath = $uploadedFile->store('reports', 'public');
+        } else {
+            $filePath = $request->input('file');
+        }
 
         // Lấy đợt TTTN đang diễn ra của sinh viên
         $lopId = $sinhVien->lop_id;
@@ -124,10 +141,19 @@ class BaoCaoController extends Controller
             'loai_bao_cao' => 'THUC_TAP'
         ], [
             'noi_dung' => $noiDungStr,
-            'duong_dan_file' => $file ?? "week{$week}.pdf",
+            'duong_dan_file' => $filePath ?? "week{$week}.pdf",
             'trang_thai' => 'CHO_DUYET',
             'thoi_gian_nop' => Carbon::now()->toDateTimeString()
         ]);
+
+        $fileUrl = null;
+        if ($report->duong_dan_file) {
+            if (str_starts_with($report->duong_dan_file, 'http')) {
+                $fileUrl = $report->duong_dan_file;
+            } else {
+                $fileUrl = asset('storage/' . $report->duong_dan_file);
+            }
+        }
 
         // Trả về đối tượng vừa nộp theo định dạng khớp Frontend
         return response()->json([
@@ -138,7 +164,8 @@ class BaoCaoController extends Controller
                     'week' => (int)$report->tuan_so,
                     'title' => $title,
                     'status' => 'Chờ duyệt',
-                    'file' => $report->duong_dan_file,
+                    'file' => basename($report->duong_dan_file),
+                    'fileUrl' => $fileUrl,
                     'note' => $note,
                     'updated' => Carbon::parse($report->thoi_gian_nop)->format('d/m/Y')
                 ]

@@ -331,6 +331,9 @@ class DeTaiController extends Controller
         // convert string/number topicId to clean type
         if ($topicId !== null) {
             $topicId = (int)$topicId;
+            if ($topicId <= 0 || !\App\Models\DeTai::where('de_tai_id', $topicId)->exists()) {
+                $topicId = null;
+            }
         }
 
         // Tìm đợt ĐATN đang diễn ra của sinh viên
