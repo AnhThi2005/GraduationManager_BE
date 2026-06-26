@@ -23,53 +23,35 @@ class DiemController extends Controller
         $sinhVienId = $sinhVien->sinh_vien_id;
 
         // Lấy điểm TTTN
-        $diemTttn = DiemSinhVien::where('sinh_vien_id', $sinhVienId)
-            ->where('loai', 'THUC_TAP')
-            ->first();
+        $diemTttn = DB::table('diemthuctap')->where('sinh_vien_id', $sinhVienId)->first();
 
         // Lấy điểm ĐATN
-        $diemDatn = DiemSinhVien::where('sinh_vien_id', $sinhVienId)
-            ->where('loai', 'DO_AN')
-            ->first();
+        $diemDatn = DB::table('diemtongketdatn')->where('sinh_vien_id', $sinhVienId)->first();
 
         // 1. Dữ liệu TTTN
-        $tttnFinal = $diemTttn && $diemTttn->diem_tong_ket !== null ? (string)round($diemTttn->diem_tong_ket, 2) : '—';
-        $tttnBaoCao = $diemTttn && $diemTttn->diem_bao_cao !== null ? (string)round($diemTttn->diem_bao_cao, 2) : '—';
-        $tttnHuongDan = $diemTttn && $diemTttn->diem_van_dap !== null ? (string)round($diemTttn->diem_van_dap, 2) : ($diemTttn && $diemTttn->diem_tong_ket !== null ? (string)round($diemTttn->diem_tong_ket * 0.9, 2) : '—'); // Fallback if empty
+        $tttnFinal = $diemTttn && $diemTttn->diem_so !== null ? (string)round($diemTttn->diem_so, 2) : '—';
+        $tttnBaoCao = '—';
+        $tttnHuongDan = $diemTttn && $diemTttn->diem_so !== null ? (string)round($diemTttn->diem_so, 2) : '—';
         $tttnStatus = $diemTttn ? 'Hoàn thành' : 'Đang tổng hợp';
         $tttnNote = $diemTttn ? 'Sinh viên đã hoàn tất quá trình thực tập và được giảng viên chấm điểm.' : 'Đang trong quá trình tổng hợp kết quả báo cáo thực tập.';
 
         // 2. Dữ liệu ĐATN
-        $datnReport = $diemDatn && $diemDatn->diem_bao_cao !== null ? (string)round($diemDatn->diem_bao_cao, 2) : '—';
+        $datnReport = $diemDatn && $diemDatn->diem_bao_cao_chung !== null ? (string)round($diemDatn->diem_bao_cao_chung, 2) : '—';
         $datnFinal = $diemDatn && $diemDatn->diem_tong_ket !== null ? (string)round($diemDatn->diem_tong_ket, 2) : '—';
-        
-        // Điểm bảo vệ = trung bình thuyết trình, demo, vấn đáp
-        $defenseGrades = [];
-        if ($diemDatn) {
-            if ($diemDatn->diem_thuyet_trinh !== null) $defenseGrades[] = $diemDatn->diem_thuyet_trinh;
-            if ($diemDatn->diem_demo !== null) $defenseGrades[] = $diemDatn->diem_demo;
-            if ($diemDatn->diem_van_dap !== null) $defenseGrades[] = $diemDatn->diem_van_dap;
-        }
-        $datnDefense = count($defenseGrades) > 0 ? (string)round(array_sum($defenseGrades) / count($defenseGrades), 2) : '—';
+        $datnDefense = $diemDatn && $diemDatn->diem_bao_ve_rieng !== null ? (string)round($diemDatn->diem_bao_ve_rieng, 2) : '—';
         $datnStatus = $diemDatn && $diemDatn->diem_tong_ket >= 5.0 ? 'ĐẠT' : ($diemDatn ? 'KHÔNG ĐẠT' : 'Đang chấm');
 
         // 3. Quy đổi xếp loại dựa trên điểm ĐATN
         $classification = 'Chưa xếp loại';
         if ($diemDatn && $diemDatn->diem_tong_ket !== null) {
             $classification = $this->layXepLoai($diemDatn->diem_tong_ket);
-        } else if ($diemTttn && $diemTttn->diem_tong_ket !== null) {
-            $classification = $this->layXepLoai($diemTttn->diem_tong_ket);
+        } else if ($diemTttn && $diemTttn->diem_so !== null) {
+            $classification = $this->layXepLoai($diemTttn->diem_so);
         }
 
-        $tttnUpdateStr = $diemTttn && $diemTttn->updated_at ? $diemTttn->updated_at->timezone('Asia/Ho_Chi_Minh')->format('d/m/Y H:i') : 'Chưa cập nhật';
-        $datnUpdateStr = $diemDatn && $diemDatn->updated_at ? $diemDatn->updated_at->timezone('Asia/Ho_Chi_Minh')->format('d/m/Y H:i') : 'Chưa cập nhật';
-
+        $tttnUpdateStr = 'Chưa cập nhật';
+        $datnUpdateStr = 'Chưa cập nhật';
         $summaryUpdatedAt = 'Đang cập nhật';
-        if ($diemDatn && $diemDatn->updated_at) {
-            $summaryUpdatedAt = $diemDatn->updated_at->timezone('Asia/Ho_Chi_Minh')->format('d/m/Y H:i');
-        } elseif ($diemTttn && $diemTttn->updated_at) {
-            $summaryUpdatedAt = $diemTttn->updated_at->timezone('Asia/Ho_Chi_Minh')->format('d/m/Y H:i');
-        }
 
         return response()->json([
             'code' => 200,

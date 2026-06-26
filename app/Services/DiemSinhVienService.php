@@ -2,8 +2,11 @@
 
 namespace App\Services;
 
-use App\Models\DiemSinhVien;
 use Illuminate\Support\Facades\DB;
+use App\Models\SinhVien;
+use App\Models\Dot;
+use App\Models\DangKyThucTap;
+use App\Models\PhanCongHdtt;
 
 class DiemSinhVienService
 {
@@ -40,10 +43,9 @@ class DiemSinhVienService
                          ->where('phanconghdtt.dot_id', '=', $dotId);
                 })
                 ->leftJoin('giangvien', 'phanconghdtt.giang_vien_id', '=', 'giangvien.giang_vien_id')
-                ->leftJoin('diemsinhvien', function ($join) use ($dotId) {
-                    $join->on('sinhvien.sinh_vien_id', '=', 'diemsinhvien.sinh_vien_id')
-                         ->where('diemsinhvien.dot_id', '=', $dotId)
-                         ->where('diemsinhvien.loai', '=', 'THUC_TAP');
+                ->leftJoin('diemthuctap', function ($join) use ($dotId) {
+                    $join->on('sinhvien.sinh_vien_id', '=', 'diemthuctap.sinh_vien_id')
+                         ->where('diemthuctap.dot_id', '=', $dotId);
                 })
                 ->select([
                     'sinhvien.sinh_vien_id',
@@ -52,9 +54,9 @@ class DiemSinhVienService
                     'lop.ten_lop as className',
                     'congty.ten_cong_ty as companyName',
                     'giangvien.ho_ten as mentor',
-                    'diemsinhvien.diem_id as id',
-                    'diemsinhvien.diem_tong_ket as finalScore',
-                    'diemsinhvien.trang_thai as status'
+                    'diemthuctap.diem_id as id',
+                    'diemthuctap.diem_so as finalScore',
+                    DB::raw("CASE WHEN diemthuctap.diem_so IS NOT NULL THEN 'finalized' ELSE 'draft' END as status")
                 ]);
         } else {
             // Điểm đồ án tốt nghiệp (DATN)
@@ -65,11 +67,7 @@ class DiemSinhVienService
                 ->leftJoin('lop', 'sinhvien.lop_id', '=', 'lop.lop_id')
                 ->leftJoin('detai', 'nhomsvda.de_tai_id', '=', 'detai.de_tai_id')
                 ->leftJoin('giangvien', 'detai.giang_vien_id', '=', 'giangvien.giang_vien_id')
-                ->leftJoin('diemsinhvien', function ($join) use ($dotId) {
-                    $join->on('sinhvien.sinh_vien_id', '=', 'diemsinhvien.sinh_vien_id')
-                         ->where('diemsinhvien.dot_id', '=', $dotId)
-                         ->where('diemsinhvien.loai', '=', 'DO_AN');
-                })
+                ->leftJoin('diemtongketdatn', 'sinhvien.sinh_vien_id', '=', 'diemtongketdatn.sinh_vien_id')
                 ->select([
                     'sinhvien.sinh_vien_id',
                     'sinhvien.ma_so_sinh_vien as studentId',
@@ -77,13 +75,13 @@ class DiemSinhVienService
                     'lop.ten_lop as className',
                     'detai.ten_de_tai as topicName',
                     'giangvien.ho_ten as mentor',
-                    'diemsinhvien.diem_id as id',
-                    'diemsinhvien.diem_thuyet_trinh as defenseScore',
-                    'diemsinhvien.diem_demo as demoScore',
-                    'diemsinhvien.diem_van_dap as qaScore',
-                    'diemsinhvien.diem_bao_cao as reportScore',
-                    'diemsinhvien.diem_tong_ket as finalScore',
-                    'diemsinhvien.trang_thai as status'
+                    'diemtongketdatn.tong_ket_id as id',
+                    'diemtongketdatn.diem_bao_ve_rieng as defenseScore',
+                    DB::raw("0 as demoScore"),
+                    DB::raw("0 as qaScore"),
+                    'diemtongketdatn.diem_bao_cao_chung as reportScore',
+                    'diemtongketdatn.diem_tong_ket as finalScore',
+                    DB::raw("CASE WHEN diemtongketdatn.trang_thai IS NOT NULL THEN 'finalized' ELSE 'draft' END as status")
                 ]);
         }
 
@@ -108,13 +106,18 @@ class DiemSinhVienService
 
         // Lọc theo trạng thái chấm điểm
         if (!empty($filters['status']) && $filters['status'] !== 'all') {
-            if ($filters['status'] === 'draft') {
-                $studentsQuery->where(function ($q) {
-                    $q->where('diemsinhvien.trang_thai', '=', 'draft')
-                      ->orWhereNull('diemsinhvien.trang_thai');
-                });
+            if ($loai === 'THUC_TAP') {
+                if ($filters['status'] === 'draft') {
+                    $studentsQuery->whereNull('diemthuctap.diem_so');
+                } else {
+                    $studentsQuery->whereNotNull('diemthuctap.diem_so');
+                }
             } else {
-                $studentsQuery->where('diemsinhvien.trang_thai', '=', $filters['status']);
+                if ($filters['status'] === 'draft') {
+                    $studentsQuery->whereNull('diemtongketdatn.trang_thai');
+                } else {
+                    $studentsQuery->whereNotNull('diemtongketdatn.trang_thai');
+                }
             }
         }
 
@@ -128,9 +131,11 @@ class DiemSinhVienService
             $row->status = $row->status ?? 'draft';
 
             if ($loai === 'DO_AN') {
-                $row->defenseScore = $row->defenseScore !== null ? floatval($row->defenseScore) : 0;
-                $row->demoScore = $row->demoScore !== null ? floatval($row->demoScore) : 0;
-                $row->qaScore = $row->qaScore !== null ? floatval($row->qaScore) : 0;
+                $rawDefense = $row->defenseScore !== null ? floatval($row->defenseScore) : 0;
+                $split = $this->splitDefenseScore($rawDefense);
+                $row->defenseScore = $split['defenseScore'];
+                $row->demoScore = $split['demoScore'];
+                $row->qaScore = $split['qaScore'];
                 $row->reportScore = $row->reportScore !== null ? floatval($row->reportScore) : 0;
             }
 
@@ -169,12 +174,25 @@ class DiemSinhVienService
                 $dotId = $reg ? $reg->dot_id : null;
             }
         } else {
-            $score = DiemSinhVien::find($id);
-            if (!$score) {
-                return null;
+            if ($loai === 'THUC_TAP') {
+                $score = DB::table('diemthuctap')->where('diem_id', $id)->first();
+                if (!$score) {
+                    return null;
+                }
+                $sinhVienId = $score->sinh_vien_id;
+                $dotId = $score->dot_id;
+            } else {
+                $score = DB::table('diemtongketdatn')->where('tong_ket_id', $id)->first();
+                if (!$score) {
+                    return null;
+                }
+                $sinhVienId = $score->sinh_vien_id;
+                $group = DB::table('thanhviennhom')
+                    ->join('nhomsvda', 'thanhviennhom.nhom_id', '=', 'nhomsvda.nhom_id')
+                    ->where('thanhviennhom.sinh_vien_id', $sinhVienId)
+                    ->first();
+                $dotId = $group ? $group->dot_id : null;
             }
-            $sinhVienId = $score->sinh_vien_id;
-            $dotId = $score->dot_id;
         }
 
         if (!$dotId) {
@@ -195,10 +213,9 @@ class DiemSinhVienService
                          ->where('phanconghdtt.dot_id', '=', $dotId);
                 })
                 ->leftJoin('giangvien', 'phanconghdtt.giang_vien_id', '=', 'giangvien.giang_vien_id')
-                ->leftJoin('diemsinhvien', function ($join) use ($dotId) {
-                    $join->on('sinhvien.sinh_vien_id', '=', 'diemsinhvien.sinh_vien_id')
-                         ->where('diemsinhvien.dot_id', '=', $dotId)
-                         ->where('diemsinhvien.loai', '=', 'THUC_TAP');
+                ->leftJoin('diemthuctap', function ($join) use ($dotId) {
+                    $join->on('sinhvien.sinh_vien_id', '=', 'diemthuctap.sinh_vien_id')
+                         ->where('diemthuctap.dot_id', '=', $dotId);
                 })
                 ->select([
                     'sinhvien.sinh_vien_id',
@@ -207,9 +224,9 @@ class DiemSinhVienService
                     'lop.ten_lop as className',
                     'congty.ten_cong_ty as companyName',
                     'giangvien.ho_ten as mentor',
-                    'diemsinhvien.diem_id as id',
-                    'diemsinhvien.diem_tong_ket as finalScore',
-                    'diemsinhvien.trang_thai as status'
+                    'diemthuctap.diem_id as id',
+                    'diemthuctap.diem_so as finalScore',
+                    DB::raw("CASE WHEN diemthuctap.diem_so IS NOT NULL THEN 'finalized' ELSE 'draft' END as status")
                 ])
                 ->first();
         } else {
@@ -220,11 +237,7 @@ class DiemSinhVienService
                 ->leftJoin('nhomsvda', 'thanhviennhom.nhom_id', '=', 'nhomsvda.nhom_id')
                 ->leftJoin('detai', 'nhomsvda.de_tai_id', '=', 'detai.de_tai_id')
                 ->leftJoin('giangvien', 'detai.giang_vien_id', '=', 'giangvien.giang_vien_id')
-                ->leftJoin('diemsinhvien', function ($join) use ($dotId) {
-                    $join->on('sinhvien.sinh_vien_id', '=', 'diemsinhvien.sinh_vien_id')
-                         ->where('diemsinhvien.dot_id', '=', $dotId)
-                         ->where('diemsinhvien.loai', '=', 'DO_AN');
-                })
+                ->leftJoin('diemtongketdatn', 'sinhvien.sinh_vien_id', '=', 'diemtongketdatn.sinh_vien_id')
                 ->select([
                     'sinhvien.sinh_vien_id',
                     'sinhvien.ma_so_sinh_vien as studentId',
@@ -232,13 +245,13 @@ class DiemSinhVienService
                     'lop.ten_lop as className',
                     'detai.ten_de_tai as topicName',
                     'giangvien.ho_ten as mentor',
-                    'diemsinhvien.diem_id as id',
-                    'diemsinhvien.diem_thuyet_trinh as defenseScore',
-                    'diemsinhvien.diem_demo as demoScore',
-                    'diemsinhvien.diem_van_dap as qaScore',
-                    'diemsinhvien.diem_bao_cao as reportScore',
-                    'diemsinhvien.diem_tong_ket as finalScore',
-                    'diemsinhvien.trang_thai as status'
+                    'diemtongketdatn.tong_ket_id as id',
+                    'diemtongketdatn.diem_bao_ve_rieng as defenseScore',
+                    DB::raw("0 as demoScore"),
+                    DB::raw("0 as qaScore"),
+                    'diemtongketdatn.diem_bao_cao_chung as reportScore',
+                    'diemtongketdatn.diem_tong_ket as finalScore',
+                    DB::raw("CASE WHEN diemtongketdatn.trang_thai IS NOT NULL THEN 'finalized' ELSE 'draft' END as status")
                 ])
                 ->first();
         }
@@ -249,9 +262,11 @@ class DiemSinhVienService
             $detail->status = $detail->status ?? 'draft';
 
             if ($loai === 'DO_AN') {
-                $detail->defenseScore = $detail->defenseScore !== null ? floatval($detail->defenseScore) : 0;
-                $detail->demoScore = $detail->demoScore !== null ? floatval($detail->demoScore) : 0;
-                $detail->qaScore = $detail->qaScore !== null ? floatval($detail->qaScore) : 0;
+                $rawDefense = $detail->defenseScore !== null ? floatval($detail->defenseScore) : 0;
+                $split = $this->splitDefenseScore($rawDefense);
+                $detail->defenseScore = $split['defenseScore'];
+                $detail->demoScore = $split['demoScore'];
+                $detail->qaScore = $split['qaScore'];
                 $detail->reportScore = $detail->reportScore !== null ? floatval($detail->reportScore) : 0;
             }
         }
@@ -285,56 +300,149 @@ class DiemSinhVienService
                 }
             }
         } else {
-            $scoreRecord = DiemSinhVien::find($id);
-            if (!$scoreRecord) {
-                return null;
+            if ($loai === 'THUC_TAP') {
+                $scoreRecord = DB::table('diemthuctap')->where('diem_id', $id)->first();
+                if (!$scoreRecord) {
+                    return null;
+                }
+                $sinhVienId = $scoreRecord->sinh_vien_id;
+                $dotId = $scoreRecord->dot_id;
+            } else {
+                $scoreRecord = DB::table('diemtongketdatn')->where('tong_ket_id', $id)->first();
+                if (!$scoreRecord) {
+                    return null;
+                }
+                $sinhVienId = $scoreRecord->sinh_vien_id;
+                $group = DB::table('thanhviennhom')
+                    ->join('nhomsvda', 'thanhviennhom.nhom_id', '=', 'nhomsvda.nhom_id')
+                    ->where('thanhviennhom.sinh_vien_id', $sinhVienId)
+                    ->first();
+                $dotId = $group ? $group->dot_id : null;
             }
-            $sinhVienId = $scoreRecord->sinh_vien_id;
-            $dotId = $scoreRecord->dot_id;
-            $loai = $scoreRecord->loai;
         }
 
         if (!$dotId) {
             return null;
         }
 
-        $updateData = [];
-        if (isset($data['status'])) {
-            $updateData['trang_thai'] = $data['status'];
-        }
-
         if ($loai === 'THUC_TAP') {
-            if (isset($data['finalScore'])) {
-                $updateData['diem_tong_ket'] = $data['finalScore'];
+            $finalScore = $data['finalScore'] ?? null;
+            
+            // Cần tìm giang_vien_id để lưu vào diemthuctap
+            $assignment = DB::table('phanconghdtt')
+                ->where('sinh_vien_id', $sinhVienId)
+                ->where('dot_id', $dotId)
+                ->first();
+            $giangVienId = $assignment ? $assignment->giang_vien_id : 1;
+
+            $existing = DB::table('diemthuctap')
+                ->where('sinh_vien_id', $sinhVienId)
+                ->where('dot_id', $dotId)
+                ->first();
+
+            if ($existing) {
+                DB::table('diemthuctap')
+                    ->where('diem_id', $existing->diem_id)
+                    ->update(['diem_so' => $finalScore, 'giang_vien_id' => $giangVienId]);
+                $scoreId = $existing->diem_id;
+            } else {
+                $scoreId = DB::table('diemthuctap')->insertGetId([
+                    'sinh_vien_id' => $sinhVienId,
+                    'dot_id' => $dotId,
+                    'giang_vien_id' => $giangVienId,
+                    'diem_so' => $finalScore
+                ]);
             }
         } else {
-            // Lấy điểm thành phần hoặc dùng giá trị cũ trong DB (mặc định 0)
-            $scoreRecord = DiemSinhVien::where('sinh_vien_id', $sinhVienId)->where('dot_id', $dotId)->where('loai', 'DO_AN')->first();
+            $existing = DB::table('diemtongketdatn')
+                ->where('sinh_vien_id', $sinhVienId)
+                ->first();
 
-            $defense = isset($data['defenseScore']) ? $data['defenseScore'] : ($scoreRecord ? $scoreRecord->diem_thuyet_trinh : 0);
-            $demo = isset($data['demoScore']) ? $data['demoScore'] : ($scoreRecord ? $scoreRecord->diem_demo : 0);
-            $qa = isset($data['qaScore']) ? $data['qaScore'] : ($scoreRecord ? $scoreRecord->diem_van_dap : 0);
-            $report = isset($data['reportScore']) ? $data['reportScore'] : ($scoreRecord ? $scoreRecord->diem_bao_cao : 0);
+            // Calculate defense total from parts if updating, falling back to existing split or 0
+            if ($existing) {
+                $existingSplit = $this->splitDefenseScore($existing->diem_bao_ve_rieng);
+                $defComponent = isset($data['defenseScore']) ? floatval($data['defenseScore']) : $existingSplit['defenseScore'];
+                $demoComponent = isset($data['demoScore']) ? floatval($data['demoScore']) : $existingSplit['demoScore'];
+                $qaComponent = isset($data['qaScore']) ? floatval($data['qaScore']) : $existingSplit['qaScore'];
+                $defense = $defComponent + $demoComponent + $qaComponent;
+            } else {
+                $defense = floatval($data['defenseScore'] ?? 0) + floatval($data['demoScore'] ?? 0) + floatval($data['qaScore'] ?? 0);
+            }
 
-            $updateData['diem_thuyet_trinh'] = $defense;
-            $updateData['diem_demo'] = $demo;
-            $updateData['diem_van_dap'] = $qa;
-            $updateData['diem_bao_cao'] = $report;
+            $report = isset($data['reportScore']) ? floatval($data['reportScore']) : ($existing ? floatval($existing->diem_bao_cao_chung) : 0);
 
-            // Tính điểm tổng kết = (thuyết trình + demo + vấn đáp) * 0.8 + báo cáo * 0.2
-            $totalComponent = $defense + $demo + $qa;
-            $updateData['diem_tong_ket'] = round(($totalComponent * 0.8) + ($report * 0.2), 1);
+            // Tính điểm tổng kết = thuyết trình * 0.8 + báo cáo * 0.2
+            $finalScore = round(($defense * 0.8) + ($report * 0.2), 1);
+            
+            $statusVal = $finalScore >= 5 ? 'DAT' : 'KHONG_DAT';
+
+            // Cần nhom_id để lưu
+            $groupMember = DB::table('thanhviennhom')
+                ->where('sinh_vien_id', $sinhVienId)
+                ->first();
+            $nhomId = $groupMember ? $groupMember->nhom_id : 1;
+
+            if ($existing) {
+                DB::table('diemtongketdatn')
+                    ->where('tong_ket_id', $existing->tong_ket_id)
+                    ->update([
+                        'diem_bao_ve_rieng' => $defense,
+                        'diem_bao_cao_chung' => $report,
+                        'diem_tong_ket' => $finalScore,
+                        'trang_thai' => $statusVal,
+                        'nhom_id' => $nhomId
+                    ]);
+                $scoreId = $existing->tong_ket_id;
+            } else {
+                $scoreId = DB::table('diemtongketdatn')->insertGetId([
+                    'sinh_vien_id' => $sinhVienId,
+                    'nhom_id' => $nhomId,
+                    'diem_bao_ve_rieng' => $defense,
+                    'diem_bao_cao_chung' => $report,
+                    'diem_tong_ket' => $finalScore,
+                    'trang_thai' => $statusVal
+                ]);
+            }
         }
 
-        $score = DiemSinhVien::updateOrCreate(
-            [
-                'sinh_vien_id' => $sinhVienId,
-                'dot_id' => $dotId,
-                'loai' => $loai
-            ],
-            $updateData
-        );
+        return $this->getScoreDetail((string)$scoreId, $loai === 'DO_AN' ? 'project' : 'internship');
+    }
 
-        return $this->getScoreDetail((string)$score->diem_id, $loai === 'DO_AN' ? 'project' : 'internship');
+    /**
+     * Chia điểm bảo vệ riêng (thuyết trình hội đồng) tối đa 10 thành các cấu phần:
+     * - Thuyết trình (max 3)
+     * - Demo/Sản phẩm (max 5)
+     * - Hỏi đáp (max 2)
+     */
+    private function splitDefenseScore($totalScore)
+    {
+        $totalScore = floatval($totalScore);
+        $defense = round($totalScore * 0.3, 2);
+        $demo = round($totalScore * 0.5, 2);
+        $qa = round($totalScore - $defense - $demo, 2);
+        
+        // Capping to make sure they do not exceed maximums
+        if ($defense > 3) {
+            $diff = $defense - 3;
+            $defense = 3;
+            $demo += $diff;
+        }
+        if ($demo > 5) {
+            $diff = $demo - 5;
+            $demo = 5;
+            $qa += $diff;
+        }
+        if ($qa > 2) {
+            $qa = 2;
+        }
+        if ($qa < 0) {
+            $qa = 0;
+        }
+        
+        return [
+            'defenseScore' => $defense,
+            'demoScore' => $demo,
+            'qaScore' => $qa
+        ];
     }
 }

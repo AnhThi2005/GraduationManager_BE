@@ -119,15 +119,18 @@ class TrangChuController extends Controller
         $totalReports = $tttnReportsCount + $datnReportsCount;
 
         // 5. Kết quả điểm số
-        $grades = DiemSinhVien::where('sinh_vien_id', $sinhVienId)->get();
+        $diemTttn = DB::table('diemthuctap')->where('sinh_vien_id', $sinhVienId)->first();
+        $diemDatn = DB::table('diemtongketdatn')->where('sinh_vien_id', $sinhVienId)->first();
         $gpa = 0.0;
         $gradesCount = 0;
         
-        foreach ($grades as $grade) {
-            if ($grade->diem_tong_ket !== null) {
-                $gpa += (float)$grade->diem_tong_ket;
-                $gradesCount++;
-            }
+        if ($diemTttn && $diemTttn->diem_so !== null) {
+            $gpa += (float)$diemTttn->diem_so;
+            $gradesCount++;
+        }
+        if ($diemDatn && $diemDatn->diem_tong_ket !== null) {
+            $gpa += (float)$diemDatn->diem_tong_ket;
+            $gradesCount++;
         }
         $expectedScore = $gradesCount > 0 ? round($gpa / $gradesCount, 2) : 0.0;
 

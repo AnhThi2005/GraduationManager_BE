@@ -16,6 +16,11 @@ class DeTaiService
     {
         $query = DeTai::with('giangVien');
 
+        // Lọc theo giảng viên
+        if (!empty($filters['teacherId'])) {
+            $query->where('giang_vien_id', $filters['teacherId']);
+        }
+
         // Lọc theo đợt học
         if (!empty($filters['periodId'])) {
             $query->where('dot_id', $filters['periodId']);
@@ -193,7 +198,8 @@ class DeTaiService
             'teacher' => $teacherName,
             'slots' => $slotsStr,
             'rejectReason' => $deTai->ly_do_tu_choi ?? '',
-            'status' => $this->mapBackendStatusToFrontend($deTai->trang_thai)
+            'status' => $this->mapBackendStatusToFrontend($deTai->trang_thai),
+            'description' => $deTai->mo_ta ?? ''
         ];
     }
 

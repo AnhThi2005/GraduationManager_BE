@@ -56,8 +56,74 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/private/v1/student/results', [\App\Http\Controllers\SinhVien\DiemController::class, 'layKetQuaHocTap']);
     });
 
+    Route::middleware('quyen:GIANG_VIEN')->prefix('private/v1/teacher')->group(function () {
+        Route::get('/profile', [\App\Http\Controllers\GiangVien\TrangChuController::class, 'getProfile']);
+        Route::get('/dashboard', [\App\Http\Controllers\GiangVien\TrangChuController::class, 'getDashboardData']);
+        Route::get('/grading', [\App\Http\Controllers\GiangVien\DiemController::class, 'getGradingData']);
+        Route::get('/scores', [\App\Http\Controllers\GiangVien\DiemController::class, 'getScores']);
+        Route::post('/scores', [\App\Http\Controllers\GiangVien\DiemController::class, 'saveScores']);
+        Route::post('/tttn-scores', [\App\Http\Controllers\GiangVien\DiemController::class, 'saveTttnScores']);
+        Route::get('/groups', [\App\Http\Controllers\GiangVien\DeTaiController::class, 'getGroups']);
+        Route::patch('/groups/{groupId}', [\App\Http\Controllers\GiangVien\DeTaiController::class, 'updateGroupStatus']);
+        Route::get('/review-groups', [\App\Http\Controllers\GiangVien\NhomController::class, 'getReviewGroups']);
+        Route::patch('/review-groups/{groupId}', [\App\Http\Controllers\GiangVien\NhomController::class, 'updateReviewGroupStatus']);
+        Route::get('/topics', [\App\Http\Controllers\GiangVien\DeTaiController::class, 'layDanhSach']);
+        Route::get('/topics/{id}', [\App\Http\Controllers\GiangVien\DeTaiController::class, 'xemChiTiet']);
+        Route::post('/topics', [\App\Http\Controllers\GiangVien\DeTaiController::class, 'themMoi']);
+        Route::patch('/topics/{id}', [\App\Http\Controllers\GiangVien\DeTaiController::class, 'capNhat']);
+        Route::delete('/topics/{id}', [\App\Http\Controllers\GiangVien\DeTaiController::class, 'xoa']);
+        Route::post('/topics/import', [\App\Http\Controllers\GiangVien\DeTaiController::class, 'import']);
+        Route::get('/students', [\App\Http\Controllers\GiangVien\NhomController::class, 'layDanhSachSinhVien']);
+        Route::post('/report-comment', [\App\Http\Controllers\GiangVien\NhomController::class, 'saveReportComment']);
+    });
+
+    // Nhóm route Tiếng Việt chuẩn hóa cho Giảng viên (kebab-case)
     Route::middleware('quyen:GIANG_VIEN')->prefix('giang-vien')->group(function () {
-        // Tuyến đường viết API cho giảng viên sau này
+        // 1. Dashboard & Hồ sơ
+        Route::get('/tong-quan', [\App\Http\Controllers\GiangVien\TrangChuController::class, 'getDashboardData']);
+        Route::get('/ho-so', [\App\Http\Controllers\GiangVien\TrangChuController::class, 'getProfile']);
+
+        // 2. Quản lý Nhóm đồ án (nhóm hướng dẫn & nhóm phản biện)
+        Route::get('/nhom-do-an', [\App\Http\Controllers\GiangVien\DeTaiController::class, 'getGroups']);
+        Route::patch('/nhom-do-an/{groupId}', [\App\Http\Controllers\GiangVien\DeTaiController::class, 'updateGroupStatus']);
+        Route::get('/nhom-phan-bien', [\App\Http\Controllers\GiangVien\NhomController::class, 'getReviewGroups']);
+        Route::patch('/nhom-phan-bien/{groupId}', [\App\Http\Controllers\GiangVien\NhomController::class, 'updateReviewGroupStatus']);
+
+        // 3. Phân công / Hướng dẫn đề tài (Quản lý đề tài)
+        Route::get('/de-tai', [\App\Http\Controllers\GiangVien\DeTaiController::class, 'layDanhSach']);
+        Route::get('/de-tai/{id}', [\App\Http\Controllers\GiangVien\DeTaiController::class, 'xemChiTiet']);
+        Route::post('/de-tai', [\App\Http\Controllers\GiangVien\DeTaiController::class, 'themMoi']);
+        Route::patch('/de-tai/{id}', [\App\Http\Controllers\GiangVien\DeTaiController::class, 'capNhat']);
+        Route::delete('/de-tai/{id}', [\App\Http\Controllers\GiangVien\DeTaiController::class, 'xoa']);
+        Route::post('/de-tai/nhap-excel', [\App\Http\Controllers\GiangVien\DeTaiController::class, 'import']);
+
+        // 4. Chấm điểm & Đánh giá
+        Route::get('/cham-diem', [\App\Http\Controllers\GiangVien\DiemController::class, 'getGradingData']);
+        Route::get('/diem-so', [\App\Http\Controllers\GiangVien\DiemController::class, 'getScores']);
+        Route::post('/diem-so', [\App\Http\Controllers\GiangVien\DiemController::class, 'saveScores']);
+        Route::post('/diem-thuc-tap', [\App\Http\Controllers\GiangVien\DiemController::class, 'saveTttnScores']);
+
+        // 5. Hội đồng bảo vệ (Chấm điểm hội đồng)
+        Route::get('/hoi-dong', [\App\Http\Controllers\GiangVien\DiemController::class, 'getGradingData']);
+
+        // 6. Quản lý sinh viên hướng dẫn & theo dõi tiến độ
+        Route::get('/sinh-vien-huong-dan', [\App\Http\Controllers\GiangVien\NhomController::class, 'layDanhSachSinhVien']);
+        Route::post('/nhan-xet-bao-cao', [\App\Http\Controllers\GiangVien\NhomController::class, 'saveReportComment']);
+
+        // 7. Nộp & Quản lý tài liệu (Upload tài liệu dành riêng cho giảng viên)
+        Route::post('/tai-len-tai-lieu', [\App\Http\Controllers\Admin\TaiLenController::class, 'upload']);
+
+        // 8. Lịch hẹn / Tư vấn (Placeholder do hệ thống chưa có db/model/logic)
+        Route::get('/lich-hen', function () {
+            return response()->json([
+                'success' => true,
+                'message' => 'Tính năng quản lý lịch hẹn gặp/tư vấn đang được cập nhật.',
+                'data' => []
+            ]);
+        });
+
+        // 9. Báo cáo cá nhân
+        Route::get('/bao-cao-ca-nhan', [\App\Http\Controllers\GiangVien\TrangChuController::class, 'getDashboardData']);
     });
 
     Route::middleware('quyen:ADMIN')->group(function () {

@@ -130,6 +130,22 @@ class DeTaiController extends Controller
      */
     public function xoa(Request $request, $id)
     {
+        $user = $request->user();
+        if ($user->tokenCan('GIANG_VIEN')) {
+            $deTai = \App\Models\DeTai::find($id);
+            if ($deTai && $deTai->giang_vien_id !== $user->giang_vien_id) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Bạn không có quyền xóa đề tài của giảng viên khác!'
+                ], 403);
+            }
+        } elseif (!$user->tokenCan('ADMIN')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Bạn không có quyền thực hiện thao tác này!'
+            ], 403);
+        }
+
         $success = $this->deTaiService->deleteTopic($id);
         if (!$success) {
             return response()->json([
