@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Services\DotService;
-use App\Http\Requests\Admin\ThemDotRequest;
+use App\Http\Requests\Admin\QuanLyDot\ThemDotRequest;
 
 class DotController extends Controller
 {

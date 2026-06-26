@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Services\DiemSinhVienService;
-use App\Http\Requests\Admin\CapNhatDiemSinhVienRequest;
+use App\Http\Requests\Admin\QuanLyDiem\CapNhatDiemSinhVienRequest;
 
 class DiemSinhVienController extends Controller
 {

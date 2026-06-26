@@ -18,6 +18,13 @@ Route::post('/dang-nhap-gia-lap', [MockAuthController::class, 'dangNhap']);
 Route::post('/lam-moi-token', [MockAuthController::class, 'lamMoiToken']);
 Route::get('/v1/realtime/stream', [\App\Http\Controllers\RealtimeController::class, 'stream']);
 
+Route::get('/login', function () {
+    return response()->json([
+        'success' => false,
+        'message' => 'Phiên làm việc đã hết hạn hoặc chưa đăng nhập. Vui lòng đăng nhập lại!'
+    ], 401);
+})->name('login');
+
 Route::middleware('auth:sanctum')->group(function () {
     // Đăng xuất sẽ được xử lý bằng cách thu hồi token hiện tại
     Route::post('/dang-xuat', [MockAuthController::class, 'dangXuat']);
@@ -129,23 +136,14 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::middleware('quyen:ADMIN')->group(function () {
         Route::prefix('admin')->group(function () {
             // 1. Chức năng quản lý người dùng (Đồng bộ với Frontend)
-            Route::get('/sinh-vien', [NguoiDungController::class, 'layDanhSach']);
-            Route::get('/sinh-vien/{id}', [NguoiDungController::class, 'xemChiTiet']);
-            Route::post('/sinh-vien', [NguoiDungController::class, 'themMoi']);
-            Route::patch('/sinh-vien/{id}', [NguoiDungController::class, 'capNhat']);
-            Route::delete('/sinh-vien/{id}', [NguoiDungController::class, 'xoaNguoiDung']);
-            Route::post('/sinh-vien/{id}/reset-password', [NguoiDungController::class, 'resetPassword']);
-
-            // Các route cũ (Legacy) đề phòng tương thích ngược
-            Route::get('/sinh-vien-legacy', [NguoiDungController::class, 'layDanhSachSinhVien']);
-            Route::post('/them-sinh-vien', [NguoiDungController::class, 'themSinhVien']);
-            Route::put('/cap-nhat-sinh-vien/{sinh_vien_id}', [NguoiDungController::class, 'capNhatSinhVien']);
-            Route::patch('/sinh-vien/khoa-tai-khoan', [NguoiDungController::class, 'khoaTaiKhoanSinhVien']);
-            
-            Route::get('/giang-vien', [NguoiDungController::class, 'layDanhSachGiangVien']);
-            Route::post('/them-giang-vien', [NguoiDungController::class, 'themGiangVien']);
-            Route::put('/cap-nhat-giang-vien/{giang_vien_id}', [NguoiDungController::class, 'capNhatGiangVien']);
-            Route::patch('/giang-vien/khoa-tai-khoan', [NguoiDungController::class, 'khoaTaiKhoanGiangVien']);
+            Route::get('/users', [NguoiDungController::class, 'layDanhSach']);
+            Route::get('/users/specializations', [NguoiDungController::class, 'layDanhSachChuyenMon']);
+            Route::post('/users/import-students', [NguoiDungController::class, 'importStudents']);
+            Route::get('/users/{id}', [NguoiDungController::class, 'xemChiTiet']);
+            Route::post('/users', [NguoiDungController::class, 'themMoi']);
+            Route::patch('/users/{id}', [NguoiDungController::class, 'capNhat']);
+            Route::delete('/users/{id}', [NguoiDungController::class, 'xoaNguoiDung']);
+            Route::post('/users/{id}/reset-password', [NguoiDungController::class, 'resetPassword']);
 
             // 2. Chức năng quản lý công ty thực tập
         });

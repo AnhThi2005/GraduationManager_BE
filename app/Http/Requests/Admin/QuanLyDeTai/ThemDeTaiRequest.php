@@ -1,10 +1,10 @@
 <?php
 
-namespace App\Http\Requests\Admin;
+namespace App\Http\Requests\Admin\QuanLyDeTai;
 
 use Illuminate\Foundation\Http\FormRequest;
 
-class CapNhatDeTaiRequest extends FormRequest
+class ThemDeTaiRequest extends FormRequest
 {
     public function authorize(): bool
     {
@@ -14,9 +14,9 @@ class CapNhatDeTaiRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'name'         => 'sometimes|required|string|max:255',
-            'teacher'      => 'sometimes|required|string',
-            'slots'        => 'sometimes|required|string',
+            'name'         => 'required|string|max:255',
+            'teacher'      => 'required|string',
+            'slots'        => 'required|string',
             'status'       => 'sometimes|string|in:pending,approved,rejected',
             'rejectReason' => 'required_if:status,rejected|nullable|string|max:1000',
         ];

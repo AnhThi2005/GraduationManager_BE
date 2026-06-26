@@ -3,17 +3,9 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\Admin\QuanLyNguoiDung\LocSinhVienRequest;
-use App\Http\Requests\Admin\QuanLyNguoiDung\LocGiangVienRequest;
-use App\Http\Requests\Admin\QuanLyNguoiDung\ThemSinhVienRequest;
-use App\Http\Requests\Admin\QuanLyNguoiDung\ThemGiangVienRequest;
-use App\Http\Requests\Admin\QuanLyNguoiDung\SuaSinhVienRequest;
-use App\Http\Requests\Admin\QuanLyNguoiDung\SuaGiangVienRequest;
-use App\Http\Requests\Admin\QuanLyNguoiDung\KhoaTaiKhoanSVRequest;
-use App\Http\Requests\Admin\QuanLyNguoiDung\KhoaTaiKhoanGVRequest;
-use App\Http\Requests\Admin\QuanLyNguoiDung\LuuNguoiDungRequest;
+use App\Http\Requests\Admin\QuanLyNguoiDung\ThemNguoiDungRequest;
+use App\Http\Requests\Admin\QuanLyNguoiDung\LocNguoiDungUnifiedRequest;
 use App\Http\Requests\Admin\QuanLyNguoiDung\CapNhatNguoiDungRequest;
-use App\Http\Requests\Admin\ThemNguoiDungRequest;
 use Illuminate\Http\Request;
 use App\Models\SinhVien;
 use App\Models\GiangVien;
@@ -36,7 +28,7 @@ class NguoiDungController extends Controller
     /**
      * Lấy danh sách (Sinh viên hoặc Giảng viên) dựa theo tham số role
      */
-    public function layDanhSach(Request $request)
+    public function layDanhSach(LocNguoiDungUnifiedRequest $request)
     {
         $role = $request->input('role', 'student');
         $limit = $request->input('limit', 10);
@@ -44,55 +36,26 @@ class NguoiDungController extends Controller
         $className = $request->input('className');
         $status = $request->input('status');
 
+        $filters = [];
+        if (!empty($keyword)) {
+            $filters['ho_ten'] = $keyword;
+            $filters['ma_so_sinh_vien'] = $keyword; // map cho sinh viên
+        }
+        if (!empty($className)) {
+            $filters['ten_lop'] = $className; // map cho sinh viên
+            $filters['chuyen_mon'] = $className; // map cho giảng viên
+        }
+        if (isset($status)) {
+            $filters['dang_hoat_dong'] = ($status === 'active' || $status === '1') ? 1 : 0;
+        }
+
         if ($role === 'teacher') {
-            $query = GiangVien::query();
-
-            if (!empty($keyword)) {
-                $query->where(function ($q) use ($keyword) {
-                    $q->where('ho_ten', 'like', '%' . trim($keyword) . '%')
-                      ->orWhere('email', 'like', '%' . trim($keyword) . '%')
-                      ->orWhere('chuyen_mon', 'like', '%' . trim($keyword) . '%')
-                      ->orWhere('giang_vien_id', 'like', '%' . trim($keyword) . '%');
-                });
-            }
-
-            if (!empty($className)) {
-                $query->where('chuyen_mon', 'like', '%' . trim($className) . '%');
-            }
-
-            if (!empty($status)) {
-                $query->where('dang_hoat_dong', $status === 'active' ? 1 : 0);
-            }
-
-            $paginator = $query->paginate($limit);
+            $paginator = $this->nguoiDungService->locGiangVien($filters, $limit);
             $rows = collect($paginator->items())->map(function ($gv) {
                 return $this->transformTeacher($gv);
             })->all();
         } else {
-            $query = SinhVien::query()->with('lop');
-
-            if (!empty($keyword)) {
-                $query->where(function ($q) use ($keyword) {
-                    $q->where('ho_ten', 'like', '%' . trim($keyword) . '%')
-                      ->orWhere('email', 'like', '%' . trim($keyword) . '%')
-                      ->orWhere('ma_so_sinh_vien', 'like', '%' . trim($keyword) . '%')
-                      ->orWhereHas('lop', function ($lQ) use ($keyword) {
-                          $lQ->where('ten_lop', 'like', '%' . trim($keyword) . '%');
-                      });
-                });
-            }
-
-            if (!empty($className)) {
-                $query->whereHas('lop', function ($lQ) use ($className) {
-                    $lQ->where('ten_lop', 'like', '%' . trim($className) . '%');
-                });
-            }
-
-            if (!empty($status)) {
-                $query->where('dang_hoat_dong', $status === 'active' ? 1 : 0);
-            }
-
-            $paginator = $query->paginate($limit);
+            $paginator = $this->nguoiDungService->locSinhVien($filters, $limit);
             $rows = collect($paginator->items())->map(function ($sv) {
                 return $this->transformStudent($sv);
             })->all();
@@ -116,6 +79,181 @@ class NguoiDungController extends Controller
                 'hasPrevious' => !$paginator->onFirstPage()
             ]
         ], 200);
+    }
+
+    /**
+     * Lấy danh sách chuyên môn của giảng viên
+     */
+    public function layDanhSachChuyenMon(Request $request)
+    {
+        $specializations = GiangVien::whereNotNull('chuyen_mon')
+            ->where('chuyen_mon', '<>', '')
+            ->distinct()
+            ->pluck('chuyen_mon')
+            ->values()
+            ->all();
+        
+        return response()->json([
+            'code' => 200,
+            'results' => [
+                'objects' => $specializations
+            ]
+        ], 200);
+    }
+
+    /**
+     * Import sinh viên từ file Excel
+     */
+    public function importStudents(Request $request)
+    {
+        $request->validate([
+            'file' => 'required|file|mimes:xlsx,xls',
+            'className' => 'required|string|exists:lop,ten_lop'
+        ], [
+            'file.required' => 'Vui lòng tải lên file Excel.',
+            'file.mimes' => 'File tải lên phải là định dạng Excel (.xlsx, .xls).',
+            'className.required' => 'Vui lòng chọn lớp học trước khi import.',
+            'className.exists' => 'Lớp học được chọn không tồn tại trong hệ thống.'
+        ]);
+
+        $className = $request->input('className');
+        $lop = Lop::where('ten_lop', trim($className))->first();
+        if (!$lop) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Lớp học không tồn tại.'
+            ], 400);
+        }
+
+        $file = $request->file('file');
+        
+        try {
+            $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($file->getRealPath());
+            $worksheet = $spreadsheet->getActiveSheet();
+            $rows = $worksheet->toArray();
+            
+            $importedCount = 0;
+            $errors = [];
+            
+            foreach ($rows as $index => $row) {
+                if ($index === 0) continue; // Bỏ qua dòng tiêu đề
+                
+                $mssv = trim($row[0] ?? '');
+                $hoTen = trim($row[1] ?? '');
+                $ngaySinhRaw = trim($row[2] ?? '');
+                $soDienThoai = trim($row[3] ?? '');
+                $emailRaw = trim($row[4] ?? '');
+                
+                if (empty($mssv) && empty($hoTen)) {
+                    continue;
+                }
+                
+                if (empty($mssv) || !preg_match('/^0[0-9]+$/', $mssv) || strlen($mssv) > 10) {
+                    $errors[] = "Dòng " . ($index + 1) . ": MSSV '$mssv' không hợp lệ (phải bắt đầu bằng số 0 và dài tối đa 10 số).";
+                    continue;
+                }
+                
+                if (SinhVien::where('ma_so_sinh_vien', $mssv)->exists()) {
+                    $errors[] = "Dòng " . ($index + 1) . ": MSSV '$mssv' đã tồn tại trong hệ thống.";
+                    continue;
+                }
+                
+                if (empty($hoTen)) {
+                    $errors[] = "Dòng " . ($index + 1) . ": Họ tên không được để trống.";
+                    continue;
+                }
+
+                if (empty($emailRaw)) {
+                    $email = $mssv . '@caothang.edu.vn';
+                } else {
+                    $email = $emailRaw;
+                    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                        $errors[] = "Dòng " . ($index + 1) . ": Email '$email' không đúng định dạng.";
+                        continue;
+                    }
+                }
+
+                if (SinhVien::where('email', $email)->exists()) {
+                    $errors[] = "Dòng " . ($index + 1) . ": Email '$email' đã được đăng ký.";
+                    continue;
+                }
+
+                $gioiTinh = null;
+
+                $ngaySinh = null;
+                if (!empty($ngaySinhRaw)) {
+                    $date = null;
+                    if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $ngaySinhRaw)) {
+                        $date = \DateTime::createFromFormat('Y-m-d', $ngaySinhRaw);
+                    } elseif (preg_match('/^\d{2}\/\d{2}\/\d{4}$/', $ngaySinhRaw)) {
+                        $date = \DateTime::createFromFormat('d/m/Y', $ngaySinhRaw);
+                    }
+                    
+                    if ($date) {
+                        $today = new \DateTime();
+                        $today->setTime(0, 0, 0, 0);
+                        if ($date > $today) {
+                            $errors[] = "Dòng " . ($index + 1) . ": Ngày sinh không được là ngày trong tương lai.";
+                            continue;
+                        }
+                        $ngaySinh = $date->format('Y-m-d');
+                    } else {
+                        $errors[] = "Dòng " . ($index + 1) . ": Ngày sinh '$ngaySinhRaw' không đúng định dạng (YYYY-MM-DD hoặc DD/MM/YYYY).";
+                        continue;
+                    }
+                }
+
+                $sv = SinhVien::create([
+                    'ma_so_sinh_vien' => $mssv,
+                    'ho_ten' => $hoTen,
+                    'email' => $email,
+                    'so_dien_thoai' => $soDienThoai ?: null,
+                    'gioi_tinh' => $gioiTinh,
+                    'ngay_sinh' => $ngaySinh,
+                    'lop_id' => $lop->lop_id,
+                    'dang_hoat_dong' => 1
+                ]);
+
+                \App\Services\RealtimeService::broadcast('slot_updated', [
+                    'type' => 'user_created',
+                    'role' => 'student',
+                    'payload' => [
+                        'id' => (string) $sv->ma_so_sinh_vien,
+                        'name' => $sv->ho_ten,
+                        'email' => $sv->email,
+                        'className' => $lop->ten_lop,
+                        'phone' => $sv->so_dien_thoai,
+                        'role' => 'student',
+                        'status' => 'active',
+                        'gender' => $sv->gioi_tinh,
+                        'dateOfBirth' => $sv->ngay_sinh,
+                    ]
+                ]);
+
+                $importedCount++;
+            }
+
+            if (count($errors) > 0 && $importedCount === 0) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Import thất bại. Vui lòng kiểm tra lại dữ liệu.',
+                    'errors' => $errors
+                ], 422);
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => "Import thành công $importedCount sinh viên vào lớp " . $lop->ten_lop . ".",
+                'imported_count' => $importedCount,
+                'errors' => $errors
+            ], 200);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Lỗi xử lý file Excel: ' . $e->getMessage()
+            ], 500);
+        }
     }
 
     /**
@@ -153,33 +291,13 @@ class NguoiDungController extends Controller
         ], 404);
     }
 
-    /**
-     * Tạo mới người dùng (SV hoặc GV tùy theo role)
-     */
     public function themMoi(ThemNguoiDungRequest $request)
     {
         $role = $request->input('role', 'student');
+        $data = $request->toServiceData();
 
-        if ($role === 'teacher') {
-
-            $gv = GiangVien::create([
-                'ho_ten' => $request->name,
-                'email' => $request->email,
-                'so_dien_thoai' => $request->phone,
-                'gioi_tinh' => $request->gender,
-                'ngay_sinh' => $request->dateOfBirth,
-                'hoc_vi' => $request->academicDegree,
-                'chuyen_mon' => $request->specialization,
-                'vai_tro' => 'GIANG_VIEN',
-                'dang_hoat_dong' => $request->status === 'inactive' ? 0 : 1
-            ]);
-
-            \App\Services\RealtimeService::broadcast('slot_updated', [
-                'type' => 'user_created',
-                'role' => 'teacher',
-                'payload' => $this->transformTeacher($gv)
-            ]);
-
+        if ($role === 'teacher' || $role === 'admin') {
+            $gv = $this->nguoiDungService->themGiangVien($data);
             return response()->json([
                 'code' => 200,
                 'results' => [
@@ -187,30 +305,7 @@ class NguoiDungController extends Controller
                 ]
             ], 200);
         } else {
-
-            $lopId = null;
-            if ($request->className) {
-                $lop = Lop::firstOrCreate(['ten_lop' => $request->className]);
-                $lopId = $lop->lop_id;
-            }
-
-            $sv = SinhVien::create([
-                'ma_so_sinh_vien' => $request->id,
-                'ho_ten' => $request->name,
-                'email' => $request->email,
-                'so_dien_thoai' => $request->phone,
-                'gioi_tinh' => $request->gender,
-                'ngay_sinh' => $request->dateOfBirth,
-                'lop_id' => $lopId,
-                'dang_hoat_dong' => $request->status === 'inactive' ? 0 : 1
-            ]);
-
-            \App\Services\RealtimeService::broadcast('slot_updated', [
-                'type' => 'user_created',
-                'role' => 'student',
-                'payload' => $this->transformStudent($sv)
-            ]);
-
+            $sv = $this->nguoiDungService->themSinhVien($data);
             return response()->json([
                 'code' => 200,
                 'results' => [
@@ -223,64 +318,36 @@ class NguoiDungController extends Controller
     /**
      * Cập nhật thông tin người dùng
      */
-    public function capNhat(Request $request, $id)
+    public function capNhat(CapNhatNguoiDungRequest $request, $id)
     {
-        // Kiểm tra xem là Sinh viên hay Giảng viên
-        $sv = SinhVien::where('ma_so_sinh_vien', $id)
-            ->orWhere('sinh_vien_id', $id)
-            ->first();
+        // Xác định vai trò
+        $isTeacher = GiangVien::where('giang_vien_id', $id)->exists();
+        $data = $request->toServiceData();
 
-        if ($sv) {
-            $lopId = $sv->lop_id;
-            if ($request->has('className')) {
-                if ($request->className) {
-                    $lop = Lop::firstOrCreate(['ten_lop' => $request->className]);
-                    $lopId = $lop->lop_id;
-                } else {
-                    $lopId = null;
-                }
+        if ($isTeacher) {
+            $gv = $this->nguoiDungService->capNhatGiangVien($id, $data);
+
+            return response()->json([
+                'code' => 200,
+                'results' => [
+                    'object' => $this->transformTeacher($gv)
+                ]
+            ], 200);
+        } else {
+            $sv = SinhVien::where('ma_so_sinh_vien', $id)
+                ->orWhere('sinh_vien_id', $id)
+                ->first();
+
+            if ($sv) {
+                $sv = $this->nguoiDungService->capNhatSinhVien($sv->sinh_vien_id, $data);
+
+                return response()->json([
+                    'code' => 200,
+                    'results' => [
+                        'object' => $this->transformStudent($sv)
+                    ]
+                ], 200);
             }
-
-            $updateData = [];
-            if ($request->has('name')) $updateData['ho_ten'] = $request->name;
-            if ($request->has('email')) $updateData['email'] = $request->email;
-            if ($request->has('phone')) $updateData['so_dien_thoai'] = $request->phone;
-            if ($request->has('gender')) $updateData['gioi_tinh'] = $request->gender;
-            if ($request->has('dateOfBirth')) $updateData['ngay_sinh'] = $request->dateOfBirth;
-            if ($request->has('status')) $updateData['dang_hoat_dong'] = $request->status === 'active' ? 1 : 0;
-            $updateData['lop_id'] = $lopId;
-
-            $sv->update($updateData);
-
-            return response()->json([
-                'code' => 200,
-                'results' => [
-                    'object' => $this->transformStudent($sv->fresh())
-                ]
-            ], 200);
-        }
-
-        $gv = GiangVien::where('giang_vien_id', $id)->first();
-        if ($gv) {
-            $updateData = [];
-            if ($request->has('name')) $updateData['ho_ten'] = $request->name;
-            if ($request->has('email')) $updateData['email'] = $request->email;
-            if ($request->has('phone')) $updateData['so_dien_thoai'] = $request->phone;
-            if ($request->has('gender')) $updateData['gioi_tinh'] = $request->gender;
-            if ($request->has('dateOfBirth')) $updateData['ngay_sinh'] = $request->dateOfBirth;
-            if ($request->has('academicDegree')) $updateData['hoc_vi'] = $request->academicDegree;
-            if ($request->has('specialization')) $updateData['chuyen_mon'] = $request->specialization;
-            if ($request->has('className')) $updateData['chuyen_mon'] = $request->className; // fallback
-            if ($request->has('status')) $updateData['dang_hoat_dong'] = $request->status === 'active' ? 1 : 0;
-
-            $gv->update($updateData);
-
-            return response()->json([
-                'code' => 200,
-                'results' => [
-                    'object' => $this->transformTeacher($gv->fresh())
-                ]
-            ], 200);
         }
 
         return response()->json([
@@ -299,7 +366,7 @@ class NguoiDungController extends Controller
             ->first();
 
         if ($sv) {
-            $sv->update(['dang_hoat_dong' => 0]);
+            $this->nguoiDungService->doiTrangThaiSinhVien($sv->sinh_vien_id, 0);
             return response()->json([
                 'success' => true,
                 'message' => 'Khóa tài khoản sinh viên thành công!'
@@ -308,7 +375,7 @@ class NguoiDungController extends Controller
 
         $gv = GiangVien::where('giang_vien_id', $id)->first();
         if ($gv) {
-            $gv->update(['dang_hoat_dong' => 0]);
+            $this->nguoiDungService->doiTrangThaiGiangVien($gv->giang_vien_id, 0);
             return response()->json([
                 'success' => true,
                 'message' => 'Khóa tài khoản giảng viên thành công!'
@@ -361,126 +428,10 @@ class NguoiDungController extends Controller
             'email' => $gv->email,
             'className' => $gv->chuyen_mon,
             'phone' => $gv->so_dien_thoai,
-            'role' => 'teacher',
+            'role' => strtolower($gv->vai_tro) === 'admin' ? 'admin' : 'teacher',
             'status' => $gv->dang_hoat_dong == 1 ? 'active' : 'inactive',
             'academicDegree' => $gv->hoc_vi,
             'specialization' => $gv->chuyen_mon,
         ];
-    }
-
-    // ==========================================================
-    // LEGACY METHODS (HELD FOR BACKWARD COMPATIBILITY)
-    // ==========================================================
-
-    public function layDanhSachSinhVien(LocSinhVienRequest $request)
-    {
-        $perPage = $request->input('per_page', $request->input('limit', 20));
-        $res = $this->nguoiDungService->layDanhSachNguoiDung($request->all(), $perPage);
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Lấy danh sách người dùng thành công!',
-            'data'    => $res['paginator'],
-            'results' => [
-                'objects' => $res['objects'],
-                'total' => $res['total'],
-                'rows' => $res['rows'],
-            ]
-        ], 200);
-    }
-
-    public function layChiTietNguoiDung($id)
-    {
-        $mapped = $this->nguoiDungService->layChiTietNguoiDung($id);
-
-        if (!$mapped) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Không tìm thấy người dùng với ID này!'
-            ], 404);
-        }
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Lấy chi tiết người dùng thành công!',
-            'data'    => $mapped,
-            'results' => [
-                'object' => $mapped
-            ]
-        ], 200);
-    }
-
-    public function themNguoiDung(LuuNguoiDungRequest $request)
-    {
-        $mapped = $this->nguoiDungService->themNguoiDung($request->validated());
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Thêm mới người dùng thành công!',
-            'data'    => $mapped,
-            'results' => [
-                'object' => $mapped
-            ]
-        ], 201);
-    }
-
-    public function capNhatNguoiDung(CapNhatNguoiDungRequest $request, $id)
-    {
-        $mapped = $this->nguoiDungService->capNhatNguoiDung($id, $request->validated());
-
-        if (!$mapped) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Không tìm thấy người dùng với ID này!'
-            ], 404);
-        }
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Cập nhật thông tin người dùng thành công!',
-            'data'    => $mapped,
-            'results' => [
-                'object' => $mapped
-            ]
-        ], 200);
-    }
-
-    public function xoaNguoiDungLegacy($id)
-    {
-        $result = $this->nguoiDungService->xoaNguoiDung($id);
-
-        if (!$result) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Không tìm thấy người dùng!'
-            ], 404);
-        }
-
-        $message = $result === 'student' ? 'Xóa tài khoản sinh viên thành công!' : 'Xóa tài khoản giảng viên thành công!';
-
-        return response()->json([
-            'success' => true,
-            'message' => $message
-        ], 200);
-    }
-
-    public function resetMatKhau($id)
-    {
-        $success = $this->nguoiDungService->resetMatKhau($id);
-
-        if (!$success) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Không tìm thấy người dùng!'
-            ], 404);
-        }
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Đặt lại mật khẩu về mặc định thành công!',
-            'results' => [
-                'object' => true
-            ]
-        ], 200);
     }
 }

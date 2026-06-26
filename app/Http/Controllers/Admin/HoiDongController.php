@@ -8,7 +8,7 @@ use App\Models\HoiDong;
 use App\Models\GiangVien;
 use App\Models\Dot;
 use Illuminate\Support\Facades\DB;
-use App\Http\Requests\Admin\ThemHoiDongRequest;
+use App\Http\Requests\Admin\QuanLyHoiDong\ThemHoiDongRequest;
 
 class HoiDongController extends Controller
 {

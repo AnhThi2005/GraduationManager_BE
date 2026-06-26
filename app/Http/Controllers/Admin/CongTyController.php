@@ -5,8 +5,8 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Services\CongTyService;
-use App\Http\Requests\Admin\ThemDoanhNghiepRequest;
-use App\Http\Requests\Admin\ThemMoiXacNhanRequest;
+use App\Http\Requests\Admin\QuanLySinhVienThucTap\ThemDoanhNghiepRequest;
+use App\Http\Requests\Admin\QuanLySinhVienThucTap\ThemMoiXacNhanRequest;
 
 class CongTyController extends Controller
 {
