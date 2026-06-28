@@ -251,4 +251,24 @@ class CongTyController extends Controller
             ]
         ], 200);
     }
+
+    public function capNhatChuaThucTap(Request $request, $id)
+    {
+        $status = $request->input('status'); // 'not_registered' | 'searching' | 'has_company'
+
+        $res = $this->congTyService->updateNoCompanyStudentStatus($id, $status);
+        if (!$res) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Không tìm thấy thông tin sinh viên!'
+            ], 404);
+        }
+
+        return response()->json([
+            'code' => 200,
+            'results' => [
+                'object' => $res
+            ]
+        ], 200);
+    }
 }

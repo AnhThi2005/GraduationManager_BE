@@ -13,9 +13,17 @@ class LopService
     /**
      * Lấy danh sách lớp học
      */
-    public function getListClass()
+    public function getListClass($periodId = null)
     {
-        $classes = Lop::with('sinhViens')->get();
+        $query = Lop::query();
+
+        if (!empty($periodId) && $periodId !== 'all') {
+            $query->whereHas('dots', function ($q) use ($periodId) {
+                $q->where('dot.dot_id', $periodId);
+            });
+        }
+
+        $classes = $query->with('sinhViens')->get();
 
         $rows = $classes->map(function ($lop) {
             return $this->transformClass($lop);

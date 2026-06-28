@@ -158,6 +158,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/private/v1/periods', [DotController::class, 'themMoi']);
         Route::patch('/private/v1/periods/{id}', [DotController::class, 'capNhat']);
         Route::delete('/private/v1/periods/{id}', [DotController::class, 'xoa']);
+        Route::post('/private/v1/periods/add-student', [DotController::class, 'themSinhVienVaoCacDot']);
 
         // 5. Chức năng quản lý lớp học (Classes)
         Route::get('/private/v1/classes', [LopController::class, 'layDanhSach']);
@@ -181,6 +182,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
         Route::get('/private/v1/internships/no-company', [CongTyController::class, 'layDanhSachChuaThucTap']);
         Route::get('/private/v1/internships/no-company/{id}', [CongTyController::class, 'xemChiTietChuaThucTap']);
+        Route::patch('/private/v1/internships/no-company/{id}', [CongTyController::class, 'capNhatChuaThucTap']);
 
         // 7. Chức năng quản lý điểm số (Student Scores)
         Route::get('/private/v1/student-scores', [DiemSinhVienController::class, 'layDanhSach']);

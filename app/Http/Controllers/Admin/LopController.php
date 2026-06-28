@@ -21,7 +21,8 @@ class LopController extends Controller
      */
     public function layDanhSach(Request $request)
     {
-        $res = $this->lopService->getListClass();
+        $periodId = $request->input('periodId') ?? $request->input('period_id');
+        $res = $this->lopService->getListClass($periodId);
 
         return response()->json([
             'code' => 200,

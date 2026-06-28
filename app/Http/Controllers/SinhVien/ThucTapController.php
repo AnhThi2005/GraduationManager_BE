@@ -83,8 +83,9 @@ class ThucTapController extends Controller
 
         $companyName = $request->input('companyName');
 
-        // Tìm hoặc tạo mới công ty ở trạng thái NGUNG_HOAT_DONG (chờ duyệt)
+        // Tìm hoặc tạo mới công ty ở trạng thái CHO_DUYET (chờ duyệt)
         $company = CongTy::where('ten_cong_ty', $companyName)->first();
+
         if (!$company) {
             $company = CongTy::create([
                 'ten_cong_ty' => $companyName,
@@ -92,7 +93,7 @@ class ThucTapController extends Controller
                 'nguoi_lien_he' => $request->input('mentor') ?? '',
                 'email_lien_he' => $request->input('email') ?? '',
                 'so_dien_thoai_lh' => $request->input('phone') ?? '',
-                'trang_thai' => 'NGUNG_HOAT_DONG'
+                'trang_thai' => 'CHO_DUYET'
             ]);
 
             // Thêm lĩnh vực hoạt động
@@ -130,7 +131,13 @@ class ThucTapController extends Controller
             ->where('dot_id', $activePeriod->dot_id)
             ->delete();
 
-        // Tạo yêu cầu khai báo mới
+        // Chỉ lưu địa chỉ thực tập nếu sinh viên yêu cầu cấp giấy giới thiệu
+        $confirmPaper = (bool)$request->input('confirmPaper');
+        $internshipAddress = $confirmPaper
+            ? ($request->input('internshipAddress') ?: ($request->input('address') ?: 'Địa chỉ công ty'))
+            : null;
+
+        // Tạo yêu cầu khai báo mới ở trạng thái chờ duyệt
         $reg = DangKyThucTap::create([
             'sinh_vien_id' => $sinhVien->sinh_vien_id,
             'dot_id' => $activePeriod->dot_id,
@@ -139,7 +146,7 @@ class ThucTapController extends Controller
             'sdt_huong_dan' => $request->input('phone') ?? '',
             'vi_tri_thuc_tap' => $request->input('field') ?? '',
             'thoi_gian_thuc_tap' => $request->input('duration') ?? '8 tuần',
-            'dia_chi_thuc_tap' => $request->input('internshipAddress') ?? $request->input('address') ?? '',
+            'dia_chi_thuc_tap' => $internshipAddress,
             'trang_thai' => 'CHO_DUYET'
         ]);
 
@@ -163,7 +170,7 @@ class ThucTapController extends Controller
                     'id' => (string)$reg->dang_ky_id,
                     'companyName' => $company->ten_cong_ty,
                     'status' => 'pending',
-                    'confirmPaper' => (bool)$request->input('confirmPaper')
+                    'confirmPaper' => $confirmPaper
                 ]
             ]
         ], 201);

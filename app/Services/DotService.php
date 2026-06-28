@@ -99,7 +99,10 @@ class DotService
         }
 
         if (isset($data['externalStudentIds']) && is_array($data['externalStudentIds'])) {
-            $dot->sinhViens()->sync($data['externalStudentIds']);
+            $studentIds = \App\Models\SinhVien::whereIn('ma_so_sinh_vien', $data['externalStudentIds'])
+                ->pluck('sinh_vien_id')
+                ->all();
+            $dot->sinhViens()->sync($studentIds);
         }
 
         return $this->transformPeriod($dot);
@@ -132,7 +135,10 @@ class DotService
         }
 
         if (isset($data['externalStudentIds']) && is_array($data['externalStudentIds'])) {
-            $dot->sinhViens()->sync($data['externalStudentIds']);
+            $studentIds = \App\Models\SinhVien::whereIn('ma_so_sinh_vien', $data['externalStudentIds'])
+                ->pluck('sinh_vien_id')
+                ->all();
+            $dot->sinhViens()->sync($studentIds);
         }
 
         return $this->transformPeriod($dot->fresh());
@@ -312,5 +318,31 @@ class DotService
         } catch (\Exception $e) {
             return null;
         }
+    }
+
+    /**
+     * Thêm một sinh viên vào nhiều đợt đăng ký
+     */
+    public function addStudentToPeriods($studentCode, array $periodIds, $reason = 'Rớt đợt trước')
+    {
+        $student = \App\Models\SinhVien::where('ma_so_sinh_vien', $studentCode)
+            ->orWhere('sinh_vien_id', $studentCode)
+            ->first();
+        if (!$student) {
+            return false;
+        }
+
+        $studentId = $student->sinh_vien_id;
+
+        foreach ($periodIds as $periodId) {
+            $dot = Dot::find($periodId);
+            if ($dot) {
+                $dot->sinhViens()->syncWithoutDetaching([
+                    $studentId => ['ly_do' => $reason]
+                ]);
+            }
+        }
+
+        return true;
     }
 }

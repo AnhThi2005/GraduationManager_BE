@@ -126,4 +126,35 @@ class DotController extends Controller
             'message' => 'Xóa đợt đăng ký tốt nghiệp thành công!'
         ], 200);
     }
+
+    /**
+     * API Thêm sinh viên tự do/rớt vào các đợt tốt nghiệp
+     */
+    public function themSinhVienVaoCacDot(Request $request)
+    {
+        $request->validate([
+            'studentId' => 'required',
+            'periodIds' => 'required|array',
+            'periodIds.*' => 'required',
+            'reason' => 'nullable|string'
+        ]);
+
+        $studentId = $request->input('studentId');
+        $periodIds = $request->input('periodIds');
+        $reason = $request->input('reason', 'Rớt đợt trước');
+
+        $res = $this->dotService->addStudentToPeriods($studentId, $periodIds, $reason);
+
+        if (!$res) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Không tìm thấy sinh viên hoặc đợt hợp lệ!'
+            ], 400);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Thêm sinh viên vào các đợt thành công!'
+        ], 200);
+    }
 }

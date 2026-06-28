@@ -96,7 +96,17 @@ class CongTyService
         if (isset($data['contact'])) $updateData['nguoi_lien_he'] = $data['contact'];
         if (isset($data['email'])) $updateData['email_lien_he'] = $data['email'];
         if (isset($data['phone'])) $updateData['so_dien_thoai_lh'] = $data['phone'];
-        if (isset($data['status'])) $updateData['trang_thai'] = $this->mapFrontendStatusToBackend($data['status']);
+        if (isset($data['status'])) {
+            $updateData['trang_thai'] = $this->mapFrontendStatusToBackend($data['status']);
+        } elseif (isset($data['reviewStatus'])) {
+            if ($data['reviewStatus'] === 'approved') {
+                $updateData['trang_thai'] = 'HOAT_DONG';
+            } elseif ($data['reviewStatus'] === 'rejected') {
+                $updateData['trang_thai'] = 'NGUNG_HOAT_DONG';
+            } else {
+                $updateData['trang_thai'] = 'CHO_DUYET';
+            }
+        }
 
         $company->update($updateData);
 
@@ -146,7 +156,10 @@ class CongTyService
      */
     public function getListConfirmationRequest(array $filters)
     {
-        $query = DangKyThucTap::query()->with(['sinhVien.lop', 'congTy']);
+        $query = DangKyThucTap::query()
+            ->with(['sinhVien.lop', 'congTy'])
+            ->whereNotNull('dia_chi_thuc_tap')
+            ->where('dia_chi_thuc_tap', '!=', '');
 
         // Lọc theo đợt học
         if (!empty($filters['periodId'])) {
@@ -410,7 +423,10 @@ class CongTyService
         $status = 'active';
         $reviewStatus = 'approved';
 
-        if ($company->trang_thai === 'NGUNG_HOAT_DONG') {
+        if ($company->trang_thai === 'CHO_DUYET') {
+            $status = 'pending';
+            $reviewStatus = 'pending';
+        } elseif ($company->trang_thai === 'NGUNG_HOAT_DONG') {
             $status = 'paused';
             $reviewStatus = 'rejected';
         }
@@ -462,6 +478,9 @@ class CongTyService
         if ($status === 'active') {
             return 'HOAT_DONG';
         }
+        if ($status === 'pending') {
+            return 'CHO_DUYET';
+        }
         return 'NGUNG_HOAT_DONG';
     }
 
@@ -473,5 +492,24 @@ class CongTyService
             return 'TU_CHOI';
         }
         return 'CHO_DUYET';
+    }
+
+    /**
+     * Cập nhật trạng thái sinh viên chưa có nơi thực tập
+     */
+    public function updateNoCompanyStudentStatus($sinhVienId, $status)
+    {
+        $reg = DangKyThucTap::where('sinh_vien_id', $sinhVienId)->orderBy('dang_ky_id', 'desc')->first();
+        if ($reg) {
+            if ($status === 'has_company') {
+                $reg->update(['trang_thai' => 'DA_DUYET']);
+            } elseif ($status === 'searching') {
+                $reg->update(['trang_thai' => 'CHO_DUYET']);
+            } elseif ($status === 'not_registered') {
+                $reg->update(['trang_thai' => 'TU_CHOI']);
+            }
+        }
+
+        return $this->getNoCompanyStudentDetail($sinhVienId);
     }
 }
