@@ -56,6 +56,7 @@ Route::middleware([
 
     // 8. Chức năng quản lý nhóm (Groups)
     Route::get('/private/v1/groups', [NhomController::class, 'layDanhSach']);
+    Route::post('/private/v1/groups', [NhomController::class, 'themMoi']);
     Route::get('/private/v1/groups/{id}', [NhomController::class, 'xemChiTiet']);
     Route::patch('/private/v1/groups/{id}', [NhomController::class, 'capNhat']);
     Route::delete('/private/v1/groups/{id}', [NhomController::class, 'xoa']);

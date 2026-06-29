@@ -126,6 +126,54 @@ class NhomController extends Controller
         ], 200);
     }
 
+    public function themMoi(Request $request)
+    {
+        $body = $request->all();
+        
+        $activePeriod = \App\Models\Dot::orderBy('dot_id', 'desc')->first();
+        $dotId = $body['dot_id'] ?? ($activePeriod ? $activePeriod->dot_id : 1);
+        
+        $g = new Nhom();
+        $g->dot_id = $dotId;
+        $g->de_tai_id = $body['de_tai_id'] ?? null;
+        $g->trang_thai_duyet = 'CHO_DUYET';
+        $g->trang_thai_nhom = 'DU_THANH_VIEN';
+        $g->save();
+        
+        if (isset($body['members']) && is_array($body['members'])) {
+            foreach ($body['members'] as $idx => $m) {
+                $studentId = $m['id'] ?? $m;
+                $student = SinhVien::where('sinh_vien_id', $studentId)
+                    ->orWhere('ma_so_sinh_vien', $studentId)
+                    ->first();
+                    
+                if ($student) {
+                    DB::table('thanhviennhom')->insert([
+                        'nhom_id' => $g->nhom_id,
+                        'sinh_vien_id' => $student->sinh_vien_id,
+                        'la_truong_nhom' => $idx === 0 ? 1 : 0,
+                        'dieu_kien_lam_do_an' => 'DAT'
+                    ]);
+                }
+            }
+        }
+        
+        $newGroup = Nhom::with(['deTai.giangVien', 'members.lop', 'dot'])->find($g->nhom_id);
+        
+        \App\Services\RealtimeService::broadcast('slot_updated', [
+            'type' => 'group_created',
+            'groupId' => $g->nhom_id,
+            'payload' => $this->transformGroup($newGroup)
+        ]);
+        
+        return response()->json([
+            'code' => 200,
+            'results' => [
+                'object' => $this->transformGroup($newGroup)
+            ]
+        ], 200);
+    }
+
     public function xoa(Request $request, $id)
     {
         $g = Nhom::with(['deTai.giangVien', 'members.lop', 'dot'])->find($id);
