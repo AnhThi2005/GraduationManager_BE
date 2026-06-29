@@ -11,7 +11,6 @@ use App\Models\Nhom;
 use App\Models\DeTai;
 use App\Models\BaoCaoTienDo;
 use App\Models\LoiMoiNhom;
-use App\Models\DiemSinhVien;
 use App\Models\CongTy;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;

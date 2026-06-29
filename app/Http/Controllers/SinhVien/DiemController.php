@@ -4,7 +4,6 @@ namespace App\Http\Controllers\SinhVien;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-use App\Models\DiemSinhVien;
 use App\Models\Dot;
 use Illuminate\Support\Facades\DB;
 
