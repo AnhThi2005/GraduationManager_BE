@@ -309,7 +309,9 @@ class NhomController extends Controller
             'members' => $members,
             'maxMembers' => $g->deTai ? ($g->deTai->so_luong_sv_toi_da ?? 2) : 2,
             'status' => $status,
-            'registrationBatch' => $g->dot ? $g->dot->ten_dot : ''
+            'registrationBatch' => $g->dot ? $g->dot->ten_dot : '',
+            'ket_qua_huong_dan' => $g->ket_qua_huong_dan,
+            'ket_qua_phan_bien' => $g->ket_qua_phan_bien,
         ];
     }
 }

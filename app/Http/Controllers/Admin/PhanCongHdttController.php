@@ -295,7 +295,7 @@ class PhanCongHdttController extends Controller
 
     public function getTeachers(Request $request)
     {
-        $teachers = GiangVien::all();
+        $teachers = GiangVien::where('dang_hoat_dong', 1)->get();
         
         $assignedCounts = DB::table('phanconghdtt')
             ->select('giang_vien_id', DB::raw('count(*) as total'))
