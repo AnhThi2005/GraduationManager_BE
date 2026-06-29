@@ -7,12 +7,13 @@ use Illuminate\Http\Request;
 use App\Models\Nhom;
 use App\Models\SinhVien;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class NhomController extends Controller
 {
     public function layDanhSach(Request $request)
     {
-        $groups = Nhom::with(['deTai.giangVien', 'members', 'dot'])->get();
+        $groups = Nhom::with(['deTai.giangVien', 'members.lop', 'dot'])->get();
 
         $rows = $groups->map(function ($g) {
             return $this->transformGroup($g);
@@ -31,7 +32,7 @@ class NhomController extends Controller
 
     public function xemChiTiet(Request $request, $id)
     {
-        $g = Nhom::with(['deTai.giangVien', 'members', 'dot'])->find($id);
+        $g = Nhom::with(['deTai.giangVien', 'members.lop', 'dot'])->find($id);
         if (!$g) {
             return response()->json([
                 'success' => false,
@@ -49,7 +50,7 @@ class NhomController extends Controller
 
     public function capNhat(Request $request, $id)
     {
-        $g = Nhom::find($id);
+        $g = Nhom::with(['deTai.giangVien', 'members.lop', 'dot'])->find($id);
         if (!$g) {
             return response()->json([
                 'success' => false,
@@ -57,6 +58,7 @@ class NhomController extends Controller
             ], 404);
         }
 
+        $oldGroup = $this->transformGroup($g);
         $body = $request->all();
 
         // 1. Cập nhật trạng thái duyệt nếu có truyền lên
@@ -96,31 +98,56 @@ class NhomController extends Controller
             }
         }
 
-        $updated = Nhom::with(['deTai.giangVien', 'members', 'dot'])->find($id);
+        $updated = Nhom::with(['deTai.giangVien', 'members.lop', 'dot'])->find($id);
+        $newGroup = $this->transformGroup($updated);
+
+        // Lưu vết quá trình cập nhật nhóm (Audit Log)
+        Log::info(sprintf(
+            "AUDIT LOG: [UPDATE GROUP] Group ID: %s, Old Status: %s, New Status: %s, Old Members: %s, New Members: %s, IP: %s",
+            $id,
+            $oldGroup['status'],
+            $newGroup['status'],
+            json_encode(collect($oldGroup['members'])->map(fn($m) => "{$m['code']}-{$m['name']}")->all(), JSON_UNESCAPED_UNICODE),
+            json_encode(collect($newGroup['members'])->map(fn($m) => "{$m['code']}-{$m['name']}")->all(), JSON_UNESCAPED_UNICODE),
+            $request->ip()
+        ));
 
         \App\Services\RealtimeService::broadcast('slot_updated', [
             'type' => 'group_updated',
             'groupId' => $id,
-            'payload' => $this->transformGroup($updated)
+            'payload' => $newGroup
         ]);
 
         return response()->json([
             'code' => 200,
             'results' => [
-                'object' => $this->transformGroup($updated)
+                'object' => $newGroup
             ]
         ], 200);
     }
 
     public function xoa(Request $request, $id)
     {
-        $g = Nhom::find($id);
+        $g = Nhom::with(['deTai.giangVien', 'members.lop', 'dot'])->find($id);
         if (!$g) {
             return response()->json([
                 'success' => false,
                 'message' => 'Không tìm thấy nhóm!'
             ], 404);
         }
+
+        $groupData = $this->transformGroup($g);
+
+        // Lưu vết trước khi xóa nhóm (Audit Log)
+        Log::info(sprintf(
+            "AUDIT LOG: [DELETE GROUP] Group ID: %s, Code: %s, Topic: '%s', Supervisor: '%s', Members: %s, IP: %s",
+            $g->nhom_id,
+            $groupData['code'],
+            $groupData['title'],
+            $groupData['supervisor'],
+            json_encode(collect($groupData['members'])->map(fn($m) => "{$m['code']}-{$m['name']}")->all(), JSON_UNESCAPED_UNICODE),
+            $request->ip()
+        ));
 
         DB::table('thanhviennhom')->where('nhom_id', $id)->delete();
         $g->delete();
@@ -149,7 +176,7 @@ class NhomController extends Controller
         $g->trang_thai_duyet = 'DA_DUYET';
         $g->save();
 
-        $updated = Nhom::with(['deTai.giangVien', 'members', 'dot'])->find($id);
+        $updated = Nhom::with(['deTai.giangVien', 'members.lop', 'dot'])->find($id);
 
         \App\Services\RealtimeService::broadcast('slot_updated', [
             'type' => 'group_approved',
@@ -178,7 +205,7 @@ class NhomController extends Controller
         $g->trang_thai_duyet = 'TU_CHOI';
         $g->save();
 
-        $updated = Nhom::with(['deTai.giangVien', 'members', 'dot'])->find($id);
+        $updated = Nhom::with(['deTai.giangVien', 'members.lop', 'dot'])->find($id);
 
         \App\Services\RealtimeService::broadcast('slot_updated', [
             'type' => 'group_rejected',
@@ -196,12 +223,17 @@ class NhomController extends Controller
 
     private function transformGroup($g)
     {
-        $members = $g->members->map(function ($m) {
+        $hasIneligible = false;
+        $members = $g->members->map(function ($m) use (&$hasIneligible) {
             $eligible = ($m->pivot->dieu_kien_lam_do_an ?? 'DAT') === 'DAT';
+            if (!$eligible) {
+                $hasIneligible = true;
+            }
             return [
                 'id' => (string) $m->sinh_vien_id,
                 'name' => $m->ho_ten,
                 'code' => $m->ma_so_sinh_vien,
+                'class' => $m->lop ? $m->lop->ten_lop : '',
                 'eligible' => $eligible,
                 'reason' => $eligible ? '' : 'Chưa đủ điều kiện làm đồ án'
             ];
@@ -214,7 +246,9 @@ class NhomController extends Controller
             $status = 'LOCKED';
         }
 
-        if (count($members) < 2) {
+        if ($hasIneligible) {
+            $status = 'WARNING';
+        } elseif (count($members) < 2) {
             $status = 'MISSING';
         }
 
@@ -222,6 +256,7 @@ class NhomController extends Controller
             'id' => (string) $g->nhom_id,
             'code' => 'NH' . str_pad($g->nhom_id, 2, '0', STR_PAD_LEFT),
             'title' => $g->deTai ? $g->deTai->ten_de_tai : '—',
+            'topicDirection' => $g->deTai ? $g->deTai->huong_de_tai : null,
             'supervisor' => ($g->deTai && $g->deTai->giangVien) ? $g->deTai->giangVien->ho_ten : '—',
             'members' => $members,
             'maxMembers' => $g->deTai ? ($g->deTai->so_luong_sv_toi_da ?? 2) : 2,

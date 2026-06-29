@@ -153,6 +153,7 @@ class NguoiDungController extends Controller
                     continue;
                 }
                 
+                
                 if (SinhVien::where('ma_so_sinh_vien', $mssv)->exists()) {
                     $errors[] = "Dòng " . ($index + 1) . ": MSSV '$mssv' đã tồn tại trong hệ thống.";
                     continue;

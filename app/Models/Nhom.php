@@ -3,9 +3,12 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Nhom extends Model
 {
+    use SoftDeletes;
+
     protected $table = 'nhomsvda';
     protected $primaryKey = 'nhom_id';
     public $timestamps = false;
