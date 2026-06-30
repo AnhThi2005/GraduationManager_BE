@@ -25,13 +25,13 @@ class RealtimeController extends Controller
         }
 
         $response = new StreamedResponse(function () use ($request) {
-            // Retrieve last sent event ID from client if any
-            $lastSentEventId = $request->query('last_event_id', '');
+            // Retrieve last sent event ID from query param or headers (for native reconnect)
+            $lastSentEventId = $request->query(
+                'last_event_id', 
+                $request->header('Last-Event-ID', $request->server('HTTP_LAST_EVENT_ID', ''))
+            );
             
-            // Set short execution time limit
-            set_time_limit(10);
-
-            // Instruct the browser's EventSource to reconnect after 3 seconds
+            // Reconnect interval for browser EventSource (3 seconds)
             echo "retry: 3000\n";
             
             $events = Cache::get('realtime_events', []);

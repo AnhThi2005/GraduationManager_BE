@@ -5,8 +5,8 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Services\DeTaiService;
-use App\Http\Requests\Admin\ThemDeTaiRequest;
-use App\Http\Requests\Admin\CapNhatDeTaiRequest;
+use App\Http\Requests\Admin\QuanLyDeTai\ThemDeTaiRequest;
+use App\Http\Requests\Admin\QuanLyDeTai\CapNhatDeTaiRequest;
 
 class DeTaiController extends Controller
 {

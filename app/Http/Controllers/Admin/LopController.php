@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Services\LopService;
-use App\Http\Requests\Admin\ThemLopRequest;
+use App\Http\Requests\Admin\QuanLyLop\ThemLopRequest;
 
 class LopController extends Controller
 {

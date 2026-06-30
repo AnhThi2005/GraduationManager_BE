@@ -8,6 +8,7 @@ use App\Models\SinhVien;
 use App\Models\GiangVien;
 use App\Models\PhanCongHdtt;
 use App\Models\Dot;
+use App\Models\Nhom;
 use Illuminate\Support\Facades\DB;
 
 class PhanCongHdttController extends Controller
@@ -21,11 +22,22 @@ class PhanCongHdttController extends Controller
             $dotId = $activePeriod ? $activePeriod->dot_id : 1;
         }
 
+        // Chỉ áp dụng cho đợt Thực tập tốt nghiệp (TTTN)
+        $dot = Dot::find($dotId);
+        if ($dot && $dot->loai_dot !== 'TTTN') {
+            return response()->json([
+                'code' => 200,
+                'results' => [
+                    'objects' => [
+                        'rows' => [],
+                        'total' => 0
+                    ]
+                ]
+            ], 200);
+        }
+
         // Lấy danh sách lớp học được gán cho đợt này
         $lopIdsInPeriod = DB::table('dot_lop')->where('dot_id', $dotId)->pluck('lop_id');
-
-        // Lấy danh sách sinh viên có phân công trong đợt này
-        $assignedStudentIds = PhanCongHdtt::where('dot_id', $dotId)->pluck('sinh_vien_id');
 
         // Lấy danh sách sinh viên có nhóm trong đợt này
         $groupStudentIds = DB::table('thanhviennhom')
@@ -33,64 +45,131 @@ class PhanCongHdttController extends Controller
             ->where('nhomsvda.dot_id', $dotId)
             ->pluck('thanhviennhom.sinh_vien_id');
 
-        // Lấy danh sách sinh viên đăng ký thực tập trong đợt này
-        $internshipStudentIds = DB::table('dangkythuctap')
-            ->where('dot_id', $dotId)
-            ->pluck('sinh_vien_id');
-
-        // Gộp tất cả các nguồn ID sinh viên lại
+        // Gộp các nguồn ID sinh viên đồ án tốt nghiệp
         $studentIds = collect()
-            ->concat($assignedStudentIds)
             ->concat($groupStudentIds)
-            ->concat($internshipStudentIds)
+            ->unique();
+
+        // Danh sách sinh viên có hoạt động nhóm ở các đợt khác
+        $studentIdsInOtherPeriods = DB::table('thanhviennhom')
+            ->join('nhomsvda', 'thanhviennhom.nhom_id', '=', 'nhomsvda.nhom_id')
+            ->where('nhomsvda.dot_id', '!=', $dotId)
+            ->pluck('thanhviennhom.sinh_vien_id')
             ->unique();
 
         $query = SinhVien::query()->with('lop');
 
         if ($lopIdsInPeriod->isNotEmpty() || $studentIds->isNotEmpty()) {
-            $query->where(function($q) use ($lopIdsInPeriod, $studentIds) {
-                $q->whereIn('lop_id', $lopIdsInPeriod)
-                  ->orWhereIn('sinh_vien_id', $studentIds);
+            $query->where(function($q) use ($lopIdsInPeriod, $studentIds, $studentIdsInOtherPeriods) {
+                $q->whereIn('sinh_vien_id', $studentIds);
+                
+                if ($lopIdsInPeriod->isNotEmpty()) {
+                    $q->orWhere(function($subQ) use ($lopIdsInPeriod, $studentIdsInOtherPeriods) {
+                        $subQ->whereIn('lop_id', $lopIdsInPeriod);
+                        if ($studentIdsInOtherPeriods->isNotEmpty()) {
+                            $subQ->whereNotIn('sinh_vien_id', $studentIdsInOtherPeriods);
+                        }
+                    });
+                }
             });
         } else {
-            // Nếu không có bất cứ liên kết nào trong đợt này, trả về rỗng để đúng nghiệp vụ lọc đợt
             $query->whereNull('sinh_vien_id');
         }
 
         $students = $query->get();
 
-        // Lấy phân công theo đợt
-        $assignments = PhanCongHdtt::with('giangVien')
+        // Lấy danh sách nhóm trong đợt này cùng với thành viên và đề tài
+        $groups = Nhom::with(['members', 'deTai.giangVien'])
             ->where('dot_id', $dotId)
-            ->get()
-            ->keyBy('sinh_vien_id');
+            ->get();
 
-        // Lấy nhóm sinh viên theo đợt để điền thông tin đề tài
-        $groupMembers = DB::table('thanhviennhom')
-            ->join('nhomsvda', 'thanhviennhom.nhom_id', '=', 'nhomsvda.nhom_id')
-            ->leftJoin('detai', 'nhomsvda.de_tai_id', '=', 'detai.de_tai_id')
-            ->select('thanhviennhom.sinh_vien_id', 'detai.ten_de_tai', 'nhomsvda.nhom_id')
-            ->where('nhomsvda.dot_id', $dotId)
-            ->get()
-            ->keyBy('sinh_vien_id');
+        $studentGroupMap = [];
+        foreach ($groups as $g) {
+            foreach ($g->members as $m) {
+                $studentGroupMap[$m->sinh_vien_id] = $g;
+            }
+        }
 
-        // Lấy đăng ký thực tập theo đợt
-        $internshipRegs = DB::table('dangkythuctap')
-            ->join('congty', 'dangkythuctap.cong_ty_id', '=', 'congty.cong_ty_id')
-            ->select('dangkythuctap.sinh_vien_id', 'congty.ten_cong_ty')
-            ->where('dangkythuctap.trang_thai', 'DA_DUYET')
-            ->where('dangkythuctap.dot_id', $dotId)
+        // Lấy danh sách đăng ký đề tài của các nhóm để check xem có bị từ chối hết hay không
+        $groupRegistrations = DB::table('dangkydetai')
+            ->whereIn('nhom_id', $groups->pluck('nhom_id'))
             ->get()
-            ->keyBy('sinh_vien_id');
+            ->groupBy('nhom_id');
 
-        $rows = $students->map(function ($sv) use ($assignments, $groupMembers, $internshipRegs) {
-            $assign = $assignments->get($sv->sinh_vien_id);
-            
+        $rows = $students->map(function ($sv) use ($studentGroupMap, $groupRegistrations) {
+            $groupId = null;
+            $groupCode = null;
+            $groupStatus = 'no_group';
+            $hasIneligibleMember = false;
+            $hasTopic = false;
+            $topicStatus = 'no_registration';
             $topic = '—';
-            if ($groupMembers->has($sv->sinh_vien_id)) {
-                $topic = $groupMembers->get($sv->sinh_vien_id)->ten_de_tai ?? 'Nhóm đề tài #' . $groupMembers->get($sv->sinh_vien_id)->nhom_id;
-            } elseif ($internshipRegs->has($sv->sinh_vien_id)) {
-                $topic = 'Thực tập tại ' . $internshipRegs->get($sv->sinh_vien_id)->ten_cong_ty;
+            $supervisor = null;
+
+            if (isset($studentGroupMap[$sv->sinh_vien_id])) {
+                $group = $studentGroupMap[$sv->sinh_vien_id];
+                $groupId = (string) $group->nhom_id;
+                $groupCode = 'NH' . str_pad($group->nhom_id, 2, '0', STR_PAD_LEFT);
+
+                // Check eligibility of members
+                foreach ($group->members as $m) {
+                    $eligible = ($m->pivot->dieu_kien_lam_do_an ?? 'DAT') === 'DAT';
+                    if (!$eligible) {
+                        $hasIneligibleMember = true;
+                    }
+                }
+
+                // Check topic status
+                if ($group->de_tai_id) {
+                    $hasTopic = true;
+                    $topicStatus = 'approved';
+                    $topic = $group->deTai ? $group->deTai->ten_de_tai : 'Nhóm đề tài #' . $group->nhom_id;
+                    if ($group->deTai && $group->deTai->giangVien) {
+                        $supervisor = $group->deTai->giangVien->ho_ten;
+                    }
+                } else {
+                    $regs = $groupRegistrations->get($group->nhom_id) ?? collect();
+                    if ($regs->isEmpty()) {
+                        $topicStatus = 'no_registration';
+                        $topic = '—';
+                    } else {
+                        $allRejected = true;
+                        $hasPending = false;
+                        foreach ($regs as $r) {
+                            if ($r->trang_thai_duyet !== 'TU_CHOI') {
+                                $allRejected = false;
+                            }
+                            if ($r->trang_thai_duyet === 'CHO_DUYET' || $r->trang_thai_duyet === 'PENDING') {
+                                $hasPending = true;
+                            }
+                        }
+                        
+                        if ($allRejected) {
+                            $topicStatus = 'all_rejected';
+                            $topic = 'Đăng ký đề tài bị từ chối';
+                        } elseif ($hasPending) {
+                            $topicStatus = 'pending_registration';
+                            $topic = 'Đang chờ duyệt đăng ký';
+                        } else {
+                            $topicStatus = 'no_registration';
+                        }
+                    }
+                }
+
+                // Determine groupStatus
+                if ($hasIneligibleMember) {
+                    $groupStatus = 'ineligible_member';
+                } elseif (!$hasTopic) {
+                    if ($topicStatus === 'all_rejected') {
+                        $groupStatus = 'topic_rejected';
+                    } elseif ($topicStatus === 'pending_registration') {
+                        $groupStatus = 'topic_pending';
+                    } else {
+                        $groupStatus = 'no_topic';
+                    }
+                } else {
+                    $groupStatus = 'valid';
+                }
             }
 
             return [
@@ -98,9 +177,17 @@ class PhanCongHdttController extends Controller
                 'name' => $sv->ho_ten,
                 'className' => $sv->lop ? $sv->lop->ten_lop : '—',
                 'topic' => $topic,
-                'supervisor' => $assign ? $assign->giangVien->ho_ten : null,
-                'assignedAt' => $assign ? '16/06/2026' : null, // Thường không lưu ngày phân công trong DB nên trả về ngày mặc định
-                'status' => $assign ? 'assigned' : 'unassigned'
+                'supervisor' => $supervisor,
+                'assignedAt' => $supervisor ? '16/06/2026' : null,
+                'status' => $supervisor ? 'assigned' : 'unassigned',
+                
+                // Group details
+                'groupId' => $groupId,
+                'groupCode' => $groupCode,
+                'groupStatus' => $groupStatus,
+                'hasIneligibleMember' => $hasIneligibleMember,
+                'hasTopic' => $hasTopic,
+                'topicStatus' => $topicStatus,
             ];
         })->all();
 
@@ -131,6 +218,15 @@ class PhanCongHdttController extends Controller
 
         $activePeriod = Dot::orderBy('dot_id', 'desc')->first();
         $dotId = $activePeriod ? $activePeriod->dot_id : 1;
+
+        // Chỉ áp dụng cho đợt Thực tập tốt nghiệp (TTTN)
+        $dot = Dot::find($dotId);
+        if ($dot && $dot->loai_dot !== 'TTTN') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Thao tác phân công hướng dẫn chỉ áp dụng cho đợt Thực tập tốt nghiệp (TTTN)!'
+            ], 400);
+        }
 
         $assign = PhanCongHdtt::with('giangVien')
             ->where('sinh_vien_id', $sv->sinh_vien_id)
@@ -169,6 +265,15 @@ class PhanCongHdttController extends Controller
 
         $activePeriod = Dot::orderBy('dot_id', 'desc')->first();
         $dotId = $activePeriod ? $activePeriod->dot_id : 1;
+
+        // Chỉ áp dụng cho đợt Thực tập tốt nghiệp (TTTN)
+        $dot = Dot::find($dotId);
+        if ($dot && $dot->loai_dot !== 'TTTN') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Thao tác phân công hướng dẫn chỉ áp dụng cho đợt Thực tập tốt nghiệp (TTTN)!'
+            ], 400);
+        }
 
         $supervisorName = $request->input('supervisor');
 
@@ -222,7 +327,7 @@ class PhanCongHdttController extends Controller
 
     public function getTeachers(Request $request)
     {
-        $teachers = GiangVien::all();
+        $teachers = GiangVien::where('dang_hoat_dong', 1)->get();
         
         $assignedCounts = DB::table('phanconghdtt')
             ->select('giang_vien_id', DB::raw('count(*) as total'))
