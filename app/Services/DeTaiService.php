@@ -199,7 +199,9 @@ class DeTaiService
             'slots' => $slotsStr,
             'rejectReason' => $deTai->ly_do_tu_choi ?? '',
             'status' => $this->mapBackendStatusToFrontend($deTai->trang_thai),
-            'description' => $deTai->mo_ta ?? ''
+            'description' => $deTai->mo_ta ?? '',
+            'direction' => $deTai->huong_de_tai === 'MANG_MAY_TINH' ? 'Mạng máy tính' : 'Phát triển phần mềm',
+            'fileUrl' => $deTai->file_mo_ta ?? ''
         ];
     }
 
