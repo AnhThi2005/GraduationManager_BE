@@ -53,14 +53,17 @@ class BaoCaoController extends Controller
             // Định dạng ngày cập nhật
             $updatedAt = $r->thoi_gian_nop ? Carbon::parse($r->thoi_gian_nop)->format('d/m/Y') : '—';
 
+            // Lấy nhận xét từ GV để xác định trạng thái duyệt
+            $comment = DB::table('nhanxetbaocao')->where('bao_cao_id', $r->bao_cao_id)->first();
+
             // Map trạng thái sang chuẩn Frontend mong đợi
-            $status = 'Nháp';
-            if ($r->trang_thai === 'DA_DUYET') {
-                $status = 'Đã duyệt';
-            } else if ($r->trang_thai === 'CHO_DUYET') {
-                $status = 'Chờ duyệt';
-            } else if ($r->trang_thai === 'TU_CHOI') {
-                $status = 'Bị từ chối';
+            $status = 'Chờ duyệt';
+            if ($comment) {
+                if ($comment->danh_gia === 'DAT') {
+                    $status = 'Đã duyệt';
+                } else if ($comment->danh_gia === 'KHONG_DAT') {
+                    $status = 'Bị từ chối';
+                }
             }
 
             $fileUrl = null;
@@ -142,7 +145,7 @@ class BaoCaoController extends Controller
         ], [
             'noi_dung' => $noiDungStr,
             'duong_dan_file' => $filePath ?? "week{$week}.pdf",
-            'trang_thai' => 'CHO_DUYET',
+            'trang_thai' => 'DA_NOP',
             'thoi_gian_nop' => Carbon::now()->toDateTimeString()
         ]);
 
@@ -216,14 +219,17 @@ class BaoCaoController extends Controller
             // Định dạng ngày cập nhật
             $updatedAt = $r->thoi_gian_nop ? Carbon::parse($r->thoi_gian_nop)->format('d/m/Y') : '—';
 
+            // Lấy nhận xét từ GV để xác định trạng thái duyệt
+            $comment = DB::table('nhanxetbaocao')->where('bao_cao_id', $r->bao_cao_id)->first();
+
             // Map trạng thái sang chuẩn Frontend mong đợi ('Đã duyệt' | 'Đang chấm điểm' | 'Nháp')
-            $status = 'Nháp';
-            if ($r->trang_thai === 'DA_DUYET') {
-                $status = 'Đã duyệt';
-            } else if ($r->trang_thai === 'CHO_DUYET') {
-                $status = 'Đang chấm điểm';
-            } else if ($r->trang_thai === 'TU_CHOI') {
-                $status = 'Bị từ chối';
+            $status = 'Đang chấm điểm';
+            if ($comment) {
+                if ($comment->danh_gia === 'DAT') {
+                    $status = 'Đã duyệt';
+                } else if ($comment->danh_gia === 'KHONG_DAT') {
+                    $status = 'Bị từ chối';
+                }
             }
 
             return [
@@ -300,7 +306,7 @@ class BaoCaoController extends Controller
                 'loai_bao_cao' => 'DO_AN',
                 'noi_dung' => $noiDungStr,
                 'duong_dan_file' => $file ?? 'draft.pdf',
-                'trang_thai' => 'CHO_DUYET',
+                'trang_thai' => 'DA_NOP',
                 'thoi_gian_nop' => Carbon::now()->toDateTimeString()
             ]);
         } else {
@@ -308,7 +314,7 @@ class BaoCaoController extends Controller
             $report->update([
                 'noi_dung' => $noiDungStr,
                 'duong_dan_file' => $file ?? $report->duong_dan_file,
-                'trang_thai' => 'CHO_DUYET',
+                'trang_thai' => 'DA_NOP',
                 'thoi_gian_nop' => Carbon::now()->toDateTimeString()
             ]);
         }
