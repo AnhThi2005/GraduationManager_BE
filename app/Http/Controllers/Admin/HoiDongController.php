@@ -49,8 +49,11 @@ class HoiDongController extends Controller
     public function themMoi(ThemHoiDongRequest $request)
     {
 
-        $activePeriod = Dot::orderBy('dot_id', 'desc')->first();
-        $dotId = $activePeriod ? $activePeriod->dot_id : 1;
+        $dotId = $request->input('dot_id') ?? $request->input('dotId');
+        if (empty($dotId)) {
+            $activePeriod = Dot::orderBy('dot_id', 'desc')->first();
+            $dotId = $activePeriod ? $activePeriod->dot_id : 1;
+        }
 
         return DB::transaction(function() use ($request, $dotId) {
             $hd = HoiDong::create([
@@ -85,6 +88,7 @@ class HoiDongController extends Controller
 
             // Save groups & schedule
             foreach ($topics as $idx => $t) {
+                if (empty($t)) continue;
                 $nhomId = $t['nhom_id'] ?? $t['id'] ?? null;
                 if (!$nhomId) continue;
 
@@ -139,6 +143,7 @@ class HoiDongController extends Controller
                 'phong_bao_ve' => $request->input('room', $hd->phong_bao_ve),
                 'ngay_bao_ve' => $request->input('date', $hd->ngay_bao_ve),
                 'gio_bao_ve' => $request->input('time', $hd->gio_bao_ve),
+                'trang_thai' => $request->input('status', $hd->trang_thai),
             ]);
 
             // Save members if sent
@@ -173,6 +178,7 @@ class HoiDongController extends Controller
 
                 $topics = $request->input('topics', []);
                 foreach ($topics as $idx => $t) {
+                    if (empty($t)) continue;
                     $nhomId = $t['nhom_id'] ?? $t['id'] ?? null;
                     if (!$nhomId) continue;
 
@@ -222,6 +228,8 @@ class HoiDongController extends Controller
             ], 404);
         }
 
+        DB::table('nhomsvda')->where('hoi_dong_id', $id)->update(['hoi_dong_id' => null]);
+        DB::table('lichbaove')->where('hoi_dong_id', $id)->delete();
         DB::table('thanhvienhoidong')->where('hoi_dong_id', $id)->delete();
         $hd->delete();
 
@@ -331,7 +339,8 @@ class HoiDongController extends Controller
                 'topicCode' => $code,
                 'topicName' => $title,
                 'members' => $studentsList,
-                'advisorId' => ($nhom->deTai && $nhom->deTai->giangVien) ? $nhom->deTai->giangVien->ho_ten : '—',
+                'advisorId' => ($nhom->deTai && $nhom->deTai->giangVien) ? (string) $nhom->deTai->giangVien->giang_vien_id : '—',
+                'advisorName' => ($nhom->deTai && $nhom->deTai->giangVien) ? (($nhom->deTai->giangVien->hoc_vi ? $nhom->deTai->giangVien->hoc_vi . ' ' : 'ThS. ') . $nhom->deTai->giangVien->ho_ten) : '—',
                 'minutes' => $minutes,
                 'reviewerId' => (string) $reviewerId,
                 'reviewer' => $reviewerName,
@@ -351,6 +360,9 @@ class HoiDongController extends Controller
 
         return [
             'id' => (string) $hd->hoi_dong_id,
+            'status' => $hd->trang_thai ?? 'NHAP',
+            'dot_id' => (string) $hd->dot_id,
+            'batch' => $hd->dot ? $hd->dot->ten_dot : '—',
             'title' => $hd->ten_hoi_dong,
             'dateTime' => ($hd->ngay_bao_ve ? date('d/m/Y', strtotime($hd->ngay_bao_ve)) : date('d/m/Y')) . ($hd->gio_bao_ve ? ' · ' . $hd->gio_bao_ve : ' · 08:00–12:00'),
             'room' => $hd->phong_bao_ve ?? '—',

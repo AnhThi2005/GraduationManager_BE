@@ -3,9 +3,11 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class HoiDong extends Model
 {
+    use SoftDeletes;
     protected $table = 'hoidong';
     protected $primaryKey = 'hoi_dong_id';
     public $timestamps = false;
