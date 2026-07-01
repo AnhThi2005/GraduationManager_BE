@@ -199,7 +199,8 @@ class DeTaiService
             'slots' => $slotsStr,
             'rejectReason' => $deTai->ly_do_tu_choi ?? '',
             'status' => $this->mapBackendStatusToFrontend($deTai->trang_thai),
-            'description' => $deTai->mo_ta ?? ''
+            'description' => $deTai->mo_ta ?? '',
+            'fileUrl' => $deTai->file_mo_ta ?? ''
         ];
     }
 

@@ -112,35 +112,47 @@ class DeTaiController extends Controller
 
         $dotId = $deTai->dot_id;
 
-        // Kiểm tra xem sinh viên đã có nhóm trong đợt này chưa
-        $existingGroup = Nhom::where('dot_id', $dotId)
+        // Tìm nhóm mà sinh viên đang tham gia trong đợt này
+        $nhom = Nhom::where('dot_id', $dotId)
             ->whereHas('members', function($q) use ($sinhVien) {
                 $q->where('sinhvien.sinh_vien_id', $sinhVien->sinh_vien_id);
             })->first();
 
-        if ($existingGroup) {
+        // Yêu cầu phải có nhóm trước mới được đăng ký đề tài
+        if (!$nhom) {
             return response()->json([
                 'success' => false,
-                'message' => 'Bạn đã đăng ký hoặc tham gia một nhóm khác trong đợt tốt nghiệp này rồi!'
+                'message' => 'Bạn phải tạo nhóm ĐATN trước khi đăng ký đề tài!'
             ], 400);
         }
 
-        // Tạo nhóm mới và chỉ định sinh viên làm trưởng nhóm
+        // Kiểm tra xem sinh viên hiện tại có phải là trưởng nhóm hay không. Chỉ trưởng nhóm mới được đăng ký đề tài.
+        $pivot = DB::table('thanhviennhom')
+            ->where('nhom_id', $nhom->nhom_id)
+            ->where('sinh_vien_id', $sinhVien->sinh_vien_id)
+            ->first();
+
+        if (!$pivot || $pivot->la_truong_nhom != 1) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Chỉ trưởng nhóm mới có quyền đăng ký đề tài cho nhóm.'
+            ], 400);
+        }
+
+        // Nếu đề tài đã được duyệt, không cho phép thay đổi
+        if ($nhom->trang_thai_duyet === 'DA_DUYET') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Đề tài của nhóm đã được phê duyệt, bạn không thể thay đổi đề tài.'
+            ], 400);
+        }
+
+        // Cập nhật đề tài cho nhóm hiện tại
         DB::beginTransaction();
         try {
-            $nhom = Nhom::create([
+            $nhom->update([
                 'de_tai_id' => $deTai->de_tai_id,
-                'dot_id' => $dotId,
-                'trang_thai_nhom' => 'HOAT_DONG',
                 'trang_thai_duyet' => 'CHO_DUYET'
-            ]);
-
-            // Gắn thành viên nhóm
-            DB::table('thanhviennhom')->insert([
-                'nhom_id' => $nhom->nhom_id,
-                'sinh_vien_id' => $sinhVien->sinh_vien_id,
-                'la_truong_nhom' => 1,
-                'dieu_kien_lam_do_an' => 1
             ]);
 
             DB::commit();
@@ -205,6 +217,13 @@ class DeTaiController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Bạn chưa đăng ký đề tài nào.'
+            ], 400);
+        }
+
+        if ($nhom->trang_thai_duyet === 'DA_DUYET') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Đề tài đã được phê duyệt bởi giảng viên, bạn không thể tự ý hủy đăng ký.'
             ], 400);
         }
 
@@ -355,23 +374,7 @@ class DeTaiController extends Controller
 
         DB::beginTransaction();
         try {
-            if (!$nhom) {
-                // Nếu sinh viên chưa có nhóm, tự động tạo nhóm mới với vai trò trưởng nhóm
-                $nhom = Nhom::create([
-                    'de_tai_id' => $topicId, // Có thể null nếu sinh viên chưa chọn đề tài mà chỉ tạo nhóm trước
-                    'dot_id' => $activePeriod->dot_id,
-                    'trang_thai_nhom' => 'HOAT_DONG',
-                    'trang_thai_duyet' => 'CHO_DUYET'
-                ]);
-
-                // Thêm sinh viên hiện tại làm trưởng nhóm
-                DB::table('thanhviennhom')->insert([
-                    'nhom_id' => $nhom->nhom_id,
-                    'sinh_vien_id' => $sinhVien->sinh_vien_id,
-                    'la_truong_nhom' => 1,
-                    'dieu_kien_lam_do_an' => 1
-                ]);
-            } else {
+            if ($nhom) {
                 // Kiểm tra xem sinh viên hiện tại có phải là trưởng nhóm hay không. Chỉ trưởng nhóm mới được mời thành viên.
                 $pivot = DB::table('thanhviennhom')
                     ->where('nhom_id', $nhom->nhom_id)
@@ -381,6 +384,29 @@ class DeTaiController extends Controller
                 if (!$pivot || $pivot->la_truong_nhom != 1) {
                     return response()->json(['success' => false, 'message' => 'Chỉ trưởng nhóm mới có quyền gửi lời mời thành viên.'], 400);
                 }
+
+                // Check giới hạn 2 thành viên trong nhóm (bao gồm cả thành viên hiện tại và các lời mời đang chờ)
+                $memberCount = DB::table('thanhviennhom')->where('nhom_id', $nhom->nhom_id)->count();
+                $invitedCount = LoiMoiNhom::where('nhom_id', $nhom->nhom_id)->where('trang_thai_xac_nhan', 'CHO_XAC_NHAN')->count();
+                if ($memberCount + $invitedCount >= 2) {
+                    return response()->json(['success' => false, 'message' => 'Nhóm đã đạt hoặc vượt quá số lượng thành viên tối đa (tối đa 2 sinh viên).'], 400);
+                }
+            } else {
+                // Nếu sinh viên chưa có nhóm, tự động tạo nhóm mới với vai trò trưởng nhóm
+                $nhom = Nhom::create([
+                    'de_tai_id' => $topicId, // Có thể null nếu sinh viên chưa chọn đề tài mà chỉ tạo nhóm trước
+                    'dot_id' => $activePeriod->dot_id,
+                    'trang_thai_nhom' => 'MOI_TAO',
+                    'trang_thai_duyet' => 'CHO_DUYET'
+                ]);
+
+                // Thêm sinh viên hiện tại làm trưởng nhóm
+                DB::table('thanhviennhom')->insert([
+                    'nhom_id' => $nhom->nhom_id,
+                    'sinh_vien_id' => $sinhVien->sinh_vien_id,
+                    'la_truong_nhom' => 1,
+                    'dieu_kien_lam_do_an' => 'DAT'
+                ]);
             }
 
             // Tìm sinh viên cần mời theo mã số sinh viên
@@ -542,6 +568,12 @@ class DeTaiController extends Controller
             return response()->json(['success' => false, 'message' => 'Nhóm gửi lời mời không còn tồn tại.'], 400);
         }
 
+        // Kiểm tra số lượng thành viên hiện tại của nhóm
+        $memberCount = DB::table('thanhviennhom')->where('nhom_id', $nhom->nhom_id)->count();
+        if ($memberCount >= 2) {
+            return response()->json(['success' => false, 'message' => 'Nhóm đã đạt số lượng thành viên tối đa (tối đa 2 sinh viên).'], 400);
+        }
+
         // Kiểm tra xem sinh viên hiện tại đã gia nhập nhóm nào khác trong đợt này chưa
         $existingGroup = Nhom::where('dot_id', $nhom->dot_id)
             ->whereHas('members', function($q) use ($sinhVien) {
@@ -563,7 +595,7 @@ class DeTaiController extends Controller
                 'nhom_id' => $nhom->nhom_id,
                 'sinh_vien_id' => $sinhVien->sinh_vien_id,
                 'la_truong_nhom' => 0,
-                'dieu_kien_lam_do_an' => 1
+                'dieu_kien_lam_do_an' => 'DAT'
             ]);
 
             // Từ chối tất cả lời mời chờ khác của sinh viên này trong đợt hiện tại
