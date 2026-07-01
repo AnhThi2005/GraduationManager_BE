@@ -110,6 +110,13 @@ class DeTaiController extends Controller
             ], 404);
         }
 
+        if ($deTai->trang_thai !== 'DA_DUYET') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Đề tài này chưa được phê duyệt hoặc không khả dụng để đăng ký.'
+            ], 400);
+        }
+
         $dotId = $deTai->dot_id;
 
         // Kiểm tra xem sinh viên đã có nhóm trong đợt này chưa
@@ -331,8 +338,12 @@ class DeTaiController extends Controller
         // convert string/number topicId to clean type
         if ($topicId !== null) {
             $topicId = (int)$topicId;
-            if ($topicId <= 0 || !\App\Models\DeTai::where('de_tai_id', $topicId)->exists()) {
-                $topicId = null;
+            $deTaiCheck = \App\Models\DeTai::find($topicId);
+            if (!$deTaiCheck) {
+                return response()->json(['success' => false, 'message' => 'Đề tài không tồn tại.'], 404);
+            }
+            if ($deTaiCheck->trang_thai !== 'DA_DUYET') {
+                return response()->json(['success' => false, 'message' => 'Đề tài này chưa được phê duyệt hoặc không khả dụng để đăng ký.'], 400);
             }
         }
 

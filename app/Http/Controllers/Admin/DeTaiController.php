@@ -23,9 +23,15 @@ class DeTaiController extends Controller
     public function layDanhSach(Request $request)
     {
         $limit = $request->input('limit', 10);
+        $user = $request->user();
+        $status = $request->input('status');
+        if ($user && $user->tokenCan('SINH_VIEN')) {
+            $status = 'approved';
+        }
+
         $filters = [
             'keyword' => $request->input('keyword'),
-            'status' => $request->input('status'),
+            'status' => $status,
             'periodId' => $request->input('periodId')
         ];
 
