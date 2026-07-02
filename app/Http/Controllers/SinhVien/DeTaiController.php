@@ -438,7 +438,7 @@ class DeTaiController extends Controller
                 $nhom = Nhom::create([
                     'de_tai_id' => $topicId, // Có thể null nếu sinh viên chưa chọn đề tài mà chỉ tạo nhóm trước
                     'dot_id' => $activePeriod->dot_id,
-                    'trang_thai_nhom' => 'HOAT_DONG',
+                    'trang_thai_nhom' => 'MOI_TAO',
                     'trang_thai_duyet' => 'CHO_DUYET'
                 ]);
 
