@@ -69,17 +69,22 @@ class ThucTapController extends Controller
             ], 401);
         }
 
-        $request->validate([
+        $rules = [
             'companyName' => 'required|string|max:255',
             'field' => 'nullable|string|max:255',
             'address' => 'nullable|string|max:255',
             'mentor' => 'nullable|string|max:255',
             'phone' => 'nullable|string|max:255',
-            'email' => 'nullable|string|email|max:255',
             'duration' => 'nullable|string|max:255',
             'confirmPaper' => 'nullable|boolean',
             'internshipAddress' => 'nullable|string|max:255'
-        ]);
+        ];
+
+        if ($request->filled('email')) {
+            $rules['email'] = 'string|email|max:255';
+        }
+
+        $request->validate($rules);
 
         $companyName = $request->input('companyName');
 
@@ -126,6 +131,19 @@ class ThucTapController extends Controller
             ], 400);
         }
 
+        // Kiểm tra xem đã có đăng ký được duyệt trong đợt này chưa
+        $daCoDangKyDuyet = DangKyThucTap::where('sinh_vien_id', $sinhVien->sinh_vien_id)
+            ->where('dot_id', $activePeriod->dot_id)
+            ->where('trang_thai', 'DA_DUYET')
+            ->exists();
+
+        if ($daCoDangKyDuyet) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Nơi thực tập của bạn trong đợt này đã được phê duyệt chính thức. Không thể tự ý khai báo lại!'
+            ], 400);
+        }
+
         // Xóa đăng ký cũ trong đợt này nếu có
         DangKyThucTap::where('sinh_vien_id', $sinhVien->sinh_vien_id)
             ->where('dot_id', $activePeriod->dot_id)
@@ -137,7 +155,10 @@ class ThucTapController extends Controller
             ? ($request->input('internshipAddress') ?: ($request->input('address') ?: 'Địa chỉ công ty'))
             : null;
 
-        // Tạo yêu cầu khai báo mới ở trạng thái chờ duyệt
+        // Nếu công ty đã có sẵn và đang hoạt động, tự động duyệt đăng ký thực tập cho sinh viên
+        $trangThaiReg = ($company && $company->trang_thai === 'HOAT_DONG') ? 'DA_DUYET' : 'CHO_DUYET';
+
+        // Tạo yêu cầu khai báo mới ở trạng thái chờ duyệt hoặc đã duyệt tương ứng
         $reg = DangKyThucTap::create([
             'sinh_vien_id' => $sinhVien->sinh_vien_id,
             'dot_id' => $activePeriod->dot_id,
@@ -147,7 +168,7 @@ class ThucTapController extends Controller
             'vi_tri_thuc_tap' => $request->input('field') ?? '',
             'thoi_gian_thuc_tap' => $request->input('duration') ?? '8 tuần',
             'dia_chi_thuc_tap' => $internshipAddress,
-            'trang_thai' => 'CHO_DUYET'
+            'trang_thai' => $trangThaiReg
         ]);
 
         // Broadcast thông báo realtime cho admin

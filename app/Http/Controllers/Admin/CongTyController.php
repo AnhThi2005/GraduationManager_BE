@@ -236,7 +236,8 @@ class CongTyController extends Controller
 
     public function xemChiTietChuaThucTap(Request $request, $id)
     {
-        $sv = $this->congTyService->getNoCompanyStudentDetail($id);
+        $periodId = $request->query('periodId') ?? $request->input('periodId');
+        $sv = $this->congTyService->getNoCompanyStudentDetail($id, $periodId);
         if (!$sv) {
             return response()->json([
                 'success' => false,
@@ -255,8 +256,9 @@ class CongTyController extends Controller
     public function capNhatChuaThucTap(Request $request, $id)
     {
         $status = $request->input('status'); // 'not_registered' | 'searching' | 'has_company'
+        $periodId = $request->query('periodId') ?? $request->input('periodId');
 
-        $res = $this->congTyService->updateNoCompanyStudentStatus($id, $status);
+        $res = $this->congTyService->updateNoCompanyStudentStatus($id, $status, $periodId);
         if (!$res) {
             return response()->json([
                 'success' => false,

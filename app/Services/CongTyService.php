@@ -110,6 +110,13 @@ class CongTyService
 
         $company->update($updateData);
 
+        // Nếu công ty được duyệt hoạt động, tự động duyệt tất cả các đơn đăng ký thực tập đang chờ của sinh viên tại công ty này
+        if ($company->trang_thai === 'HOAT_DONG') {
+            DangKyThucTap::where('cong_ty_id', $id)
+                ->where('trang_thai', 'CHO_DUYET')
+                ->update(['trang_thai' => 'DA_DUYET']);
+        }
+
         // Cập nhật lĩnh vực hoạt động
         if (isset($data['field'])) {
             DB::table('congtylinhvuc')->where('cong_ty_id', $id)->delete();
@@ -356,26 +363,43 @@ class CongTyService
     /**
      * Xem chi tiết sinh viên chưa thực tập
      */
-    public function getNoCompanyStudentDetail($id)
+    public function getNoCompanyStudentDetail($id, $periodId = null)
     {
         $sv = SinhVien::with('lop')->find($id);
         if (!$sv) {
             return null;
         }
 
-        // Lấy đăng ký gần nhất của sinh viên
-        $reg = DangKyThucTap::where('sinh_vien_id', $id)->orderBy('dang_ky_id', 'desc')->first();
+        $dotId = $periodId;
+        if (!$dotId) {
+            // Tìm đợt TTTN đang hoạt động liên kết với lớp của sinh viên
+            $lopId = $sv->lop_id;
+            $activePeriod = Dot::where('loai_dot', 'TTTN')
+                ->where('trang_thai', '!=', 'DA_DONG')
+                ->whereHas('lops', function($q) use ($lopId) {
+                    $q->where('lop.lop_id', $lopId);
+                })->first();
+
+            $dotId = $activePeriod ? $activePeriod->dot_id : null;
+            if (!$dotId) {
+                $newestPeriod = Dot::where('loai_dot', 'TTTN')->orderBy('dot_id', 'desc')->first();
+                $dotId = $newestPeriod ? $newestPeriod->dot_id : null;
+            }
+        }
+
+        // Lấy đăng ký của sinh viên trong đợt này
+        $reg = null;
+        if ($dotId) {
+            $reg = DangKyThucTap::where('sinh_vien_id', $id)
+                ->where('dot_id', $dotId)
+                ->first();
+        }
+
         $status = 'not_registered';
         if ($reg && $reg->trang_thai === 'DA_DUYET') {
             $status = 'has_company';
         } elseif ($reg && ($reg->trang_thai === 'CHO_DUYET' || $reg->trang_thai === 'TU_CHOI')) {
             $status = 'searching';
-        }
-
-        $dotId = $reg ? $reg->dot_id : null;
-        if (!$dotId) {
-            $activePeriod = Dot::where('loai_dot', 'TTTN')->orderBy('dot_id', 'desc')->first();
-            $dotId = $activePeriod ? $activePeriod->dot_id : null;
         }
 
         $assign = null;
@@ -386,6 +410,14 @@ class CongTyService
                 ->first();
         }
 
+        $companyName = '—';
+        $internshipLocation = '—';
+        if ($reg) {
+            $reg->load('congTy');
+            $companyName = $reg->congTy ? $reg->congTy->ten_cong_ty : ($reg->dia_chi_thuc_tap ?? '—');
+            $internshipLocation = $reg->vi_tri_thuc_tap ?? '—';
+        }
+
         return [
             'id' => (string)$sv->sinh_vien_id,
             'studentId' => $sv->ma_so_sinh_vien,
@@ -394,7 +426,9 @@ class CongTyService
             'phone' => $sv->so_dien_thoai ?? '',
             'status' => $status,
             'supervisor' => $assign ? $assign->giangVien->ho_ten : null,
-            'assignmentStatus' => $assign ? 'assigned' : 'unassigned'
+            'assignmentStatus' => $assign ? 'assigned' : 'unassigned',
+            'companyName' => $companyName,
+            'internshipLocation' => $internshipLocation
         ];
     }
 
@@ -497,19 +531,46 @@ class CongTyService
     /**
      * Cập nhật trạng thái sinh viên chưa có nơi thực tập
      */
-    public function updateNoCompanyStudentStatus($sinhVienId, $status)
+    public function updateNoCompanyStudentStatus($sinhVienId, $status, $periodId = null)
     {
-        $reg = DangKyThucTap::where('sinh_vien_id', $sinhVienId)->orderBy('dang_ky_id', 'desc')->first();
-        if ($reg) {
-            if ($status === 'has_company') {
-                $reg->update(['trang_thai' => 'DA_DUYET']);
-            } elseif ($status === 'searching') {
-                $reg->update(['trang_thai' => 'CHO_DUYET']);
-            } elseif ($status === 'not_registered') {
-                $reg->update(['trang_thai' => 'TU_CHOI']);
+        $sv = SinhVien::find($sinhVienId);
+        if (!$sv) {
+            return null;
+        }
+
+        $dotId = $periodId;
+        if (!$dotId) {
+            // Tìm đợt TTTN đang hoạt động liên kết với lớp của sinh viên
+            $lopId = $sv->lop_id;
+            $activePeriod = Dot::where('loai_dot', 'TTTN')
+                ->where('trang_thai', '!=', 'DA_DONG')
+                ->whereHas('lops', function($q) use ($lopId) {
+                    $q->where('lop.lop_id', $lopId);
+                })->first();
+
+            $dotId = $activePeriod ? $activePeriod->dot_id : null;
+            if (!$dotId) {
+                $newestPeriod = Dot::where('loai_dot', 'TTTN')->orderBy('dot_id', 'desc')->first();
+                $dotId = $newestPeriod ? $newestPeriod->dot_id : null;
             }
         }
 
-        return $this->getNoCompanyStudentDetail($sinhVienId);
+        if ($dotId) {
+            $reg = DangKyThucTap::where('sinh_vien_id', $sinhVienId)
+                ->where('dot_id', $dotId)
+                ->first();
+
+            if ($reg) {
+                if ($status === 'has_company') {
+                    $reg->update(['trang_thai' => 'DA_DUYET']);
+                } elseif ($status === 'searching') {
+                    $reg->update(['trang_thai' => 'CHO_DUYET']);
+                } elseif ($status === 'not_registered') {
+                    $reg->update(['trang_thai' => 'TU_CHOI']);
+                }
+            }
+        }
+
+        return $this->getNoCompanyStudentDetail($sinhVienId, $dotId);
     }
 }
