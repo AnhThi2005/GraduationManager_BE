@@ -18,7 +18,6 @@ Route::get('/', function () {
 
 // Fallback routes for frontend requests missing the /api prefix
 Route::middleware([
-    \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
     'auth:sanctum',
     'quyen:ADMIN'
 ])->group(function () {
@@ -79,7 +78,6 @@ Route::middleware([
 });
 
 Route::middleware([
-    \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
     'auth:sanctum',
     'quyen:SINH_VIEN'
 ])->group(function () {
@@ -103,7 +101,6 @@ Route::middleware([
 });
 
 Route::middleware([
-    \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
     'auth:sanctum',
     'quyen:GIANG_VIEN'
 ])->group(function () {
@@ -178,7 +175,6 @@ Route::middleware([
 
 // Fallback upload routes (requires authentication, open to all roles)
 Route::middleware([
-    \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
     'auth:sanctum'
 ])->group(function () {
     Route::post('/v1/file-upload/upload', [TaiLenController::class, 'upload']);

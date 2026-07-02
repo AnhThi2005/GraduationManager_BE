@@ -13,20 +13,14 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
-        $middleware->api(prepend: [
-            \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
-        ]);
-        
         $middleware->alias([
             'role' => \Spatie\Permission\Middlewares\RoleMiddleware::class,
             'permission' => \Spatie\Permission\Middlewares\PermissionMiddleware::class,
         ]);
 
         $middleware->alias([
-        'quyen' => \App\Http\Middleware\KiemTraQuyen::class,
+            'quyen' => \App\Http\Middleware\KiemTraQuyen::class,
         ]);
-
-        $middleware->statefulApi();
 
         $middleware->validateCsrfTokens(except: [
             'api/*',

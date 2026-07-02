@@ -240,15 +240,22 @@ class DeTaiController extends Controller
                 'dangkydetai.ngay_dang_ky as submittedAt',
                 'dangkydetai.ly_do_tu_choi as note'
             ])
+            ->orderBy('dangkydetai.ngay_dang_ky', 'asc')
             ->get();
-
+ 
         $rows = $groups->map(function ($g) {
             $members = DB::table('thanhviennhom')
                 ->join('sinhvien', 'thanhviennhom.sinh_vien_id', '=', 'sinhvien.sinh_vien_id')
+                ->leftJoin('lop', 'sinhvien.lop_id', '=', 'lop.lop_id')
                 ->where('thanhviennhom.nhom_id', $g->id)
-                ->select('sinhvien.ho_ten as name', 'sinhvien.ma_so_sinh_vien as code', 'thanhviennhom.la_truong_nhom')
+                ->select([
+                    'sinhvien.ho_ten as name',
+                    'sinhvien.ma_so_sinh_vien as code',
+                    'lop.ten_lop as className',
+                    'thanhviennhom.la_truong_nhom'
+                ])
                 ->get();
-
+ 
             $leader = $members->firstWhere('la_truong_nhom', 1);
             $statusText = 'pending';
             if ($g->status === 'DA_DUYET') {
@@ -256,7 +263,7 @@ class DeTaiController extends Controller
             } elseif ($g->status === 'TU_CHOI') {
                 $statusText = 'rejected';
             }
-
+ 
             return [
                 'id' => (string)$g->id,
                 'topicCode' => 'NH' . str_pad($g->id, 2, '0', STR_PAD_LEFT),
@@ -264,27 +271,28 @@ class DeTaiController extends Controller
                 'groupName' => 'Nhóm #' . $g->id,
                 'leader' => $leader ? $leader->name : '—',
                 'members' => $members->count(),
+                'membersList' => $members,
                 'submittedAt' => $g->submittedAt ? date('d/m/Y H:i', strtotime($g->submittedAt)) : date('d/m/Y H:i'),
                 'status' => $statusText,
                 'note' => $g->note ?? ''
             ];
         });
-
+ 
         return response()->json($rows);
     }
-
+ 
     /**
      * PATCH /private/v1/teacher/groups/{groupId}
      */
     public function updateGroupStatus(Request $request, $groupId)
     {
         $action = $request->input('action');
-
+ 
         $dangkydetai = DB::table('dangkydetai')->where('nhom_id', $groupId)->first();
         if (!$dangkydetai) {
             return response()->json(['success' => false, 'message' => 'Không tìm thấy đăng ký đề tài của nhóm!'], 404);
         }
-
+ 
         if ($action === 'accept') {
             DB::table('dangkydetai')->where('nhom_id', $groupId)->update(['trang_thai_duyet' => 'DA_DUYET']);
             DB::table('nhomsvda')->where('nhom_id', $groupId)->update([
@@ -298,25 +306,31 @@ class DeTaiController extends Controller
                 'trang_thai_duyet' => 'TU_CHOI'
             ]);
         }
-
+ 
         // Return updated group structure
-        $g = DB::table('nhomsvda')
-            ->leftJoin('detai', 'nhomsvda.de_tai_id', '=', 'detai.de_tai_id')
-            ->where('nhomsvda.nhom_id', $groupId)
+        $g = DB::table('dangkydetai')
+            ->join('detai', 'dangkydetai.de_tai_id', '=', 'detai.de_tai_id')
+            ->where('dangkydetai.nhom_id', $groupId)
             ->select([
-                'nhomsvda.nhom_id as id',
+                'dangkydetai.nhom_id as id',
                 'detai.ten_de_tai as topicName'
             ])
             ->first();
-
+ 
         $members = DB::table('thanhviennhom')
             ->join('sinhvien', 'thanhviennhom.sinh_vien_id', '=', 'sinhvien.sinh_vien_id')
+            ->leftJoin('lop', 'sinhvien.lop_id', '=', 'lop.lop_id')
             ->where('thanhviennhom.nhom_id', $groupId)
-            ->select('sinhvien.ho_ten as name', 'sinhvien.ma_so_sinh_vien as code', 'thanhviennhom.la_truong_nhom')
+            ->select([
+                'sinhvien.ho_ten as name',
+                'sinhvien.ma_so_sinh_vien as code',
+                'lop.ten_lop as className',
+                'thanhviennhom.la_truong_nhom'
+            ])
             ->get();
-
+ 
         $leader = $members->firstWhere('la_truong_nhom', 1);
-
+ 
         $groupObj = [
             'id' => (string)$groupId,
             'topicCode' => 'NH' . str_pad($groupId, 2, '0', STR_PAD_LEFT),
@@ -324,10 +338,26 @@ class DeTaiController extends Controller
             'groupName' => 'Nhóm #' . $groupId,
             'leader' => $leader ? $leader->name : '—',
             'members' => $members->count(),
+            'membersList' => $members,
             'submittedAt' => date('d/m/Y H:i'),
             'status' => $action === 'accept' ? 'accepted' : 'rejected',
             'note' => ''
         ];
+ 
+        // Broadcast the real-time event to sync admin and other clients
+        \App\Services\RealtimeService::broadcast('slot_updated', [
+            'type' => 'group_status_updated',
+            'groupId' => $groupId,
+            'status' => $action === 'accept' ? 'accepted' : 'rejected',
+            'payload' => $groupObj
+        ]);
+
+        \App\Services\RealtimeService::broadcast('notification', [
+            'title' => $action === 'accept' ? 'Đăng ký đề tài được duyệt' : 'Đăng ký đề tài bị từ chối',
+            'message' => 'Giảng viên đã ' . ($action === 'accept' ? 'duyệt' : 'từ chối') . ' đăng ký đề tài cho ' . ($groupObj['groupName'] ?? "nhóm #{$groupId}"),
+            'type' => 'group_status_updated',
+            'payload' => $groupObj
+        ]);
 
         return response()->json([
             'success' => true,

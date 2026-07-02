@@ -202,6 +202,22 @@ class BaoCaoController extends Controller
             ]);
         }
 
+        // Kiểm tra xem sinh viên đã được duyệt nhóm đề tài chưa
+        $nhom = DB::table('nhomsvda')
+            ->join('thanhviennhom', 'nhomsvda.nhom_id', '=', 'thanhviennhom.nhom_id')
+            ->where('nhomsvda.dot_id', $activePeriod->dot_id)
+            ->where('thanhviennhom.sinh_vien_id', $sinhVien->sinh_vien_id)
+            ->first();
+
+        if (!$nhom || $nhom->trang_thai_duyet !== 'DA_DUYET') {
+            return response()->json([
+                'code' => 200,
+                'results' => [
+                    'objects' => []
+                ]
+            ]);
+        }
+
         $reports = BaoCaoTienDo::where('sinh_vien_id', $sinhVien->sinh_vien_id)
             ->where('dot_id', $activePeriod->dot_id)
             ->where('loai_bao_cao', 'DO_AN')
@@ -281,6 +297,20 @@ class BaoCaoController extends Controller
 
         if (!$activePeriod) {
             return response()->json(['success' => false, 'message' => 'Không tìm thấy đợt tốt nghiệp hiện tại.'], 400);
+        }
+
+        // Kiểm tra xem sinh viên đã có nhóm và đề tài được duyệt chưa
+        $nhom = DB::table('nhomsvda')
+            ->join('thanhviennhom', 'nhomsvda.nhom_id', '=', 'thanhviennhom.nhom_id')
+            ->where('nhomsvda.dot_id', $activePeriod->dot_id)
+            ->where('thanhviennhom.sinh_vien_id', $sinhVien->sinh_vien_id)
+            ->first();
+
+        if (!$nhom || $nhom->trang_thai_duyet !== 'DA_DUYET') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Đề tài tốt nghiệp của bạn chưa được duyệt hoặc đã bị từ chối. Bạn không thể thực hiện nộp báo cáo tiến độ!'
+            ], 403);
         }
 
         $noiDungStr = $name . "\n" . $repo . "\n" . $note;

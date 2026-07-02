@@ -78,7 +78,12 @@ class MockAuthController extends Controller
         ], 401); // Trả về 401 thay vì để sập lỗi 500
     }
 
-    $request->user()->tokens()->delete();
+    $token = $request->user()->currentAccessToken();
+    if ($token && method_exists($token, 'delete')) {
+        $token->delete();
+    } else {
+        $request->user()->tokens()->delete();
+    }
 
     return response()->json([
         'success' => true,

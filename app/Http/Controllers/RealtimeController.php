@@ -31,8 +31,8 @@ class RealtimeController extends Controller
                 $request->header('Last-Event-ID', $request->server('HTTP_LAST_EVENT_ID', ''))
             );
             
-            // Reconnect interval for browser EventSource (3 seconds)
-            echo "retry: 3000\n";
+            // Reconnect interval for browser EventSource (10 seconds)
+            echo "retry: 10000\n";
             
             $events = Cache::get('realtime_events', []);
             $newEvents = [];
