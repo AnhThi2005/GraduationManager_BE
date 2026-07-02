@@ -101,12 +101,22 @@ class TrangChuController extends Controller
                 if ($nhom->de_tai_id) {
                     $deTai = DeTai::with('giangVien')->find($nhom->de_tai_id);
                     if ($deTai) {
-                        $datnInfo['status'] = 'Đã đăng ký';
+                        if ($nhom->trang_thai_duyet === 'DA_DUYET') {
+                            $datnInfo['status'] = 'Đã đăng ký';
+                        } else if ($nhom->trang_thai_duyet === 'TU_CHOI') {
+                            $datnInfo['status'] = 'Bị từ chối';
+                        } else {
+                            $datnInfo['status'] = 'Chờ duyệt';
+                        }
                         $datnInfo['topicTitle'] = $deTai->ten_de_tai;
                         $datnInfo['instructor'] = $deTai->giangVien ? $deTai->giangVien->ho_ten : null;
                     }
                 } else {
-                    $datnInfo['status'] = 'Chưa chọn đề tài';
+                    if ($nhom->trang_thai_duyet === 'TU_CHOI') {
+                        $datnInfo['status'] = 'Bị từ chối';
+                    } else {
+                        $datnInfo['status'] = 'Chưa chọn đề tài';
+                    }
                 }
             }
         }

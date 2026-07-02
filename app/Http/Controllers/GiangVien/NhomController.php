@@ -75,6 +75,7 @@ class NhomController extends Controller
 
         // 2. DATN List
         $datnList = Nhom::where('dot_id', $dotId)
+            ->where('trang_thai_duyet', 'DA_DUYET')
             ->whereHas('deTai', function ($q) use ($teacherId) {
                 $q->where('giang_vien_id', $teacherId);
             })
@@ -142,6 +143,7 @@ class NhomController extends Controller
 
         // 1. Guidance Groups
         $guidanceGroups = Nhom::where('dot_id', $dotId)
+            ->where('trang_thai_duyet', 'DA_DUYET')
             ->whereHas('deTai', function ($q) use ($teacherId) {
                 $q->where('giang_vien_id', $teacherId);
             })

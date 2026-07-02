@@ -344,6 +344,21 @@ class DeTaiController extends Controller
             'note' => ''
         ];
  
+        // Broadcast the real-time event to sync admin and other clients
+        \App\Services\RealtimeService::broadcast('slot_updated', [
+            'type' => 'group_status_updated',
+            'groupId' => $groupId,
+            'status' => $action === 'accept' ? 'accepted' : 'rejected',
+            'payload' => $groupObj
+        ]);
+
+        \App\Services\RealtimeService::broadcast('notification', [
+            'title' => $action === 'accept' ? 'Đăng ký đề tài được duyệt' : 'Đăng ký đề tài bị từ chối',
+            'message' => 'Giảng viên đã ' . ($action === 'accept' ? 'duyệt' : 'từ chối') . ' đăng ký đề tài cho ' . ($groupObj['groupName'] ?? "nhóm #{$groupId}"),
+            'type' => 'group_status_updated',
+            'payload' => $groupObj
+        ]);
+
         return response()->json([
             'success' => true,
             'group' => $groupObj

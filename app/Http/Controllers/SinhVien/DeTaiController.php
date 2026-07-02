@@ -143,6 +143,34 @@ class DeTaiController extends Controller
                 'dieu_kien_lam_do_an' => 1
             ]);
 
+            // Lưu thông tin đăng ký vào bảng dangkydetai
+            DB::table('dangkydetai')->insert([
+                'nhom_id' => $nhom->nhom_id,
+                'de_tai_id' => $deTai->de_tai_id,
+                'trang_thai_duyet' => 'CHO_DUYET',
+                'ngay_dang_ky' => date('Y-m-d H:i:s'),
+                'ly_do_tu_choi' => null
+            ]);
+
+            // Broadcast real-time event when a student registers a topic
+            \App\Services\RealtimeService::broadcast('slot_updated', [
+                'type' => 'student_registered_topic',
+                'topicId' => $topicId,
+                'nhomId' => $nhom->nhom_id
+            ]);
+
+            \App\Services\RealtimeService::broadcast('notification', [
+                'title' => 'Đăng ký đề tài mới',
+                'message' => 'Sinh viên ' . $sinhVien->ho_ten . ' vừa đăng ký đề tài: ' . $deTai->ten_de_tai,
+                'type' => 'student_registered_topic',
+                'payload' => [
+                    'topicId' => (string)$deTai->de_tai_id,
+                    'topicTitle' => $deTai->ten_de_tai,
+                    'groupName' => 'Nhóm số #' . $nhom->nhom_id,
+                    'studentName' => $sinhVien->ho_ten,
+                ]
+            ]);
+
             DB::commit();
 
             return response()->json([
@@ -208,6 +236,13 @@ class DeTaiController extends Controller
             ], 400);
         }
 
+        if ($nhom->trang_thai_duyet === 'DA_DUYET') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Đề tài của bạn đã được phê duyệt. Bạn không thể tự ý hủy đăng ký!'
+            ], 400);
+        }
+
         // Kiểm tra xem sinh viên có phải trưởng nhóm không
         $pivot = DB::table('thanhviennhom')
             ->where('nhom_id', $nhom->nhom_id)
@@ -217,6 +252,8 @@ class DeTaiController extends Controller
         DB::beginTransaction();
         try {
             if ($pivot && $pivot->la_truong_nhom == 1) {
+                // Xóa đăng ký đề tài tương ứng
+                DB::table('dangkydetai')->where('nhom_id', $nhom->nhom_id)->delete();
                 // Xóa tất cả thành viên và xóa nhóm
                 DB::table('thanhviennhom')->where('nhom_id', $nhom->nhom_id)->delete();
                 $nhom->delete();
@@ -227,6 +264,11 @@ class DeTaiController extends Controller
                     ->where('sinh_vien_id', $sinhVien->sinh_vien_id)
                     ->delete();
             }
+
+            \App\Services\RealtimeService::broadcast('slot_updated', [
+                'type' => 'student_cancelled_registration',
+                'nhomId' => $nhom->nhom_id
+            ]);
 
             DB::commit();
 
@@ -371,7 +413,25 @@ class DeTaiController extends Controller
                     'la_truong_nhom' => 1,
                     'dieu_kien_lam_do_an' => 1
                 ]);
+
+                // Nếu có chọn đề tài, lưu đăng ký vào bảng dangkydetai
+                if ($topicId) {
+                    DB::table('dangkydetai')->insert([
+                        'nhom_id' => $nhom->nhom_id,
+                        'de_tai_id' => $topicId,
+                        'trang_thai_duyet' => 'CHO_DUYET',
+                        'ngay_dang_ky' => date('Y-m-d H:i:s'),
+                        'ly_do_tu_choi' => null
+                    ]);
+                }
             } else {
+                if ($nhom->trang_thai_duyet === 'DA_DUYET') {
+                    return response()->json(['success' => false, 'message' => 'Nhóm đề tài của bạn đã được duyệt. Không thể mời thêm thành viên!'], 400);
+                }
+                if ($nhom->trang_thai_duyet === 'TU_CHOI') {
+                    return response()->json(['success' => false, 'message' => 'Nhóm đề tài của bạn đã bị từ chối. Vui lòng hủy đăng ký đề tài này để bắt đầu lại.'], 400);
+                }
+
                 // Kiểm tra xem sinh viên hiện tại có phải là trưởng nhóm hay không. Chỉ trưởng nhóm mới được mời thành viên.
                 $pivot = DB::table('thanhviennhom')
                     ->where('nhom_id', $nhom->nhom_id)
@@ -542,6 +602,13 @@ class DeTaiController extends Controller
             return response()->json(['success' => false, 'message' => 'Nhóm gửi lời mời không còn tồn tại.'], 400);
         }
 
+        if ($nhom->trang_thai_duyet === 'DA_DUYET') {
+            return response()->json(['success' => false, 'message' => 'Nhóm này đã được duyệt đề tài tốt nghiệp, không thể tham gia thêm thành viên.'], 400);
+        }
+        if ($nhom->trang_thai_duyet === 'TU_CHOI') {
+            return response()->json(['success' => false, 'message' => 'Nhóm này đã bị từ chối đề tài tốt nghiệp, không thể tham gia.'], 400);
+        }
+
         // Kiểm tra xem sinh viên hiện tại đã gia nhập nhóm nào khác trong đợt này chưa
         $existingGroup = Nhom::where('dot_id', $nhom->dot_id)
             ->whereHas('members', function($q) use ($sinhVien) {
@@ -570,6 +637,11 @@ class DeTaiController extends Controller
             LoiMoiNhom::where('sinh_vien_duoc_moi_id', $sinhVien->sinh_vien_id)
                 ->where('trang_thai_xac_nhan', 'CHO_XAC_NHAN')
                 ->update(['trang_thai_xac_nhan' => 'TU_CHOI']);
+
+            \App\Services\RealtimeService::broadcast('slot_updated', [
+                'type' => 'group_member_joined',
+                'nhomId' => $nhom->nhom_id
+            ]);
 
             DB::commit();
 

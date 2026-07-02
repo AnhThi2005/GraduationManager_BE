@@ -64,14 +64,34 @@ class NhomController extends Controller
         // 1. Cập nhật trạng thái duyệt nếu có truyền lên
         if (isset($body['status'])) {
             $status = $body['status'];
+            $dbStatus = 'CHO_DUYET';
             if ($status === 'APPROVED') {
                 $g->trang_thai_duyet = 'DA_DUYET';
+                $dbStatus = 'DA_DUYET';
             } elseif ($status === 'LOCKED' || $status === 'DISSOLVED') {
                 $g->trang_thai_duyet = 'TU_CHOI';
+                $dbStatus = 'TU_CHOI';
             } elseif ($status === 'PENDING') {
                 $g->trang_thai_duyet = 'CHO_DUYET';
+                $dbStatus = 'CHO_DUYET';
             }
             $g->save();
+            DB::table('dangkydetai')->where('nhom_id', $id)->update(['trang_thai_duyet' => $dbStatus]);
+        }
+
+        // 3. Cập nhật đề tài nếu có truyền lên (gán đề tài)
+        if (isset($body['de_tai_id'])) {
+            $g->de_tai_id = $body['de_tai_id'];
+            $g->save();
+
+            DB::table('dangkydetai')->updateOrInsert(
+                ['nhom_id' => $id],
+                [
+                    'de_tai_id' => $body['de_tai_id'],
+                    'trang_thai_duyet' => 'DA_DUYET',
+                    'ngay_dang_ky' => date('Y-m-d H:i:s')
+                ]
+            );
         }
 
         // 2. Cập nhật danh sách thành viên nếu có truyền lên
@@ -136,9 +156,19 @@ class NhomController extends Controller
         $g = new Nhom();
         $g->dot_id = $dotId;
         $g->de_tai_id = $body['de_tai_id'] ?? null;
-        $g->trang_thai_duyet = 'CHO_DUYET';
+        $g->trang_thai_duyet = $g->de_tai_id ? 'DA_DUYET' : 'CHO_DUYET';
         $g->trang_thai_nhom = 'DU_THANH_VIEN';
         $g->save();
+
+        if ($g->de_tai_id) {
+            DB::table('dangkydetai')->insert([
+                'nhom_id' => $g->nhom_id,
+                'de_tai_id' => $g->de_tai_id,
+                'trang_thai_duyet' => 'DA_DUYET',
+                'ngay_dang_ky' => date('Y-m-d H:i:s'),
+                'ly_do_tu_choi' => null
+            ]);
+        }
         
         if (isset($body['members']) && is_array($body['members'])) {
             foreach ($body['members'] as $idx => $m) {
@@ -198,6 +228,7 @@ class NhomController extends Controller
         ));
 
         DB::table('thanhviennhom')->where('nhom_id', $id)->delete();
+        DB::table('dangkydetai')->where('nhom_id', $id)->delete();
         $g->delete();
 
         \App\Services\RealtimeService::broadcast('slot_updated', [
@@ -223,6 +254,7 @@ class NhomController extends Controller
 
         $g->trang_thai_duyet = 'DA_DUYET';
         $g->save();
+        DB::table('dangkydetai')->where('nhom_id', $id)->update(['trang_thai_duyet' => 'DA_DUYET']);
 
         $updated = Nhom::with(['deTai.giangVien', 'members.lop', 'dot'])->find($id);
 
@@ -252,6 +284,7 @@ class NhomController extends Controller
 
         $g->trang_thai_duyet = 'TU_CHOI';
         $g->save();
+        DB::table('dangkydetai')->where('nhom_id', $id)->update(['trang_thai_duyet' => 'TU_CHOI']);
 
         $updated = Nhom::with(['deTai.giangVien', 'members.lop', 'dot'])->find($id);
 
@@ -269,7 +302,7 @@ class NhomController extends Controller
         ], 200);
     }
 
-    private function transformGroup($g)
+    public function transformGroup($g)
     {
         $hasIneligible = false;
         $members = $g->members->map(function ($m) use (&$hasIneligible) {
