@@ -72,7 +72,7 @@ class DeTaiController extends Controller
             'results' => [
                 'object' => [
                     'topicId' => (string)$nhom->de_tai_id,
-                    'topicTitle' => $nhom->deTai ? $nhom->deTai->ten_de_tai : 'Đề tài tự do',
+                    'topicTitle' => $nhom->deTai ? $nhom->deTai->ten_de_tai : 'Chưa chọn đề tài',
                     'groupName' => 'Nhóm số #' . $nhom->nhom_id,
                     'batch' => $nhom->dot ? $nhom->dot->ten_dot : $activePeriod->ten_dot,
                     'submittedAt' => '24/06/2026 21:00', // Mocked date
