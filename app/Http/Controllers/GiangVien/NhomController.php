@@ -29,11 +29,30 @@ class NhomController extends Controller
             ->where('phanconghdtt.giang_vien_id', $teacherId)
             ->where('phanconghdtt.dot_id', $dotId)
             ->join('sinhvien', 'phanconghdtt.sinh_vien_id', '=', 'sinhvien.sinh_vien_id')
+            ->leftJoin('lop', 'sinhvien.lop_id', '=', 'lop.lop_id')
             ->leftJoin('dangkythuctap', function ($join) use ($dotId) {
                 $join->on('sinhvien.sinh_vien_id', '=', 'dangkythuctap.sinh_vien_id')
-                     ->where('dangkythuctap.dot_id', '=', $dotId);
+                     ->where('dangkythuctap.dot_id', '=', $dotId)
+                     ->where('dangkythuctap.trang_thai', '=', 'DA_DUYET');
             })
             ->leftJoin('congty', 'dangkythuctap.cong_ty_id', '=', 'congty.cong_ty_id')
+            ->select([
+                'sinhvien.sinh_vien_id',
+                'sinhvien.ma_so_sinh_vien',
+                'sinhvien.ho_ten',
+                'sinhvien.email as sinh_vien_email',
+                'sinhvien.so_dien_thoai as sinh_vien_sdt',
+                'lop.ten_lop',
+                'lop.chuyen_nganh',
+                'dangkythuctap.nguoi_huong_dan',
+                'dangkythuctap.sdt_huong_dan',
+                'dangkythuctap.vi_tri_thuc_tap',
+                'dangkythuctap.dia_chi_thuc_tap',
+                'congty.ten_cong_ty',
+                'congty.dia_chi as cong_ty_dia_chi',
+                'congty.ma_so_thue',
+                'congty.email_lien_he'
+            ])
             ->get()
             ->map(function ($row) use ($dotId) {
                 $latestReport = DB::table('baocaotiendo')
@@ -58,13 +77,61 @@ class NhomController extends Controller
                     $comment = $commentRecord ? $commentRecord->noi_dung : '';
                 }
 
+                $reports = DB::table('baocaotiendo')
+                    ->where('sinh_vien_id', $row->sinh_vien_id)
+                    ->where('dot_id', $dotId)
+                    ->where('loai_bao_cao', 'THUC_TAP')
+                    ->orderBy('tuan_so', 'asc')
+                    ->get()
+                    ->map(function ($rep) {
+                        $commentRecord = DB::table('nhanxetbaocao')
+                            ->where('bao_cao_id', $rep->bao_cao_id)
+                            ->first();
+
+                        return [
+                            'bao_cao_id' => $rep->bao_cao_id,
+                            'tuan_so' => $rep->tuan_so,
+                            'noi_dung' => $rep->noi_dung ?? '',
+                            'duong_dan_file' => $rep->duong_dan_file ?? '',
+                            'trang_thai' => $rep->trang_thai === 'DA_NOP' ? 'Đã nộp' : 'Trễ hạn',
+                            'thoi_gian_nop' => date('d/m/Y H:i', strtotime($rep->thoi_gian_nop)),
+                            'comment' => $commentRecord ? $commentRecord->noi_dung : ''
+                        ];
+                    })
+                    ->all();
+
+                $hasCompany = !empty($row->ten_cong_ty);
+
                 return [
                     'id' => (string)$row->ma_so_sinh_vien,
+                    'studentCode' => (string)$row->ma_so_sinh_vien,
                     'name' => $row->ho_ten,
-                    'company' => $row->ten_cong_ty ?? ($row->dia_chi_thuc_tap ?? '—'),
-                    'mentor' => $row->nguoi_huong_dan ?? '—',
-                    'phone' => $row->so_dien_thoai ?? '—',
-                    'email' => $row->email ?? '—',
+                    'class' => $row->ten_lop ?? '—',
+                    'className' => $row->ten_lop ?? '—',
+                    'major' => $row->chuyen_nganh ?? '—',
+                    'majorName' => $row->chuyen_nganh ?? '—',
+                    'email' => $row->sinh_vien_email ?? '—',
+                    'phone' => $row->sinh_vien_sdt ?? '—',
+                    
+                    // Company info
+                    'company' => $hasCompany ? $row->ten_cong_ty : 'Chưa có',
+                    'companyName' => $hasCompany ? $row->ten_cong_ty : 'Chưa có',
+                    'companyAddress' => $hasCompany ? ($row->cong_ty_dia_chi ?? '—') : '—',
+                    'address' => $hasCompany ? ($row->cong_ty_dia_chi ?? '—') : '—',
+                    'internshipPosition' => $hasCompany ? ($row->vi_tri_thuc_tap ?? '—') : '—',
+                    'field' => $hasCompany ? ($row->vi_tri_thuc_tap ?? '—') : '—',
+                    'internshipLocation' => $hasCompany ? ($row->dia_chi_thuc_tap ?? ($row->cong_ty_dia_chi ?? '—')) : '—',
+                    'internshipAddress' => $hasCompany ? ($row->dia_chi_thuc_tap ?? ($row->cong_ty_dia_chi ?? '—')) : '—',
+                    'taxId' => $hasCompany ? ($row->ma_so_thue ?? '—') : '—',
+                    'taxCode' => $hasCompany ? ($row->ma_so_thue ?? '—') : '—',
+                    'mentor' => $hasCompany ? ($row->nguoi_huong_dan ?? '—') : '—',
+                    'mentorName' => $hasCompany ? ($row->nguoi_huong_dan ?? '—') : '—',
+                    'mentorEmail' => $hasCompany ? ($row->email_lien_he ?? '—') : '—',
+                    'mentorEmailAddress' => $hasCompany ? ($row->email_lien_he ?? '—') : '—',
+                    'mentorPhone' => $hasCompany ? ($row->sdt_huong_dan ?? '—') : '—',
+                    'mentorPhoneNo' => $hasCompany ? ($row->sdt_huong_dan ?? '—') : '—',
+                    
+                    'reports' => $reports,
                     'report' => $reportText,
                     'status' => $statusVal,
                     'date' => $dateText,
@@ -79,7 +146,7 @@ class NhomController extends Controller
             ->whereHas('deTai', function ($q) use ($teacherId) {
                 $q->where('giang_vien_id', $teacherId);
             })
-            ->with(['members', 'deTai'])
+            ->with(['members.lop', 'deTai'])
             ->get()
             ->map(function ($g) use ($dotId) {
                 $memberIds = $g->members->pluck('sinh_vien_id');
@@ -105,6 +172,45 @@ class NhomController extends Controller
                     $comment = $commentRecord ? $commentRecord->noi_dung : '';
                 }
 
+                $reports = DB::table('baocaotiendo')
+                    ->whereIn('sinh_vien_id', $memberIds)
+                    ->where('dot_id', $dotId)
+                    ->where('loai_bao_cao', 'DO_AN')
+                    ->orderBy('tuan_so', 'asc')
+                    ->get()
+                    ->map(function ($rep) {
+                        $commentRecord = DB::table('nhanxetbaocao')
+                            ->where('bao_cao_id', $rep->bao_cao_id)
+                            ->first();
+
+                        return [
+                            'bao_cao_id' => $rep->bao_cao_id,
+                            'tuan_so' => $rep->tuan_so,
+                            'noi_dung' => $rep->noi_dung ?? '',
+                            'duong_dan_file' => $rep->duong_dan_file ?? '',
+                            'trang_thai' => $rep->trang_thai === 'DA_NOP' ? 'Đã nộp' : 'Trễ hạn',
+                            'thoi_gian_nop' => date('d/m/Y H:i', strtotime($rep->thoi_gian_nop)),
+                            'comment' => $commentRecord ? $commentRecord->noi_dung : ''
+                        ];
+                    })
+                    ->all();
+
+                $membersList = $g->members->map(function ($m) {
+                    return [
+                        'id' => (string)$m->ma_so_sinh_vien,
+                        'studentCode' => (string)$m->ma_so_sinh_vien,
+                        'name' => $m->ho_ten,
+                        'class' => $m->lop ? $m->lop->ten_lop : '—',
+                        'is_leader' => (bool)$m->pivot->la_truong_nhom
+                    ];
+                })->all();
+
+                $topicDetails = $g->deTai ? [
+                    'name' => $g->deTai->ten_de_tai,
+                    'huong_de_tai' => $g->deTai->huong_de_tai === 'MANG_MAY_TINH' ? 'Mạng máy tính' : ($g->deTai->huong_de_tai === 'PHAN_MEM' ? 'Phát triển phần mềm' : ($g->deTai->huong_de_tai ?? '—')),
+                    'limit' => $g->deTai->so_luong_sv_toi_da ?? 0
+                ] : null;
+
                 return [
                     'id' => (string)$g->nhom_id,
                     'group' => 'G' . str_pad($g->nhom_id, 2, '0', STR_PAD_LEFT),
@@ -114,7 +220,10 @@ class NhomController extends Controller
                     'status' => $statusVal,
                     'date' => $dateText,
                     'github' => 'github.com/detai-' . $g->nhom_id,
-                    'comment' => $comment
+                    'comment' => $comment,
+                    'reports' => $reports,
+                    'members_list' => $membersList,
+                    'topic_details' => $topicDetails
                 ];
             })
             ->all();
@@ -264,6 +373,7 @@ class NhomController extends Controller
         $noiDung = $request->input('comment');
         $danhGia = $request->input('evaluation', 'DAT');
         $loai = $request->input('type'); // TTTN or DATN
+        $baoCaoId = $request->input('baoCaoId');
 
         if (empty($dotId)) {
             $latestPeriod = \App\Models\Dot::orderBy('dot_id', 'desc')->first();
@@ -273,7 +383,11 @@ class NhomController extends Controller
         $loaiBaoCao = $loai === 'TTTN' ? 'THUC_TAP' : 'DO_AN';
         $report = null;
 
-        if ($loaiBaoCao === 'DO_AN' && preg_match('/^G(\d+)$/i', $studentCode, $matches)) {
+        if (!empty($baoCaoId)) {
+            $report = \Illuminate\Support\Facades\DB::table('baocaotiendo')
+                ->where('bao_cao_id', $baoCaoId)
+                ->first();
+        } else if ($loaiBaoCao === 'DO_AN' && preg_match('/^G(\d+)$/i', $studentCode, $matches)) {
             $nhomId = (int)$matches[1];
             $memberIds = \Illuminate\Support\Facades\DB::table('thanhviennhom')
                 ->where('nhom_id', $nhomId)
