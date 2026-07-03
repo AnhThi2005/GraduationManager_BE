@@ -51,11 +51,13 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/private/v1/student/thesis/my-registration', [\App\Http\Controllers\SinhVien\DeTaiController::class, 'xemDangKyCuaToi']);
         Route::post('/private/v1/student/thesis/register', [\App\Http\Controllers\SinhVien\DeTaiController::class, 'dangKyDeTai']);
         Route::post('/private/v1/student/thesis/cancel', [\App\Http\Controllers\SinhVien\DeTaiController::class, 'huyDangKy']);
+        Route::post('/private/v1/student/thesis/group/leave', [\App\Http\Controllers\SinhVien\DeTaiController::class, 'giaiTanNhom']);
         Route::get('/private/v1/student/thesis/invitations/outgoing', [\App\Http\Controllers\SinhVien\DeTaiController::class, 'xemLoiMoiDaGui']);
         Route::post('/private/v1/student/thesis/invitations/send', [\App\Http\Controllers\SinhVien\DeTaiController::class, 'guiLoiMoiNhom']);
         Route::get('/private/v1/student/thesis/invitations/incoming', [\App\Http\Controllers\SinhVien\DeTaiController::class, 'xemLoiMoiNhanDuoc']);
         Route::post('/private/v1/student/thesis/invitations/{id}/accept', [\App\Http\Controllers\SinhVien\DeTaiController::class, 'chapNhanLoiMoi']);
         Route::post('/private/v1/student/thesis/invitations/{id}/reject', [\App\Http\Controllers\SinhVien\DeTaiController::class, 'tuChoiLoiMoi']);
+        Route::post('/private/v1/student/thesis/invitations/{id}/cancel', [\App\Http\Controllers\SinhVien\DeTaiController::class, 'huyLoiMoiNhom']);
         Route::get('/private/v1/student/reports/tttn', [\App\Http\Controllers\SinhVien\BaoCaoController::class, 'layDanhSachBaoCaoTttn']);
         Route::post('/private/v1/student/reports/tttn', [\App\Http\Controllers\SinhVien\BaoCaoController::class, 'nopBaoCaoTttn']);
         Route::get('/private/v1/student/reports/datn', [\App\Http\Controllers\SinhVien\BaoCaoController::class, 'layDanhSachBaoCaoDatn']);
@@ -171,6 +173,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/private/v1/companies', [CongTyController::class, 'themMoi']);
         Route::patch('/private/v1/companies/{id}', [CongTyController::class, 'capNhat']);
         Route::delete('/private/v1/companies/{id}', [CongTyController::class, 'xoa']);
+        Route::post('/private/v1/companies/publish', [CongTyController::class, 'congBo']);
 
         Route::get('/private/v1/internships/confirmations', [CongTyController::class, 'layDanhSachXacNhan']);
         Route::get('/private/v1/internships/confirmations/{id}', [CongTyController::class, 'xemChiTietXacNhan']);
@@ -205,8 +208,10 @@ Route::middleware('auth:sanctum')->group(function () {
 
         // 9. Chức năng phân công hướng dẫn (Assignments)
         Route::get('/private/v1/assignments', [PhanCongHdttController::class, 'layDanhSach']);
+        Route::post('/private/v1/assignments/publish', [PhanCongHdttController::class, 'congBo']);
         Route::get('/private/v1/assignments/{id}', [PhanCongHdttController::class, 'xemChiTiet']);
         Route::patch('/private/v1/assignments/{id}', [PhanCongHdttController::class, 'capNhat']);
+        Route::delete('/private/v1/assignments/{id}', [PhanCongHdttController::class, 'xoa']);
         Route::get('/private/v1/teachers', [PhanCongHdttController::class, 'getTeachers']);
 
         // 10. Chức năng quản lý hội đồng (Councils)

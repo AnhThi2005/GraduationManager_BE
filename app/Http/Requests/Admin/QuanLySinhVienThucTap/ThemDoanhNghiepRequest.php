@@ -15,7 +15,7 @@ class ThemDoanhNghiepRequest extends FormRequest
     {
         return [
             'name'  => 'required|string|max:255',
-            'taxId' => 'required|string|max:255',
+            'taxId' => 'nullable|string|max:255',
         ];
     }
 
@@ -25,7 +25,6 @@ class ThemDoanhNghiepRequest extends FormRequest
             'name.required'  => 'Tên doanh nghiệp không được để trống.',
             'name.string'    => 'Tên doanh nghiệp phải là chuỗi.',
             'name.max'       => 'Tên doanh nghiệp không được vượt quá 255 ký tự.',
-            'taxId.required' => 'Mã số thuế không được để trống.',
             'taxId.string'   => 'Mã số thuế phải là chuỗi.',
             'taxId.max'      => 'Mã số thuế không được vượt quá 255 ký tự.',
         ];

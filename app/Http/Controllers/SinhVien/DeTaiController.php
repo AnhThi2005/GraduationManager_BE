@@ -255,27 +255,29 @@ class DeTaiController extends Controller
             ], 400);
         }
 
-        // Kiểm tra xem sinh viên có phải trưởng nhóm không
+        // Kiểm tra xem sinh viên có phải trưởng nhóm không. Chỉ trưởng nhóm mới được hủy đề tài của nhóm.
         $pivot = DB::table('thanhviennhom')
             ->where('nhom_id', $nhom->nhom_id)
             ->where('sinh_vien_id', $sinhVien->sinh_vien_id)
             ->first();
 
+        if (!$pivot || $pivot->la_truong_nhom != 1) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Chỉ trưởng nhóm mới có quyền hủy đăng ký đề tài của nhóm.'
+            ], 400);
+        }
+
         DB::beginTransaction();
         try {
-            if ($pivot && $pivot->la_truong_nhom == 1) {
-                // Xóa đăng ký đề tài tương ứng
-                DB::table('dangkydetai')->where('nhom_id', $nhom->nhom_id)->delete();
-                // Xóa tất cả thành viên và xóa nhóm
-                DB::table('thanhviennhom')->where('nhom_id', $nhom->nhom_id)->delete();
-                $nhom->delete();
-            } else {
-                // Chỉ xóa liên kết của chính sinh viên này
-                DB::table('thanhviennhom')
-                    ->where('nhom_id', $nhom->nhom_id)
-                    ->where('sinh_vien_id', $sinhVien->sinh_vien_id)
-                    ->delete();
-            }
+            // Xóa lịch sử đăng ký đề tài tương ứng
+            DB::table('dangkydetai')->where('nhom_id', $nhom->nhom_id)->delete();
+            
+            // Cập nhật nhóm: bỏ đề tài đi, giữ nguyên nhóm
+            $nhom->update([
+                'de_tai_id' => null,
+                'trang_thai_duyet' => 'CHO_DUYET'
+            ]);
 
             \App\Services\RealtimeService::broadcast('slot_updated', [
                 'type' => 'student_cancelled_registration',
@@ -286,13 +288,13 @@ class DeTaiController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Hủy đăng ký đề tài tốt nghiệp thành công!'
+                'message' => 'Hủy đăng ký đề tài thành công! Nhóm của bạn vẫn được giữ lại.'
             ]);
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json([
                 'success' => false,
-                'message' => 'Lỗi hệ thống khi hủy đăng ký: ' . $e->getMessage()
+                'message' => 'Lỗi hệ thống khi hủy đăng ký đề tài: ' . $e->getMessage()
             ], 500);
         }
     }
@@ -353,6 +355,7 @@ class DeTaiController extends Controller
 
             return [
                 'id' => $lm->sinhVienDuocMoi ? $lm->sinhVienDuocMoi->ma_so_sinh_vien : '',
+                'inviteId' => (string)$lm->loi_moi_id,
                 'status' => $status
             ];
         });
@@ -498,7 +501,7 @@ class DeTaiController extends Controller
             }
 
             // Tạo lời mời mới
-            LoiMoiNhom::create([
+            $lm = LoiMoiNhom::create([
                 'nhom_id' => $nhom->nhom_id,
                 'sinh_vien_duoc_moi_id' => $targetStudent->sinh_vien_id,
                 'trang_thai_xac_nhan' => 'CHO_XAC_NHAN',
@@ -513,6 +516,7 @@ class DeTaiController extends Controller
                 'results' => [
                     'object' => [
                         'id' => $targetStudent->ma_so_sinh_vien,
+                        'inviteId' => (string)$lm->loi_moi_id,
                         'status' => 'pending'
                     ]
                 ]
@@ -718,6 +722,151 @@ class DeTaiController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Lỗi hệ thống khi xử lý từ chối: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Hủy lời mời nhóm đã gửi
+     */
+    public function huyLoiMoiNhom(Request $request, $id)
+    {
+        $sinhVien = $request->user();
+        if (!$sinhVien) {
+            return response()->json(['success' => false, 'message' => 'Bạn chưa đăng nhập.'], 401);
+        }
+
+        $loiMoi = LoiMoiNhom::find($id);
+        if (!$loiMoi) {
+            return response()->json(['success' => false, 'message' => 'Không tìm thấy lời mời này.'], 404);
+        }
+
+        // Chỉ trưởng nhóm mới được hủy
+        $nhom = Nhom::find($loiMoi->nhom_id);
+        if (!$nhom) {
+            return response()->json(['success' => false, 'message' => 'Nhóm không tồn tại.'], 400);
+        }
+
+        $pivot = DB::table('thanhviennhom')
+            ->where('nhom_id', $nhom->nhom_id)
+            ->where('sinh_vien_id', $sinhVien->sinh_vien_id)
+            ->first();
+
+        if (!$pivot || $pivot->la_truong_nhom != 1) {
+            return response()->json(['success' => false, 'message' => 'Chỉ trưởng nhóm mới có quyền hủy lời mời.'], 400);
+        }
+
+        if ($loiMoi->trang_thai_xac_nhan !== 'CHO_XAC_NHAN') {
+            return response()->json(['success' => false, 'message' => 'Lời mời đã được xử lý, không thể hủy.'], 400);
+        }
+
+        try {
+            $loiMoi->delete();
+
+            \App\Services\RealtimeService::broadcast('slot_updated', [
+                'type' => 'group_invite_cancelled',
+                'nhomId' => $nhom->nhom_id
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Hủy lời mời nhóm thành công!'
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Lỗi hệ thống khi hủy lời mời: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Rời nhóm hoặc giải tán nhóm ĐATN
+     */
+    public function giaiTanNhom(Request $request)
+    {
+        $sinhVien = $request->user();
+        if (!$sinhVien) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Bạn chưa đăng nhập.'
+            ], 401);
+        }
+
+        $lopId = $sinhVien->lop_id;
+        $activePeriod = Dot::where('loai_dot', 'DATN')
+            ->whereHas('lops', function($q) use ($lopId) {
+                $q->where('lop.lop_id', $lopId);
+            })->orderBy('dot_id', 'desc')->first();
+
+        if (!$activePeriod) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Không tìm thấy đợt ĐATN hiện tại.'
+            ], 400);
+        }
+
+        // Tìm nhóm
+        $nhom = Nhom::where('dot_id', $activePeriod->dot_id)
+            ->whereHas('members', function($q) use ($sinhVien) {
+                $q->where('sinhvien.sinh_vien_id', $sinhVien->sinh_vien_id);
+            })->first();
+
+        if (!$nhom) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Bạn chưa tham gia nhóm nào.'
+            ], 400);
+        }
+
+        if ($nhom->trang_thai_duyet === 'DA_DUYET') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Nhóm đề tài đã được phê duyệt bởi giảng viên, không thể tự ý rời nhóm hoặc giải tán.'
+            ], 400);
+        }
+
+        $pivot = DB::table('thanhviennhom')
+            ->where('nhom_id', $nhom->nhom_id)
+            ->where('sinh_vien_id', $sinhVien->sinh_vien_id)
+            ->first();
+
+        DB::beginTransaction();
+        try {
+            if ($pivot && $pivot->la_truong_nhom == 1) {
+                // Xóa đăng ký đề tài tương ứng
+                DB::table('dangkydetai')->where('nhom_id', $nhom->nhom_id)->delete();
+                // Xóa tất cả thành viên và xóa nhóm
+                DB::table('thanhviennhom')->where('nhom_id', $nhom->nhom_id)->delete();
+                // Xóa tất cả lời mời liên quan đến nhóm này
+                DB::table('loimoinhom')->where('nhom_id', $nhom->nhom_id)->delete();
+                $nhom->delete();
+                $msg = 'Giải tán nhóm ĐATN thành công!';
+            } else {
+                // Chỉ rời khỏi nhóm (xóa liên kết của chính sinh viên này)
+                DB::table('thanhviennhom')
+                    ->where('nhom_id', $nhom->nhom_id)
+                    ->where('sinh_vien_id', $sinhVien->sinh_vien_id)
+                    ->delete();
+                $msg = 'Rời khỏi nhóm ĐATN thành công!';
+            }
+
+            \App\Services\RealtimeService::broadcast('slot_updated', [
+                'type' => 'student_left_group',
+                'nhomId' => $nhom->nhom_id
+            ]);
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => $msg
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'Lỗi hệ thống khi thực hiện rời nhóm/giải tán: ' . $e->getMessage()
             ], 500);
         }
     }

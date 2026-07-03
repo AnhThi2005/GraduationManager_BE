@@ -50,7 +50,7 @@ class CongTyService
      */
     public function createCompany(array $data)
     {
-        $status = isset($data['status']) ? $this->mapFrontendStatusToBackend($data['status']) : 'HOAT_DONG';
+        $status = isset($data['status']) ? $this->mapFrontendStatusToBackend($data['status']) : 'CHO_DUYET';
 
         $company = CongTy::create([
             'ten_cong_ty' => $data['name'] ?? '',
@@ -115,6 +115,13 @@ class CongTyService
             DangKyThucTap::where('cong_ty_id', $id)
                 ->where('trang_thai', 'CHO_DUYET')
                 ->update(['trang_thai' => 'DA_DUYET']);
+        } elseif ($company->trang_thai === 'NGUNG_HOAT_DONG') {
+            // Công ty bị từ chối/tạm dừng: các khai báo đang chờ duyệt tại công ty này không thể được duyệt nữa
+            // nên tự động từ chối theo. Không đụng tới khai báo đã duyệt/chờ cấp giấy (SV đã/đang thực tập thật)
+            // vì đó là quyết định nghiệp vụ cần admin tự xử lý thủ công.
+            DangKyThucTap::where('cong_ty_id', $id)
+                ->where('trang_thai', 'CHO_DUYET')
+                ->update(['trang_thai' => 'TU_CHOI']);
         }
 
         // Cập nhật lĩnh vực hoạt động
@@ -152,6 +159,19 @@ class CongTyService
 
         $company->delete();
         return true;
+    }
+
+    /**
+     * Công bố danh sách công ty: công bố mọi công ty đang hoạt động mà chưa từng công bố.
+     * Công ty đã công bố thì hiển thị vĩnh viễn cho sinh viên ở mọi đợt sau, không cần công bố lại.
+     */
+    public function publishCompanies()
+    {
+        $publishedCount = CongTy::where('trang_thai', 'HOAT_DONG')
+            ->where('da_cong_bo', false)
+            ->update(['da_cong_bo' => true]);
+
+        return $publishedCount;
     }
 
     // ==========================================================
@@ -245,7 +265,7 @@ class CongTyService
                 'nguoi_lien_he' => $data['mentor'] ?? '',
                 'email_lien_he' => $data['email'] ?? '',
                 'so_dien_thoai_lh' => $data['phone'] ?? '',
-                'trang_thai' => 'NGUNG_HOAT_DONG' // Chưa duyệt làm đối tác chính thức
+                'trang_thai' => 'CHO_DUYET' // Công ty mới do admin nhập, chờ được duyệt làm đối tác chính thức
             ]);
         }
 
@@ -273,9 +293,11 @@ class CongTyService
             'nguoi_huong_dan' => $data['mentor'] ?? '',
             'sdt_huong_dan' => $data['phone'] ?? '',
             'vi_tri_thuc_tap' => $data['internshipLocation'] ?? $data['vi_tri_thuc_tap'] ?? '',
+            'vi_tri_cong_viec' => $data['position'] ?? $data['vi_tri_cong_viec'] ?? '',
             'thoi_gian_thuc_tap' => $data['thoi_gian_thuc_tap'] ?? '8 tuần',
             'dia_chi_thuc_tap' => $data['companyAddress'] ?? '',
-            'trang_thai' => 'CHO_DUYET'
+            'trang_thai' => 'CHO_DUYET',
+            'ngay_dang_ky' => now()
         ]);
 
         return $this->getConfirmationRequestDetail($reg->dang_ky_id);
@@ -304,6 +326,7 @@ class CongTyService
         if (isset($data['mentor'])) $updateData['nguoi_huong_dan'] = $data['mentor'];
         if (isset($data['phone'])) $updateData['sdt_huong_dan'] = $data['phone'];
         if (isset($data['internshipLocation'])) $updateData['vi_tri_thuc_tap'] = $data['internshipLocation'];
+        if (isset($data['position'])) $updateData['vi_tri_cong_viec'] = $data['position'];
         if (isset($data['companyAddress'])) $updateData['dia_chi_thuc_tap'] = $data['companyAddress'];
 
         $reg->update($updateData);
@@ -431,7 +454,7 @@ class CongTyService
                 ->where('trang_thai', '!=', 'DA_DONG')
                 ->whereHas('lops', function($q) use ($lopId) {
                     $q->where('lop.lop_id', $lopId);
-                })->first();
+                })->orderBy('dot_id', 'desc')->first();
 
             $dotId = $activePeriod ? $activePeriod->dot_id : null;
             if (!$dotId) {
@@ -527,7 +550,8 @@ class CongTyService
             'partners' => $partnersCount,
             'students' => $studentsCount,
             'status' => $status,
-            'reviewStatus' => $reviewStatus
+            'reviewStatus' => $reviewStatus,
+            'published' => (bool)$company->da_cong_bo
         ];
     }
 
@@ -553,9 +577,10 @@ class CongTyService
             'companyName' => $reg->congTy ? $reg->congTy->ten_cong_ty : '',
             'companyAddress' => $reg->congTy ? $reg->congTy->dia_chi : ($reg->dia_chi_thuc_tap ?? ''),
             'internshipLocation' => $reg->vi_tri_thuc_tap ?? '',
+            'position' => $reg->vi_tri_cong_viec ?? '',
             'taxId' => $reg->congTy ? $reg->congTy->ma_so_thue : '',
             'mentor' => $reg->nguoi_huong_dan ?? '',
-            'regDate' => '16/06/2026', // Mock registration date
+            'regDate' => $reg->ngay_dang_ky ? $reg->ngay_dang_ky->format('d/m/Y') : '',
             'status' => $status
         ];
     }
@@ -601,7 +626,7 @@ class CongTyService
                 ->where('trang_thai', '!=', 'DA_DONG')
                 ->whereHas('lops', function($q) use ($lopId) {
                     $q->where('lop.lop_id', $lopId);
-                })->first();
+                })->orderBy('dot_id', 'desc')->first();
 
             $dotId = $activePeriod ? $activePeriod->dot_id : null;
             if (!$dotId) {

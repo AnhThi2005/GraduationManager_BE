@@ -18,7 +18,9 @@ class ThucTapController extends Controller
      */
     public function layDanhSachCongTy(Request $request)
     {
-        $companies = CongTy::where('trang_thai', 'HOAT_DONG')->get();
+        $companies = CongTy::where('trang_thai', 'HOAT_DONG')
+            ->where('da_cong_bo', true)
+            ->get();
 
         $rows = $companies->map(function ($company) {
             $fields = DB::table('congtylinhvuc')
@@ -36,6 +38,7 @@ class ThucTapController extends Controller
             return [
                 'code' => (string)$company->cong_ty_id,
                 'name' => $company->ten_cong_ty,
+                'taxId' => $company->ma_so_thue ?? '',
                 'field' => empty($fields) ? 'Phần mềm' : implode(', ', $fields),
                 'address' => $company->dia_chi ?? 'TP.HCM',
                 'mentor' => $company->nguoi_lien_he ?? 'Chưa cập nhật',
@@ -71,7 +74,9 @@ class ThucTapController extends Controller
 
         $rules = [
             'companyName' => 'required|string|max:255',
+            'taxId' => 'required|string|max:255',
             'field' => 'nullable|string|max:255',
+            'position' => 'nullable|string|max:255',
             'address' => 'nullable|string|max:255',
             'mentor' => 'nullable|string|max:255',
             'phone' => 'nullable|string|max:255',
@@ -84,17 +89,22 @@ class ThucTapController extends Controller
             $rules['email'] = 'string|email|max:255';
         }
 
-        $request->validate($rules);
+        $request->validate($rules, [
+            'taxId.required' => 'Mã số thuế công ty không được để trống.'
+        ]);
 
         $companyName = $request->input('companyName');
+        $taxId = $request->input('taxId');
 
-        // Tìm hoặc tạo mới công ty ở trạng thái CHO_DUYET (chờ duyệt)
-        $company = CongTy::where('ten_cong_ty', $companyName)->first();
+        // Tìm hoặc tạo mới công ty ở trạng thái CHO_DUYET (chờ duyệt), khớp theo mã số thuế
+        // (giống cách admin khai báo hộ) để tránh tạo trùng công ty do lệch chính tả tên gọi
+        $company = CongTy::where('ma_so_thue', $taxId)->first();
 
         if (!$company) {
             $company = CongTy::create([
                 'ten_cong_ty' => $companyName,
                 'dia_chi' => $request->input('address') ?? '',
+                'ma_so_thue' => $taxId,
                 'nguoi_lien_he' => $request->input('mentor') ?? '',
                 'email_lien_he' => $request->input('email') ?? '',
                 'so_dien_thoai_lh' => $request->input('phone') ?? '',
@@ -181,9 +191,11 @@ class ThucTapController extends Controller
             'nguoi_huong_dan' => $request->input('mentor') ?? '',
             'sdt_huong_dan' => $request->input('phone') ?? '',
             'vi_tri_thuc_tap' => $request->input('field') ?? '',
+            'vi_tri_cong_viec' => $request->input('position') ?? '',
             'thoi_gian_thuc_tap' => $request->input('duration') ?? '8 tuần',
             'dia_chi_thuc_tap' => $internshipAddress,
-            'trang_thai' => $trangThaiReg
+            'trang_thai' => $trangThaiReg,
+            'ngay_dang_ky' => now()
         ]);
 
         // Broadcast thông báo realtime cho admin

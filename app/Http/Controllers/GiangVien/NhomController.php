@@ -24,10 +24,12 @@ class NhomController extends Controller
             $dotId = $latestPeriod ? $latestPeriod->dot_id : 1;
         }
 
-        // 1. TTTN List
+        // 1. TTTN List (chỉ tính phân công đã được admin công bố, chưa bị xóa mềm)
         $tttnList = DB::table('phanconghdtt')
             ->where('phanconghdtt.giang_vien_id', $teacherId)
             ->where('phanconghdtt.dot_id', $dotId)
+            ->where('phanconghdtt.da_cong_bo', true)
+            ->whereNull('phanconghdtt.deleted_at')
             ->join('sinhvien', 'phanconghdtt.sinh_vien_id', '=', 'sinhvien.sinh_vien_id')
             ->leftJoin('dangkythuctap', function ($join) use ($dotId) {
                 $join->on('sinhvien.sinh_vien_id', '=', 'dangkythuctap.sinh_vien_id')

@@ -104,6 +104,25 @@ class CongTyController extends Controller
         ], 200);
     }
 
+    /**
+     * Công bố danh sách công ty: công bố mọi công ty đang hoạt động mà chưa từng công bố,
+     * để sinh viên bắt đầu thấy được (hiển thị vĩnh viễn cho mọi đợt sau).
+     */
+    public function congBo(Request $request)
+    {
+        $publishedCount = $this->congTyService->publishCompanies();
+
+        return response()->json([
+            'success' => true,
+            'message' => $publishedCount > 0
+                ? "Đã công bố thêm {$publishedCount} doanh nghiệp mới!"
+                : 'Không có doanh nghiệp mới nào cần công bố.',
+            'results' => [
+                'publishedCount' => $publishedCount
+            ]
+        ], 200);
+    }
+
     // ==========================================================
     // 2. INTERNSHIP CONFIRMATIONS ENDPOINTS
     // ==========================================================
