@@ -14,7 +14,7 @@ class DeTaiService
      */
     public function getListTopic(array $filters, $perPage = 10)
     {
-        $query = DeTai::with('giangVien');
+        $query = DeTai::with(['giangVien', 'dot']);
 
         // Lọc theo giảng viên
         if (!empty($filters['teacherId'])) {
@@ -66,7 +66,7 @@ class DeTaiService
      */
     public function getTopicDetail($id)
     {
-        $deTai = DeTai::with('giangVien')->find($id);
+        $deTai = DeTai::with(['giangVien', 'dot'])->find($id);
         if (!$deTai) {
             return null;
         }
@@ -193,7 +193,7 @@ class DeTaiService
 
         return [
             'id' => (string)$deTai->de_tai_id,
-            'code' => 'DA' . str_pad($deTai->de_tai_id, 3, '0', STR_PAD_LEFT),
+            'code' => $this->buildTopicCode($deTai),
             'name' => $deTai->ten_de_tai,
             'teacher' => $teacherName,
             'slots' => $slotsStr,
@@ -203,6 +203,35 @@ class DeTaiService
             'direction' => $deTai->huong_de_tai === 'MANG_MAY_TINH' ? 'Mạng máy tính' : 'Phát triển phần mềm',
             'fileUrl' => $deTai->file_mo_ta ?? ''
         ];
+    }
+
+    /**
+     * Sinh mã đề tài dạng DT{YY}{K}-{XX}-{Y}
+     * - YY: 2 số cuối của năm bắt đầu (nam_hoc, VD "2025-2026" -> "25")
+     * - K: học kỳ (chỉ hỗ trợ '1' hoặc '2' theo quy ước hiện tại; đợt hè 'HE' không nằm
+     *   trong quy ước gốc nên tạm giữ nguyên 'HE' để không đoán sai, cần xác nhận thêm)
+     * - XX: số thứ tự (2 chữ số) của đề tài trong đợt, tính theo de_tai_id tăng dần
+     * - Y: số lượng sinh viên tối đa của đề tài
+     * Nếu đề tài chưa gắn với đợt hoặc năm học không đúng định dạng "YYYY-YYYY",
+     * không đủ dữ liệu để build mã theo quy ước -> dùng mã dự phòng DA{id}.
+     */
+    private function buildTopicCode($deTai)
+    {
+        $dot = $deTai->dot;
+        if (!$dot || !$dot->nam_hoc || !preg_match('/^(\d{4})-\d{4}$/', $dot->nam_hoc, $m)) {
+            return 'DA' . str_pad($deTai->de_tai_id, 3, '0', STR_PAD_LEFT);
+        }
+
+        $yearPart = substr($m[1], 2, 2);
+        $semesterPart = $dot->hoc_ky ?: '1';
+
+        $rank = DeTai::where('dot_id', $dot->dot_id)
+            ->where('de_tai_id', '<=', $deTai->de_tai_id)
+            ->count();
+
+        $maxSlots = $deTai->so_luong_sv_toi_da ?? 4;
+
+        return 'DT' . $yearPart . $semesterPart . '-' . str_pad($rank, 2, '0', STR_PAD_LEFT) . '-' . $maxSlots;
     }
 
     /**

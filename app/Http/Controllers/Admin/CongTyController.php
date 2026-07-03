@@ -5,16 +5,19 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Services\CongTyService;
+use App\Services\NguoiDungService;
 use App\Http\Requests\Admin\QuanLySinhVienThucTap\ThemDoanhNghiepRequest;
 use App\Http\Requests\Admin\QuanLySinhVienThucTap\ThemMoiXacNhanRequest;
 
 class CongTyController extends Controller
 {
     protected $congTyService;
+    protected $nguoiDungService;
 
-    public function __construct(CongTyService $congTyService)
+    public function __construct(CongTyService $congTyService, NguoiDungService $nguoiDungService)
     {
         $this->congTyService = $congTyService;
+        $this->nguoiDungService = $nguoiDungService;
     }
 
     // ==========================================================
@@ -101,6 +104,25 @@ class CongTyController extends Controller
         ], 200);
     }
 
+    /**
+     * Công bố danh sách công ty: công bố mọi công ty đang hoạt động mà chưa từng công bố,
+     * để sinh viên bắt đầu thấy được (hiển thị vĩnh viễn cho mọi đợt sau).
+     */
+    public function congBo(Request $request)
+    {
+        $publishedCount = $this->congTyService->publishCompanies();
+
+        return response()->json([
+            'success' => true,
+            'message' => $publishedCount > 0
+                ? "Đã công bố thêm {$publishedCount} doanh nghiệp mới!"
+                : 'Không có doanh nghiệp mới nào cần công bố.',
+            'results' => [
+                'publishedCount' => $publishedCount
+            ]
+        ], 200);
+    }
+
     // ==========================================================
     // 2. INTERNSHIP CONFIRMATIONS ENDPOINTS
     // ==========================================================
@@ -112,6 +134,25 @@ class CongTyController extends Controller
         ];
 
         $res = $this->congTyService->getListConfirmationRequest($filters);
+
+        return response()->json([
+            'code' => 200,
+            'results' => [
+                'objects' => [
+                    'rows' => $res['rows'],
+                    'total' => $res['total']
+                ]
+            ]
+        ], 200);
+    }
+
+    public function layDanhSachKhaiBao(Request $request)
+    {
+        $filters = [
+            'periodId' => $request->query('periodId')
+        ];
+
+        $res = $this->congTyService->getListDeclarations($filters);
 
         return response()->json([
             'code' => 200,
@@ -147,7 +188,15 @@ class CongTyController extends Controller
 
         $periodId = $request->query('periodId');
 
-        $reg = $this->congTyService->createConfirmationRequest($request->all(), $periodId);
+        try {
+            $reg = $this->congTyService->createConfirmationRequest($request->all(), $periodId);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage()
+            ], 422);
+        }
+
         if (!$reg) {
             return response()->json([
                 'success' => false,
@@ -236,7 +285,8 @@ class CongTyController extends Controller
 
     public function xemChiTietChuaThucTap(Request $request, $id)
     {
-        $sv = $this->congTyService->getNoCompanyStudentDetail($id);
+        $periodId = $request->query('periodId') ?? $request->input('periodId');
+        $sv = $this->congTyService->getNoCompanyStudentDetail($id, $periodId);
         if (!$sv) {
             return response()->json([
                 'success' => false,
@@ -255,8 +305,9 @@ class CongTyController extends Controller
     public function capNhatChuaThucTap(Request $request, $id)
     {
         $status = $request->input('status'); // 'not_registered' | 'searching' | 'has_company'
+        $periodId = $request->query('periodId') ?? $request->input('periodId');
 
-        $res = $this->congTyService->updateNoCompanyStudentStatus($id, $status);
+        $res = $this->congTyService->updateNoCompanyStudentStatus($id, $status, $periodId);
         if (!$res) {
             return response()->json([
                 'success' => false,
@@ -269,6 +320,27 @@ class CongTyController extends Controller
             'results' => [
                 'object' => $res
             ]
+        ], 200);
+    }
+
+    /**
+     * Xóa mềm sinh viên chưa có nơi thực tập: khóa tài khoản sinh viên
+     * (danh sách này là view tính động từ SinhVien + DangKyThucTap, không phải bảng riêng
+     * nên "xóa" ở đây tái sử dụng cơ chế khóa tài khoản của NguoiDungController::xoaNguoiDung)
+     */
+    public function xoaChuaThucTap(Request $request, $id)
+    {
+        $sv = $this->nguoiDungService->doiTrangThaiSinhVien($id, 0);
+        if (!$sv) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Không tìm thấy sinh viên này!'
+            ], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Khóa tài khoản sinh viên thành công!'
         ], 200);
     }
 }

@@ -29,10 +29,12 @@ class TrangChuController extends Controller
         // 1. Total topics
         $topicsCount = DeTai::where('giang_vien_id', $teacherId)->count();
 
-        // 2. TTTN students guided
+        // 2. TTTN students guided (chỉ tính phân công đã được admin công bố, chưa bị xóa mềm)
         $tttnCount = DB::table('phanconghdtt')
             ->where('giang_vien_id', $teacherId)
             ->where('dot_id', $dotId)
+            ->where('da_cong_bo', true)
+            ->whereNull('deleted_at')
             ->count();
 
         // 3. Reviewed groups (ĐATN)

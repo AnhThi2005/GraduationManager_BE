@@ -18,7 +18,9 @@ class ThucTapController extends Controller
      */
     public function layDanhSachCongTy(Request $request)
     {
-        $companies = CongTy::where('trang_thai', 'HOAT_DONG')->get();
+        $companies = CongTy::where('trang_thai', 'HOAT_DONG')
+            ->where('da_cong_bo', true)
+            ->get();
 
         $rows = $companies->map(function ($company) {
             $fields = DB::table('congtylinhvuc')
@@ -36,6 +38,7 @@ class ThucTapController extends Controller
             return [
                 'code' => (string)$company->cong_ty_id,
                 'name' => $company->ten_cong_ty,
+                'taxId' => $company->ma_so_thue ?? '',
                 'field' => empty($fields) ? 'Phần mềm' : implode(', ', $fields),
                 'address' => $company->dia_chi ?? 'TP.HCM',
                 'mentor' => $company->nguoi_lien_he ?? 'Chưa cập nhật',
@@ -69,27 +72,39 @@ class ThucTapController extends Controller
             ], 401);
         }
 
-        $request->validate([
+        $rules = [
             'companyName' => 'required|string|max:255',
+            'taxId' => 'required|string|max:255',
             'field' => 'nullable|string|max:255',
+            'position' => 'nullable|string|max:255',
             'address' => 'nullable|string|max:255',
             'mentor' => 'nullable|string|max:255',
             'phone' => 'nullable|string|max:255',
-            'email' => 'nullable|string|email|max:255',
             'duration' => 'nullable|string|max:255',
             'confirmPaper' => 'nullable|boolean',
             'internshipAddress' => 'nullable|string|max:255'
+        ];
+
+        if ($request->filled('email')) {
+            $rules['email'] = 'string|email|max:255';
+        }
+
+        $request->validate($rules, [
+            'taxId.required' => 'Mã số thuế công ty không được để trống.'
         ]);
 
         $companyName = $request->input('companyName');
+        $taxId = $request->input('taxId');
 
-        // Tìm hoặc tạo mới công ty ở trạng thái CHO_DUYET (chờ duyệt)
-        $company = CongTy::where('ten_cong_ty', $companyName)->first();
+        // Tìm hoặc tạo mới công ty ở trạng thái CHO_DUYET (chờ duyệt), khớp theo mã số thuế
+        // (giống cách admin khai báo hộ) để tránh tạo trùng công ty do lệch chính tả tên gọi
+        $company = CongTy::where('ma_so_thue', $taxId)->first();
 
         if (!$company) {
             $company = CongTy::create([
                 'ten_cong_ty' => $companyName,
                 'dia_chi' => $request->input('address') ?? '',
+                'ma_so_thue' => $taxId,
                 'nguoi_lien_he' => $request->input('mentor') ?? '',
                 'email_lien_he' => $request->input('email') ?? '',
                 'so_dien_thoai_lh' => $request->input('phone') ?? '',
@@ -105,24 +120,51 @@ class ThucTapController extends Controller
             }
         }
 
-        // Tìm đợt TTTN đang hoạt động của sinh viên
-        $lopId = $sinhVien->lop_id;
-        $activePeriod = Dot::where('loai_dot', 'TTTN')
-            ->where('trang_thai', '!=', 'DA_DONG')
-            ->whereHas('lops', function($q) use ($lopId) {
-                $q->where('lop.lop_id', $lopId);
-            })->first();
+        // Lấy đợt học được truyền lên từ client, hoặc tìm đợt TTTN đang hoạt động của sinh viên
+        $periodId = $request->input('periodId') ?? $request->query('periodId');
+        if ($periodId) {
+            $activePeriod = Dot::find($periodId);
+        } else {
+            $lopId = $sinhVien->lop_id;
+            $activePeriod = Dot::where('loai_dot', 'TTTN')
+                ->where('trang_thai', '!=', 'DA_DONG')
+                ->whereHas('lops', function($q) use ($lopId) {
+                    $q->where('lop.lop_id', $lopId);
+                })->orderBy('dot_id', 'desc')->first();
 
-        // Fallback sang đợt TTTN bất kỳ đang mở hoặc đợt mới nhất
-        if (!$activePeriod) {
-            $activePeriod = Dot::where('loai_dot', 'TTTN')->where('trang_thai', 'DANG_MO')->first()
-                ?? Dot::where('loai_dot', 'TTTN')->orderBy('dot_id', 'desc')->first();
+            // Fallback sang đợt TTTN bất kỳ đang mở hoặc đợt mới nhất
+            if (!$activePeriod) {
+                $activePeriod = Dot::where('loai_dot', 'TTTN')->where('trang_thai', 'DANG_MO')->first()
+                    ?? Dot::where('loai_dot', 'TTTN')->orderBy('dot_id', 'desc')->first();
+            }
         }
 
         if (!$activePeriod) {
             return response()->json([
                 'success' => false,
                 'message' => 'Không tìm thấy đợt thực tập tốt nghiệp nào đang mở để khai báo!'
+            ], 400);
+        }
+
+        // Chặn khai báo sai đợt: lớp của sinh viên phải được gắn vào đợt này,
+        // hoặc sinh viên được thêm thủ công vào đợt (ví dụ rớt đợt trước)
+        if (!$activePeriod->hasStudent($sinhVien->sinh_vien_id)) {
+            return response()->json([
+                'success' => false,
+                'message' => "Bạn không thuộc đợt \"{$activePeriod->ten_dot}\" nên không thể khai báo thực tập cho đợt này. Vui lòng liên hệ quản trị viên nếu đây là nhầm lẫn."
+            ], 422);
+        }
+
+        // Kiểm tra xem đã có đăng ký được duyệt hoặc chờ cấp giấy trong đợt này chưa
+        $daCoDangKyDuyet = DangKyThucTap::where('sinh_vien_id', $sinhVien->sinh_vien_id)
+            ->where('dot_id', $activePeriod->dot_id)
+            ->whereIn('trang_thai', ['DA_DUYET', 'CHO_CAP_GIAY'])
+            ->exists();
+
+        if ($daCoDangKyDuyet) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Nơi thực tập của bạn trong đợt này đã được duyệt hoặc đang chờ cấp giấy giới thiệu. Không thể tự ý khai báo lại!'
             ], 400);
         }
 
@@ -137,7 +179,11 @@ class ThucTapController extends Controller
             ? ($request->input('internshipAddress') ?: ($request->input('address') ?: 'Địa chỉ công ty'))
             : null;
 
-        // Tạo yêu cầu khai báo mới ở trạng thái chờ duyệt
+        // Tất cả các khai báo mới từ sinh viên đều bắt đầu ở trạng thái chờ duyệt (CHO_DUYET)
+        // để Admin kiểm tra tính phù hợp của vị trí thực tập với ngành học.
+        $trangThaiReg = 'CHO_DUYET';
+
+        // Tạo yêu cầu khai báo mới ở trạng thái chờ duyệt hoặc đã duyệt tương ứng
         $reg = DangKyThucTap::create([
             'sinh_vien_id' => $sinhVien->sinh_vien_id,
             'dot_id' => $activePeriod->dot_id,
@@ -145,9 +191,11 @@ class ThucTapController extends Controller
             'nguoi_huong_dan' => $request->input('mentor') ?? '',
             'sdt_huong_dan' => $request->input('phone') ?? '',
             'vi_tri_thuc_tap' => $request->input('field') ?? '',
+            'vi_tri_cong_viec' => $request->input('position') ?? '',
             'thoi_gian_thuc_tap' => $request->input('duration') ?? '8 tuần',
             'dia_chi_thuc_tap' => $internshipAddress,
-            'trang_thai' => 'CHO_DUYET'
+            'trang_thai' => $trangThaiReg,
+            'ngay_dang_ky' => now()
         ]);
 
         // Broadcast thông báo realtime cho admin
@@ -189,11 +237,16 @@ class ThucTapController extends Controller
             ], 401);
         }
 
-        $lopId = $sinhVien->lop_id;
-        $activePeriod = Dot::where('loai_dot', 'TTTN')
-            ->whereHas('lops', function($q) use ($lopId) {
-                $q->where('lop.lop_id', $lopId);
-            })->orderBy('dot_id', 'desc')->first();
+        $periodId = $request->query('periodId') ?? $request->input('periodId');
+        if ($periodId) {
+            $activePeriod = Dot::find($periodId);
+        } else {
+            $lopId = $sinhVien->lop_id;
+            $activePeriod = Dot::where('loai_dot', 'TTTN')
+                ->whereHas('lops', function($q) use ($lopId) {
+                    $q->where('lop.lop_id', $lopId);
+                })->orderBy('dot_id', 'desc')->first();
+        }
 
         if (!$activePeriod) {
             return response()->json([
@@ -223,6 +276,8 @@ class ThucTapController extends Controller
             $status = 'approved';
         } else if ($reg->trang_thai === 'TU_CHOI') {
             $status = 'rejected';
+        } else if ($reg->trang_thai === 'CHO_CAP_GIAY') {
+            $status = 'cho_cap_giay';
         }
 
         return response()->json([

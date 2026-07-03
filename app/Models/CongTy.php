@@ -18,6 +18,7 @@ class CongTy extends Model
         'nguoi_lien_he',
         'email_lien_he',
         'so_dien_thoai_lh',
-        'trang_thai'
+        'trang_thai',
+        'da_cong_bo'
     ];
 }

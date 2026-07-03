@@ -218,7 +218,13 @@ class BaoCaoController extends Controller
             ]);
         }
 
-        $reports = BaoCaoTienDo::where('sinh_vien_id', $sinhVien->sinh_vien_id)
+        // Lấy danh sách ID của tất cả thành viên trong nhóm
+        $memberIds = DB::table('thanhviennhom')
+            ->where('nhom_id', $nhom->nhom_id)
+            ->pluck('sinh_vien_id')
+            ->all();
+
+        $reports = BaoCaoTienDo::whereIn('sinh_vien_id', $memberIds)
             ->where('dot_id', $activePeriod->dot_id)
             ->where('loai_bao_cao', 'DO_AN')
             ->orderBy('tuan_so', 'asc')
@@ -315,16 +321,22 @@ class BaoCaoController extends Controller
 
         $noiDungStr = $name . "\n" . $repo . "\n" . $note;
 
-        // Tìm xem đã có báo cáo trùng tên bản thảo chưa (so sánh dòng đầu tiên của cột noi_dung)
-        $report = BaoCaoTienDo::where('sinh_vien_id', $sinhVien->sinh_vien_id)
+        // Lấy danh sách ID của tất cả thành viên trong nhóm để kiểm tra/nộp chung báo cáo nhóm
+        $memberIds = DB::table('thanhviennhom')
+            ->where('nhom_id', $nhom->nhom_id)
+            ->pluck('sinh_vien_id')
+            ->all();
+
+        // Tìm xem đã có báo cáo trùng tên bản thảo chưa (so sánh dòng đầu tiên của cột noi_dung) của bất kỳ thành viên nào trong nhóm
+        $report = BaoCaoTienDo::whereIn('sinh_vien_id', $memberIds)
             ->where('dot_id', $activePeriod->dot_id)
             ->where('loai_bao_cao', 'DO_AN')
             ->where('noi_dung', 'like', $name . "\n%")
             ->first();
 
         if (!$report) {
-            // Đếm số báo cáo ĐATN hiện có để tính số tuần tuần tự
-            $count = BaoCaoTienDo::where('sinh_vien_id', $sinhVien->sinh_vien_id)
+            // Đếm số báo cáo ĐATN hiện có của nhóm để tính số tuần tuần tự
+            $count = BaoCaoTienDo::whereIn('sinh_vien_id', $memberIds)
                 ->where('dot_id', $activePeriod->dot_id)
                 ->where('loai_bao_cao', 'DO_AN')
                 ->count();

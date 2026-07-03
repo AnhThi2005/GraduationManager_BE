@@ -18,9 +18,15 @@ class DangKyThucTap extends Model
         'nguoi_huong_dan',
         'sdt_huong_dan',
         'vi_tri_thuc_tap',
+        'vi_tri_cong_viec',
         'thoi_gian_thuc_tap',
         'dia_chi_thuc_tap',
-        'trang_thai'
+        'trang_thai',
+        'ngay_dang_ky'
+    ];
+
+    protected $casts = [
+        'ngay_dang_ky' => 'datetime',
     ];
 
     public function sinhVien()

@@ -86,11 +86,15 @@ class DotService
             'giang_vien_id' => $data['teacherId'] ?? 1 // Mặc định gán giảng viên tạo
         ];
 
-        // Tạo mốc thời gian phụ
-        $insertData['ngay_bat_dau_dang_ky'] = Carbon::parse($insertData['ngay_bat_dau'])->subDays(15)->format('Y-m-d');
-        $insertData['han_nop_bao_cao'] = Carbon::parse($insertData['ngay_ket_thuc'])->subDays(7)->format('Y-m-d');
-        $insertData['ngay_bat_dau_cham_diem'] = $insertData['ngay_ket_thuc'];
-        $insertData['ngay_ket_thuc_cham_diem'] = Carbon::parse($insertData['ngay_ket_thuc'])->addDays(15)->format('Y-m-d');
+        // Mốc thời gian phụ: dùng giá trị admin nhập nếu có, nếu không thì tự tính mặc định
+        $insertData['ngay_bat_dau_dang_ky'] = $this->parseDate($data['regOpenDate'] ?? null)
+            ?? Carbon::parse($insertData['ngay_bat_dau'])->subDays(15)->format('Y-m-d');
+        $insertData['han_nop_bao_cao'] = $this->parseDate($data['reportDeadline'] ?? null)
+            ?? Carbon::parse($insertData['ngay_ket_thuc'])->subDays(7)->format('Y-m-d');
+        $insertData['ngay_bat_dau_cham_diem'] = $this->parseDate($data['gradingStartDate'] ?? null)
+            ?? $insertData['ngay_ket_thuc'];
+        $insertData['ngay_ket_thuc_cham_diem'] = $this->parseDate($data['gradingEndDate'] ?? null)
+            ?? Carbon::parse($insertData['ngay_ket_thuc'])->addDays(15)->format('Y-m-d');
 
         $dot = Dot::create($insertData);
 
@@ -125,6 +129,10 @@ class DotService
         if (isset($data['startDate'])) $updateData['ngay_bat_dau'] = $this->parseDate($data['startDate']);
         if (isset($data['endDate'])) $updateData['ngay_ket_thuc'] = $this->parseDate($data['endDate']);
         if (isset($data['regDeadline'])) $updateData['han_dang_ky'] = $this->parseDate($data['regDeadline']);
+        if (isset($data['regOpenDate'])) $updateData['ngay_bat_dau_dang_ky'] = $this->parseDate($data['regOpenDate']);
+        if (isset($data['reportDeadline'])) $updateData['han_nop_bao_cao'] = $this->parseDate($data['reportDeadline']);
+        if (isset($data['gradingStartDate'])) $updateData['ngay_bat_dau_cham_diem'] = $this->parseDate($data['gradingStartDate']);
+        if (isset($data['gradingEndDate'])) $updateData['ngay_ket_thuc_cham_diem'] = $this->parseDate($data['gradingEndDate']);
         if (isset($data['semester'])) $updateData['hoc_ky'] = $data['semester'];
         if (isset($data['schoolYear'])) $updateData['nam_hoc'] = $data['schoolYear'];
 
@@ -244,6 +252,12 @@ class DotService
             'startDate' => $dot->ngay_bat_dau ? Carbon::parse($dot->ngay_bat_dau)->format('d/m/Y') : '',
             'endDate' => $dot->ngay_ket_thuc ? Carbon::parse($dot->ngay_ket_thuc)->format('d/m/Y') : '',
             'regDeadline' => $dot->han_dang_ky ? Carbon::parse($dot->han_dang_ky)->format('d/m/Y') : '',
+            'regOpenDate' => $dot->ngay_bat_dau_dang_ky ? Carbon::parse($dot->ngay_bat_dau_dang_ky)->format('d/m/Y') : '',
+            'reportDeadline' => $dot->han_nop_bao_cao ? Carbon::parse($dot->han_nop_bao_cao)->format('d/m/Y') : '',
+            'gradingStartDate' => $dot->ngay_bat_dau_cham_diem ? Carbon::parse($dot->ngay_bat_dau_cham_diem)->format('d/m/Y') : '',
+            'gradingEndDate' => $dot->ngay_ket_thuc_cham_diem ? Carbon::parse($dot->ngay_ket_thuc_cham_diem)->format('d/m/Y') : '',
+            'semester' => $dot->hoc_ky,
+            'schoolYear' => $dot->nam_hoc,
             'studentListFileName' => 'danh-sach-sinh-vien-' . strtolower($dot->loai_dot) . '-' . $dot->dot_id . '.xlsx',
             'studentListUrl' => 'https://example.com/danh-sach-sinh-vien-' . $dot->dot_id . '.xlsx',
             'classIds' => $classIds,

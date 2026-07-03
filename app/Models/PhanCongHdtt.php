@@ -3,9 +3,12 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class PhanCongHdtt extends Model
 {
+    use SoftDeletes;
+
     protected $table = 'phanconghdtt';
     protected $primaryKey = 'phan_cong_hd_id';
     public $timestamps = false;
@@ -14,7 +17,12 @@ class PhanCongHdtt extends Model
         'giang_vien_id',
         'sinh_vien_id',
         'dot_id',
-        'da_cong_bo'
+        'da_cong_bo',
+        'ngay_phan_cong'
+    ];
+
+    protected $casts = [
+        'ngay_phan_cong' => 'datetime',
     ];
 
     public function giangVien()

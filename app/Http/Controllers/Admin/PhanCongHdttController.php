@@ -44,6 +44,12 @@ class PhanCongHdttController extends Controller
                 ->get()
                 ->keyBy('sinh_vien_id');
 
+            // Sắp xếp: sinh viên vừa được phân công gần đây nhất lên đầu danh sách
+            $students = $students->sortByDesc(function ($sv) use ($assignments) {
+                $assign = $assignments->get($sv->sinh_vien_id);
+                return $assign && $assign->ngay_phan_cong ? $assign->ngay_phan_cong->timestamp : 0;
+            })->values();
+
             // Lấy đăng ký thực tập theo đợt
             $internshipRegs = DB::table('dangkythuctap')
                 ->join('congty', 'dangkythuctap.cong_ty_id', '=', 'congty.cong_ty_id')
@@ -55,7 +61,7 @@ class PhanCongHdttController extends Controller
 
             $rows = $students->map(function ($sv) use ($assignments, $internshipRegs) {
                 $assign = $assignments->get($sv->sinh_vien_id);
-                
+
                 $topic = '—';
                 if ($internshipRegs->has($sv->sinh_vien_id)) {
                     $topic = 'Thực tập tại ' . $internshipRegs->get($sv->sinh_vien_id)->ten_cong_ty;
@@ -67,7 +73,8 @@ class PhanCongHdttController extends Controller
                     'className' => $sv->lop ? $sv->lop->ten_lop : '—',
                     'topic' => $topic,
                     'supervisor' => $assign ? $assign->giangVien->ho_ten : null,
-                    'assignedAt' => $assign ? '16/06/2026' : null,
+                    'assignedAt' => $assign && $assign->ngay_phan_cong ? $assign->ngay_phan_cong->format('d/m/Y H:i') : null,
+                    'published' => $assign ? (bool) $assign->da_cong_bo : false,
                     'status' => $assign ? 'assigned' : 'unassigned'
                 ];
             })->all();
@@ -252,8 +259,11 @@ class PhanCongHdttController extends Controller
             ], 404);
         }
 
-        $activePeriod = Dot::orderBy('dot_id', 'desc')->first();
-        $dotId = $activePeriod ? $activePeriod->dot_id : 1;
+        $dotId = $request->input('periodId') ?? $request->input('period_id');
+        if (empty($dotId)) {
+            $activePeriod = Dot::orderBy('dot_id', 'desc')->first();
+            $dotId = $activePeriod ? $activePeriod->dot_id : 1;
+        }
 
         // Chỉ áp dụng cho đợt Thực tập tốt nghiệp (TTTN)
         $dot = Dot::find($dotId);
@@ -278,12 +288,18 @@ class PhanCongHdttController extends Controller
                     'className' => $sv->lop ? $sv->lop->ten_lop : '—',
                     'topic' => '—',
                     'supervisor' => $assign ? $assign->giangVien->ho_ten : null,
-                    'assignedAt' => $assign ? '16/06/2026' : null,
+                    'assignedAt' => $assign && $assign->ngay_phan_cong ? $assign->ngay_phan_cong->format('d/m/Y H:i') : null,
+                    'published' => $assign ? (bool) $assign->da_cong_bo : false,
                     'status' => $assign ? 'assigned' : 'unassigned'
                 ]
             ]
         ], 200);
     }
+
+    /**
+     * Số lượng sinh viên tối đa 1 giảng viên được hướng dẫn TTTN trong 1 đợt
+     */
+    const MAX_STUDENTS_PER_TEACHER = 5;
 
     public function capNhat(Request $request, $id)
     {
@@ -299,8 +315,12 @@ class PhanCongHdttController extends Controller
             ], 404);
         }
 
-        $activePeriod = Dot::orderBy('dot_id', 'desc')->first();
-        $dotId = $activePeriod ? $activePeriod->dot_id : 1;
+        // Tôn trọng đợt admin đang chọn trên UI, chỉ fallback sang đợt mới nhất nếu không truyền lên
+        $dotId = $request->input('periodId') ?? $request->input('period_id');
+        if (empty($dotId)) {
+            $activePeriod = Dot::orderBy('dot_id', 'desc')->first();
+            $dotId = $activePeriod ? $activePeriod->dot_id : 1;
+        }
 
         // Chỉ áp dụng cho đợt Thực tập tốt nghiệp (TTTN)
         $dot = Dot::find($dotId);
@@ -314,12 +334,11 @@ class PhanCongHdttController extends Controller
         $supervisorName = $request->input('supervisor');
 
         if (empty($supervisorName)) {
-            // Unassign
+            // Xóa mềm phân công (Unassign) - có thể khôi phục lại sau này nếu cần
             PhanCongHdtt::where('sinh_vien_id', $sv->sinh_vien_id)
                 ->where('dot_id', $dotId)
                 ->delete();
         } else {
-            // Assign
             $gv = GiangVien::where('ho_ten', $supervisorName)->first();
             if (!$gv) {
                 return response()->json([
@@ -328,16 +347,45 @@ class PhanCongHdttController extends Controller
                 ], 400);
             }
 
-            PhanCongHdtt::updateOrCreate(
-                [
-                    'sinh_vien_id' => $sv->sinh_vien_id,
-                    'dot_id' => $dotId
-                ],
-                [
+            // Chặn phân công vượt quá số lượng SV tối đa của giảng viên trong đúng đợt này
+            // (không tính chính sinh viên đang xử lý, để cho phép lưu lại/đổi GV khác của cùng SV đó)
+            $currentCount = PhanCongHdtt::where('giang_vien_id', $gv->giang_vien_id)
+                ->where('dot_id', $dotId)
+                ->where('sinh_vien_id', '!=', $sv->sinh_vien_id)
+                ->count();
+
+            if ($currentCount >= self::MAX_STUDENTS_PER_TEACHER) {
+                return response()->json([
+                    'success' => false,
+                    'message' => "Giảng viên {$supervisorName} đã đủ " . self::MAX_STUDENTS_PER_TEACHER . " sinh viên hướng dẫn trong đợt này, vui lòng chọn giảng viên khác!"
+                ], 400);
+            }
+
+            // Tìm bản ghi kể cả đã xóa mềm để khôi phục thay vì tạo mới (tránh đụng ràng buộc
+            // unique sinh_vien_id+dot_id), đồng thời reset lại trạng thái công bố cho phân công mới/đổi
+            $existing = PhanCongHdtt::withTrashed()
+                ->where('sinh_vien_id', $sv->sinh_vien_id)
+                ->where('dot_id', $dotId)
+                ->first();
+
+            if ($existing) {
+                if ($existing->trashed()) {
+                    $existing->restore();
+                }
+                $existing->update([
                     'giang_vien_id' => $gv->giang_vien_id,
-                    'da_cong_bo' => 1
-                ]
-            );
+                    'da_cong_bo' => false,
+                    'ngay_phan_cong' => now(),
+                ]);
+            } else {
+                PhanCongHdtt::create([
+                    'sinh_vien_id' => $sv->sinh_vien_id,
+                    'dot_id' => $dotId,
+                    'giang_vien_id' => $gv->giang_vien_id,
+                    'da_cong_bo' => false,
+                    'ngay_phan_cong' => now(),
+                ]);
+            }
         }
 
         $assign = PhanCongHdtt::with('giangVien')
@@ -354,18 +402,101 @@ class PhanCongHdttController extends Controller
                     'className' => $sv->lop ? $sv->lop->ten_lop : '—',
                     'topic' => '—',
                     'supervisor' => $assign ? $assign->giangVien->ho_ten : null,
-                    'assignedAt' => $assign ? '16/06/2026' : null,
+                    'assignedAt' => $assign && $assign->ngay_phan_cong ? $assign->ngay_phan_cong->format('d/m/Y H:i') : null,
+                    'published' => $assign ? (bool) $assign->da_cong_bo : false,
                     'status' => $assign ? 'assigned' : 'unassigned'
                 ]
             ]
         ], 200);
     }
 
+    /**
+     * Xóa mềm 1 phân công hướng dẫn (dùng cho nút xóa ở "Danh sách đã phân công")
+     */
+    public function xoa(Request $request, $id)
+    {
+        $sv = SinhVien::where('ma_so_sinh_vien', $id)
+            ->orWhere('sinh_vien_id', $id)
+            ->first();
+
+        if (!$sv) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Không tìm thấy sinh viên!'
+            ], 404);
+        }
+
+        $dotId = $request->input('periodId') ?? $request->input('period_id');
+        if (empty($dotId)) {
+            $activePeriod = Dot::orderBy('dot_id', 'desc')->first();
+            $dotId = $activePeriod ? $activePeriod->dot_id : 1;
+        }
+
+        $deleted = PhanCongHdtt::where('sinh_vien_id', $sv->sinh_vien_id)
+            ->where('dot_id', $dotId)
+            ->delete();
+
+        if (!$deleted) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Sinh viên này chưa được phân công giảng viên hướng dẫn!'
+            ], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Đã xóa phân công hướng dẫn!'
+        ], 200);
+    }
+
+    /**
+     * Công bố phân công hướng dẫn TTTN: công bố mọi phân công trong đợt hiện tại chưa từng công bố,
+     * lúc này sinh viên và giảng viên mới chính thức thấy được phân công của mình.
+     */
+    public function congBo(Request $request)
+    {
+        $dotId = $request->input('periodId') ?? $request->input('period_id');
+        if (empty($dotId)) {
+            $activePeriod = Dot::orderBy('dot_id', 'desc')->first();
+            $dotId = $activePeriod ? $activePeriod->dot_id : 1;
+        }
+
+        $publishedCount = PhanCongHdtt::where('dot_id', $dotId)
+            ->where('da_cong_bo', false)
+            ->update(['da_cong_bo' => true]);
+
+        if ($publishedCount > 0) {
+            \App\Services\RealtimeService::broadcast('notification', [
+                'title' => 'Phân công hướng dẫn TTTN đã được công bố',
+                'message' => "Đã công bố phân công hướng dẫn cho {$publishedCount} sinh viên.",
+                'type' => 'assignment_published',
+                'dotId' => (string) $dotId,
+            ]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => $publishedCount > 0
+                ? "Đã công bố phân công hướng dẫn cho {$publishedCount} sinh viên!"
+                : 'Không có phân công mới nào cần công bố.',
+            'results' => [
+                'publishedCount' => $publishedCount
+            ]
+        ], 200);
+    }
+
     public function getTeachers(Request $request)
     {
+        $dotId = $request->input('periodId') ?? $request->input('period_id');
+        if (empty($dotId)) {
+            $activePeriod = Dot::orderBy('dot_id', 'desc')->first();
+            $dotId = $activePeriod ? $activePeriod->dot_id : 1;
+        }
+
         $teachers = GiangVien::where('dang_hoat_dong', 1)->get();
-        
-        $assignedCounts = DB::table('phanconghdtt')
+
+        // Đếm số SV đang hướng dẫn TRONG ĐÚNG ĐỢT này (không tính đợt khác, không tính bản ghi đã xóa mềm)
+        $assignedCounts = PhanCongHdtt::where('dot_id', $dotId)
             ->select('giang_vien_id', DB::raw('count(*) as total'))
             ->groupBy('giang_vien_id')
             ->get()
@@ -373,8 +504,8 @@ class PhanCongHdttController extends Controller
 
         $rows = $teachers->map(function ($gv) use ($assignedCounts) {
             $count = $assignedCounts->get($gv->giang_vien_id)->total ?? 0;
-            // Cho phép tối đa 5 sinh viên/giảng viên hướng dẫn
-            $status = $count >= 5 ? 'full' : 'available';
+            // Cho phép tối đa 5 sinh viên/giảng viên hướng dẫn trong 1 đợt
+            $status = $count >= self::MAX_STUDENTS_PER_TEACHER ? 'full' : 'available';
 
             return [
                 'id' => (string) $gv->giang_vien_id,

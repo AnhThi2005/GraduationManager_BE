@@ -13,7 +13,9 @@ class NhomController extends Controller
 {
     public function layDanhSach(Request $request)
     {
-        $groups = Nhom::with(['deTai.giangVien', 'members.lop', 'dot'])->get();
+        $groups = Nhom::with(['deTai.giangVien', 'members.lop', 'dot'])
+            ->whereNotNull('de_tai_id')
+            ->get();
 
         $rows = $groups->map(function ($g) {
             return $this->transformGroup($g);

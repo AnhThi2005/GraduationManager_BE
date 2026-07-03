@@ -50,7 +50,7 @@ class CongTyService
      */
     public function createCompany(array $data)
     {
-        $status = isset($data['status']) ? $this->mapFrontendStatusToBackend($data['status']) : 'HOAT_DONG';
+        $status = isset($data['status']) ? $this->mapFrontendStatusToBackend($data['status']) : 'CHO_DUYET';
 
         $company = CongTy::create([
             'ten_cong_ty' => $data['name'] ?? '',
@@ -110,6 +110,20 @@ class CongTyService
 
         $company->update($updateData);
 
+        // Nếu công ty được duyệt hoạt động, tự động duyệt tất cả các đơn đăng ký thực tập đang chờ của sinh viên tại công ty này
+        if ($company->trang_thai === 'HOAT_DONG') {
+            DangKyThucTap::where('cong_ty_id', $id)
+                ->where('trang_thai', 'CHO_DUYET')
+                ->update(['trang_thai' => 'DA_DUYET']);
+        } elseif ($company->trang_thai === 'NGUNG_HOAT_DONG') {
+            // Công ty bị từ chối/tạm dừng: các khai báo đang chờ duyệt tại công ty này không thể được duyệt nữa
+            // nên tự động từ chối theo. Không đụng tới khai báo đã duyệt/chờ cấp giấy (SV đã/đang thực tập thật)
+            // vì đó là quyết định nghiệp vụ cần admin tự xử lý thủ công.
+            DangKyThucTap::where('cong_ty_id', $id)
+                ->where('trang_thai', 'CHO_DUYET')
+                ->update(['trang_thai' => 'TU_CHOI']);
+        }
+
         // Cập nhật lĩnh vực hoạt động
         if (isset($data['field'])) {
             DB::table('congtylinhvuc')->where('cong_ty_id', $id)->delete();
@@ -147,6 +161,19 @@ class CongTyService
         return true;
     }
 
+    /**
+     * Công bố danh sách công ty: công bố mọi công ty đang hoạt động mà chưa từng công bố.
+     * Công ty đã công bố thì hiển thị vĩnh viễn cho sinh viên ở mọi đợt sau, không cần công bố lại.
+     */
+    public function publishCompanies()
+    {
+        $publishedCount = CongTy::where('trang_thai', 'HOAT_DONG')
+            ->where('da_cong_bo', false)
+            ->update(['da_cong_bo' => true]);
+
+        return $publishedCount;
+    }
+
     // ==========================================================
     // 2. KHAI BÁO THỰC TẬP (INTERNSHIP CONFIRMATIONS)
     // ==========================================================
@@ -160,6 +187,31 @@ class CongTyService
             ->with(['sinhVien.lop', 'congTy'])
             ->whereNotNull('dia_chi_thuc_tap')
             ->where('dia_chi_thuc_tap', '!=', '');
+
+        // Lọc theo đợt học
+        if (!empty($filters['periodId'])) {
+            $query->where('dot_id', $filters['periodId']);
+        }
+
+        $registrations = $query->get();
+
+        $rows = $registrations->map(function ($reg) {
+            return $this->transformConfirmation($reg);
+        })->all();
+
+        return [
+            'rows' => $rows,
+            'total' => count($rows)
+        ];
+    }
+
+    /**
+     * Danh sách yêu cầu khai báo thực tập tốt nghiệp (không lọc theo có hay không đăng ký cấp giấy)
+     */
+    public function getListDeclarations(array $filters)
+    {
+        $query = DangKyThucTap::query()
+            ->with(['sinhVien.lop', 'congTy']);
 
         // Lọc theo đợt học
         if (!empty($filters['periodId'])) {
@@ -213,7 +265,7 @@ class CongTyService
                 'nguoi_lien_he' => $data['mentor'] ?? '',
                 'email_lien_he' => $data['email'] ?? '',
                 'so_dien_thoai_lh' => $data['phone'] ?? '',
-                'trang_thai' => 'NGUNG_HOAT_DONG' // Chưa duyệt làm đối tác chính thức
+                'trang_thai' => 'CHO_DUYET' // Công ty mới do admin nhập, chờ được duyệt làm đối tác chính thức
             ]);
         }
 
@@ -224,6 +276,16 @@ class CongTyService
             $dotId = $activePeriod ? $activePeriod->dot_id : 1;
         }
 
+        $dot = Dot::find($dotId);
+        if (!$dot) {
+            throw new \InvalidArgumentException('Không tìm thấy đợt thực tập tốt nghiệp này!');
+        }
+        if (!$dot->hasStudent($student->sinh_vien_id)) {
+            throw new \InvalidArgumentException(
+                "Sinh viên {$student->ma_so_sinh_vien} không thuộc đợt \"{$dot->ten_dot}\" (lớp chưa được gắn vào đợt này). Vui lòng thêm sinh viên vào đợt trước khi khai báo."
+            );
+        }
+
         $reg = DangKyThucTap::create([
             'sinh_vien_id' => $student->sinh_vien_id,
             'dot_id' => $dotId,
@@ -231,9 +293,11 @@ class CongTyService
             'nguoi_huong_dan' => $data['mentor'] ?? '',
             'sdt_huong_dan' => $data['phone'] ?? '',
             'vi_tri_thuc_tap' => $data['internshipLocation'] ?? $data['vi_tri_thuc_tap'] ?? '',
+            'vi_tri_cong_viec' => $data['position'] ?? $data['vi_tri_cong_viec'] ?? '',
             'thoi_gian_thuc_tap' => $data['thoi_gian_thuc_tap'] ?? '8 tuần',
             'dia_chi_thuc_tap' => $data['companyAddress'] ?? '',
-            'trang_thai' => 'CHO_DUYET'
+            'trang_thai' => 'CHO_DUYET',
+            'ngay_dang_ky' => now()
         ]);
 
         return $this->getConfirmationRequestDetail($reg->dang_ky_id);
@@ -251,11 +315,18 @@ class CongTyService
 
         $updateData = [];
         if (isset($data['status'])) {
-            $updateData['trang_thai'] = $this->mapFrontendConfirmStatusToBackend($data['status']);
+            $status = $this->mapFrontendConfirmStatusToBackend($data['status']);
+            if ($status === 'DA_DUYET') {
+                if ($reg->trang_thai === 'CHO_DUYET' && !empty($reg->dia_chi_thuc_tap)) {
+                    $status = 'CHO_CAP_GIAY';
+                }
+            }
+            $updateData['trang_thai'] = $status;
         }
         if (isset($data['mentor'])) $updateData['nguoi_huong_dan'] = $data['mentor'];
         if (isset($data['phone'])) $updateData['sdt_huong_dan'] = $data['phone'];
         if (isset($data['internshipLocation'])) $updateData['vi_tri_thuc_tap'] = $data['internshipLocation'];
+        if (isset($data['position'])) $updateData['vi_tri_cong_viec'] = $data['position'];
         if (isset($data['companyAddress'])) $updateData['dia_chi_thuc_tap'] = $data['companyAddress'];
 
         $reg->update($updateData);
@@ -302,15 +373,31 @@ class CongTyService
             return ['rows' => [], 'total' => 0];
         }
 
-        // Lấy danh sách lớp học tham gia đợt này
+        // Sinh viên thuộc đợt này: qua lớp được gắn vào đợt (dot_lop),
+        // hoặc được thêm thủ công vào đợt (dot_sinhvien) — đồng bộ với Dot::hasStudent()
+        // dùng ở TrangChuController và các endpoint tạo khai báo/xác nhận thực tập.
         $classIds = $period->lops()->pluck('lop.lop_id')->all();
+        $manualStudentIds = $period->sinhViens()->pluck('sinhvien.sinh_vien_id')->all();
 
-        if (empty($classIds)) {
+        if (empty($classIds) && empty($manualStudentIds)) {
             return ['rows' => [], 'total' => 0];
         }
 
-        // Truy vấn tất cả sinh viên thuộc các lớp này
-        $students = SinhVien::with('lop')->whereIn('lop_id', $classIds)->get();
+        // Chỉ lấy tài khoản đang hoạt động (loại tài khoản đã bị khóa/xóa mềm)
+        $students = SinhVien::with('lop')
+            ->where('dang_hoat_dong', 1)
+            ->where(function ($q) use ($classIds, $manualStudentIds) {
+                if (!empty($classIds)) {
+                    $q->orWhereIn('lop_id', $classIds);
+                }
+                if (!empty($manualStudentIds)) {
+                    $q->orWhereIn('sinh_vien_id', $manualStudentIds);
+                }
+            })
+            ->get();
+
+        // Đăng ký thực tập trong đợt này
+        $registrations = DangKyThucTap::where('dot_id', $periodId)->get()->keyBy('sinh_vien_id');
 
         // Lấy phân công theo đợt
         $assignments = PhanCongHdtt::with('giangVien')
@@ -321,16 +408,12 @@ class CongTyService
         $rows = [];
         foreach ($students as $sv) {
             // Kiểm tra xem sinh viên đã có đăng ký thực tập được duyệt hay chưa
-            $reg = DangKyThucTap::where('sinh_vien_id', $sv->sinh_vien_id)
-                ->where('dot_id', $periodId)
-                ->first();
+            $reg = $registrations->get($sv->sinh_vien_id);
 
             // Trạng thái tìm kiếm
             $status = 'not_registered';
-            if ($reg && $reg->trang_thai === 'DA_DUYET') {
+            if ($reg && ($reg->trang_thai === 'DA_DUYET' || $reg->trang_thai === 'CHO_CAP_GIAY')) {
                 $status = 'has_company';
-            } elseif ($reg && ($reg->trang_thai === 'CHO_DUYET' || $reg->trang_thai === 'TU_CHOI')) {
-                $status = 'searching';
             }
 
             $assign = $assignments->get($sv->sinh_vien_id);
@@ -356,26 +439,41 @@ class CongTyService
     /**
      * Xem chi tiết sinh viên chưa thực tập
      */
-    public function getNoCompanyStudentDetail($id)
+    public function getNoCompanyStudentDetail($id, $periodId = null)
     {
         $sv = SinhVien::with('lop')->find($id);
         if (!$sv) {
             return null;
         }
 
-        // Lấy đăng ký gần nhất của sinh viên
-        $reg = DangKyThucTap::where('sinh_vien_id', $id)->orderBy('dang_ky_id', 'desc')->first();
-        $status = 'not_registered';
-        if ($reg && $reg->trang_thai === 'DA_DUYET') {
-            $status = 'has_company';
-        } elseif ($reg && ($reg->trang_thai === 'CHO_DUYET' || $reg->trang_thai === 'TU_CHOI')) {
-            $status = 'searching';
+        $dotId = $periodId;
+        if (!$dotId) {
+            // Tìm đợt TTTN đang hoạt động liên kết với lớp của sinh viên
+            $lopId = $sv->lop_id;
+            $activePeriod = Dot::where('loai_dot', 'TTTN')
+                ->where('trang_thai', '!=', 'DA_DONG')
+                ->whereHas('lops', function($q) use ($lopId) {
+                    $q->where('lop.lop_id', $lopId);
+                })->orderBy('dot_id', 'desc')->first();
+
+            $dotId = $activePeriod ? $activePeriod->dot_id : null;
+            if (!$dotId) {
+                $newestPeriod = Dot::where('loai_dot', 'TTTN')->orderBy('dot_id', 'desc')->first();
+                $dotId = $newestPeriod ? $newestPeriod->dot_id : null;
+            }
         }
 
-        $dotId = $reg ? $reg->dot_id : null;
-        if (!$dotId) {
-            $activePeriod = Dot::where('loai_dot', 'TTTN')->orderBy('dot_id', 'desc')->first();
-            $dotId = $activePeriod ? $activePeriod->dot_id : null;
+        // Lấy đăng ký của sinh viên trong đợt này
+        $reg = null;
+        if ($dotId) {
+            $reg = DangKyThucTap::where('sinh_vien_id', $id)
+                ->where('dot_id', $dotId)
+                ->first();
+        }
+
+        $status = 'not_registered';
+        if ($reg && ($reg->trang_thai === 'DA_DUYET' || $reg->trang_thai === 'CHO_CAP_GIAY')) {
+            $status = 'has_company';
         }
 
         $assign = null;
@@ -386,6 +484,14 @@ class CongTyService
                 ->first();
         }
 
+        $companyName = '—';
+        $internshipLocation = '—';
+        if ($reg) {
+            $reg->load('congTy');
+            $companyName = $reg->congTy ? $reg->congTy->ten_cong_ty : ($reg->dia_chi_thuc_tap ?? '—');
+            $internshipLocation = $reg->vi_tri_thuc_tap ?? '—';
+        }
+
         return [
             'id' => (string)$sv->sinh_vien_id,
             'studentId' => $sv->ma_so_sinh_vien,
@@ -394,7 +500,9 @@ class CongTyService
             'phone' => $sv->so_dien_thoai ?? '',
             'status' => $status,
             'supervisor' => $assign ? $assign->giangVien->ho_ten : null,
-            'assignmentStatus' => $assign ? 'assigned' : 'unassigned'
+            'assignmentStatus' => $assign ? 'assigned' : 'unassigned',
+            'companyName' => $companyName,
+            'internshipLocation' => $internshipLocation
         ];
     }
 
@@ -442,7 +550,8 @@ class CongTyService
             'partners' => $partnersCount,
             'students' => $studentsCount,
             'status' => $status,
-            'reviewStatus' => $reviewStatus
+            'reviewStatus' => $reviewStatus,
+            'published' => (bool)$company->da_cong_bo
         ];
     }
 
@@ -456,6 +565,8 @@ class CongTyService
             $status = 'approved';
         } elseif ($reg->trang_thai === 'TU_CHOI') {
             $status = 'rejected';
+        } elseif ($reg->trang_thai === 'CHO_CAP_GIAY') {
+            $status = 'cho_cap_giay';
         }
 
         return [
@@ -466,9 +577,10 @@ class CongTyService
             'companyName' => $reg->congTy ? $reg->congTy->ten_cong_ty : '',
             'companyAddress' => $reg->congTy ? $reg->congTy->dia_chi : ($reg->dia_chi_thuc_tap ?? ''),
             'internshipLocation' => $reg->vi_tri_thuc_tap ?? '',
+            'position' => $reg->vi_tri_cong_viec ?? '',
             'taxId' => $reg->congTy ? $reg->congTy->ma_so_thue : '',
             'mentor' => $reg->nguoi_huong_dan ?? '',
-            'regDate' => '16/06/2026', // Mock registration date
+            'regDate' => $reg->ngay_dang_ky ? $reg->ngay_dang_ky->format('d/m/Y') : '',
             'status' => $status
         ];
     }
@@ -490,6 +602,8 @@ class CongTyService
             return 'DA_DUYET';
         } elseif ($status === 'rejected') {
             return 'TU_CHOI';
+        } elseif ($status === 'cho_cap_giay') {
+            return 'CHO_CAP_GIAY';
         }
         return 'CHO_DUYET';
     }
@@ -497,19 +611,44 @@ class CongTyService
     /**
      * Cập nhật trạng thái sinh viên chưa có nơi thực tập
      */
-    public function updateNoCompanyStudentStatus($sinhVienId, $status)
+    public function updateNoCompanyStudentStatus($sinhVienId, $status, $periodId = null)
     {
-        $reg = DangKyThucTap::where('sinh_vien_id', $sinhVienId)->orderBy('dang_ky_id', 'desc')->first();
-        if ($reg) {
-            if ($status === 'has_company') {
-                $reg->update(['trang_thai' => 'DA_DUYET']);
-            } elseif ($status === 'searching') {
-                $reg->update(['trang_thai' => 'CHO_DUYET']);
-            } elseif ($status === 'not_registered') {
-                $reg->update(['trang_thai' => 'TU_CHOI']);
+        $sv = SinhVien::find($sinhVienId);
+        if (!$sv) {
+            return null;
+        }
+
+        $dotId = $periodId;
+        if (!$dotId) {
+            // Tìm đợt TTTN đang hoạt động liên kết với lớp của sinh viên
+            $lopId = $sv->lop_id;
+            $activePeriod = Dot::where('loai_dot', 'TTTN')
+                ->where('trang_thai', '!=', 'DA_DONG')
+                ->whereHas('lops', function($q) use ($lopId) {
+                    $q->where('lop.lop_id', $lopId);
+                })->orderBy('dot_id', 'desc')->first();
+
+            $dotId = $activePeriod ? $activePeriod->dot_id : null;
+            if (!$dotId) {
+                $newestPeriod = Dot::where('loai_dot', 'TTTN')->orderBy('dot_id', 'desc')->first();
+                $dotId = $newestPeriod ? $newestPeriod->dot_id : null;
             }
         }
 
-        return $this->getNoCompanyStudentDetail($sinhVienId);
+        if ($dotId) {
+            $reg = DangKyThucTap::where('sinh_vien_id', $sinhVienId)
+                ->where('dot_id', $dotId)
+                ->first();
+
+            if ($reg) {
+                if ($status === 'has_company') {
+                    $reg->update(['trang_thai' => 'DA_DUYET']);
+                } elseif ($status === 'not_registered') {
+                    $reg->update(['trang_thai' => 'TU_CHOI']);
+                }
+            }
+        }
+
+        return $this->getNoCompanyStudentDetail($sinhVienId, $dotId);
     }
 }

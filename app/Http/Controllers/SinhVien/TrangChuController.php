@@ -12,6 +12,7 @@ use App\Models\DeTai;
 use App\Models\BaoCaoTienDo;
 use App\Models\LoiMoiNhom;
 use App\Models\CongTy;
+use App\Models\PhanCongHdtt;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
@@ -37,12 +38,12 @@ class TrangChuController extends Controller
             $query->where('sinhvien.sinh_vien_id', $sinhVienId);
         })->get();
 
-        // Đợt TTTN hiện tại (chọn đợt TTTN đang hoạt động/mới nhất)
-        $dotTttn = $dots->where('loai_dot', 'TTTN')->where('trang_thai', '!=', 'DA_DONG')->first()
+        // Đợt TTTN hiện tại (chọn đợt TTTN đang hoạt động/mới nhất - đồng bộ tiêu chí với ThucTapController::khaiBaoThucTap)
+        $dotTttn = $dots->where('loai_dot', 'TTTN')->where('trang_thai', '!=', 'DA_DONG')->sortByDesc('dot_id')->first()
             ?? $dots->where('loai_dot', 'TTTN')->sortByDesc('dot_id')->first();
 
         // Đợt ĐATN hiện tại (chọn đợt ĐATN đang hoạt động/mới nhất)
-        $dotDatn = $dots->where('loai_dot', 'DATN')->where('trang_thai', '!=', 'DA_DONG')->first()
+        $dotDatn = $dots->where('loai_dot', 'DATN')->where('trang_thai', '!=', 'DA_DONG')->sortByDesc('dot_id')->first()
             ?? $dots->where('loai_dot', 'DATN')->sortByDesc('dot_id')->first();
 
         // 2. Thông tin Thực tập tốt nghiệp (TTTN)
@@ -51,7 +52,9 @@ class TrangChuController extends Controller
             'periodName' => $dotTttn ? $dotTttn->ten_dot : null,
             'status' => 'Chưa đăng ký', // Mặc định
             'companyName' => null,
-            'mentor' => null,
+            'mentor' => null, // Người hướng dẫn tại doanh nghiệp (do SV tự khai báo)
+            'position' => null, // Vị trí thực tập (do SV tự khai báo)
+            'supervisorTeacher' => null, // GVHD do trường phân công (chỉ hiện sau khi admin đã công bố)
             'trangThaiDangKy' => null
         ];
 
@@ -69,10 +72,21 @@ class TrangChuController extends Controller
                 } else {
                     $tttnInfo['status'] = 'Bị từ chối';
                 }
-                
+
                 $congTy = CongTy::find($dangKy->cong_ty_id);
                 $tttnInfo['companyName'] = $congTy ? $congTy->ten_cong_ty : ($dangKy->dia_chi_thuc_tap ?? '');
                 $tttnInfo['mentor'] = $dangKy->nguoi_huong_dan;
+                $tttnInfo['position'] = $dangKy->vi_tri_cong_viec;
+            }
+
+            // GVHD do trường phân công (Phân công hướng dẫn TTTN) - chỉ hiện khi admin đã công bố
+            $phanCong = PhanCongHdtt::with('giangVien')
+                ->where('sinh_vien_id', $sinhVienId)
+                ->where('dot_id', $dotTttn->dot_id)
+                ->where('da_cong_bo', true)
+                ->first();
+            if ($phanCong && $phanCong->giangVien) {
+                $tttnInfo['supervisorTeacher'] = $phanCong->giangVien->ho_ten;
             }
         }
 
