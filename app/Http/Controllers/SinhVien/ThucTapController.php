@@ -110,18 +110,23 @@ class ThucTapController extends Controller
             }
         }
 
-        // Tìm đợt TTTN đang hoạt động của sinh viên
-        $lopId = $sinhVien->lop_id;
-        $activePeriod = Dot::where('loai_dot', 'TTTN')
-            ->where('trang_thai', '!=', 'DA_DONG')
-            ->whereHas('lops', function($q) use ($lopId) {
-                $q->where('lop.lop_id', $lopId);
-            })->first();
+        // Lấy đợt học được truyền lên từ client, hoặc tìm đợt TTTN đang hoạt động của sinh viên
+        $periodId = $request->input('periodId') ?? $request->query('periodId');
+        if ($periodId) {
+            $activePeriod = Dot::find($periodId);
+        } else {
+            $lopId = $sinhVien->lop_id;
+            $activePeriod = Dot::where('loai_dot', 'TTTN')
+                ->where('trang_thai', '!=', 'DA_DONG')
+                ->whereHas('lops', function($q) use ($lopId) {
+                    $q->where('lop.lop_id', $lopId);
+                })->orderBy('dot_id', 'desc')->first();
 
-        // Fallback sang đợt TTTN bất kỳ đang mở hoặc đợt mới nhất
-        if (!$activePeriod) {
-            $activePeriod = Dot::where('loai_dot', 'TTTN')->where('trang_thai', 'DANG_MO')->first()
-                ?? Dot::where('loai_dot', 'TTTN')->orderBy('dot_id', 'desc')->first();
+            // Fallback sang đợt TTTN bất kỳ đang mở hoặc đợt mới nhất
+            if (!$activePeriod) {
+                $activePeriod = Dot::where('loai_dot', 'TTTN')->where('trang_thai', 'DANG_MO')->first()
+                    ?? Dot::where('loai_dot', 'TTTN')->orderBy('dot_id', 'desc')->first();
+            }
         }
 
         if (!$activePeriod) {
@@ -131,16 +136,25 @@ class ThucTapController extends Controller
             ], 400);
         }
 
-        // Kiểm tra xem đã có đăng ký được duyệt trong đợt này chưa
+        // Chặn khai báo sai đợt: lớp của sinh viên phải được gắn vào đợt này,
+        // hoặc sinh viên được thêm thủ công vào đợt (ví dụ rớt đợt trước)
+        if (!$activePeriod->hasStudent($sinhVien->sinh_vien_id)) {
+            return response()->json([
+                'success' => false,
+                'message' => "Bạn không thuộc đợt \"{$activePeriod->ten_dot}\" nên không thể khai báo thực tập cho đợt này. Vui lòng liên hệ quản trị viên nếu đây là nhầm lẫn."
+            ], 422);
+        }
+
+        // Kiểm tra xem đã có đăng ký được duyệt hoặc chờ cấp giấy trong đợt này chưa
         $daCoDangKyDuyet = DangKyThucTap::where('sinh_vien_id', $sinhVien->sinh_vien_id)
             ->where('dot_id', $activePeriod->dot_id)
-            ->where('trang_thai', 'DA_DUYET')
+            ->whereIn('trang_thai', ['DA_DUYET', 'CHO_CAP_GIAY'])
             ->exists();
 
         if ($daCoDangKyDuyet) {
             return response()->json([
                 'success' => false,
-                'message' => 'Nơi thực tập của bạn trong đợt này đã được phê duyệt chính thức. Không thể tự ý khai báo lại!'
+                'message' => 'Nơi thực tập của bạn trong đợt này đã được duyệt hoặc đang chờ cấp giấy giới thiệu. Không thể tự ý khai báo lại!'
             ], 400);
         }
 
@@ -155,8 +169,9 @@ class ThucTapController extends Controller
             ? ($request->input('internshipAddress') ?: ($request->input('address') ?: 'Địa chỉ công ty'))
             : null;
 
-        // Nếu công ty đã có sẵn và đang hoạt động, tự động duyệt đăng ký thực tập cho sinh viên
-        $trangThaiReg = ($company && $company->trang_thai === 'HOAT_DONG') ? 'DA_DUYET' : 'CHO_DUYET';
+        // Tất cả các khai báo mới từ sinh viên đều bắt đầu ở trạng thái chờ duyệt (CHO_DUYET)
+        // để Admin kiểm tra tính phù hợp của vị trí thực tập với ngành học.
+        $trangThaiReg = 'CHO_DUYET';
 
         // Tạo yêu cầu khai báo mới ở trạng thái chờ duyệt hoặc đã duyệt tương ứng
         $reg = DangKyThucTap::create([
@@ -210,11 +225,16 @@ class ThucTapController extends Controller
             ], 401);
         }
 
-        $lopId = $sinhVien->lop_id;
-        $activePeriod = Dot::where('loai_dot', 'TTTN')
-            ->whereHas('lops', function($q) use ($lopId) {
-                $q->where('lop.lop_id', $lopId);
-            })->orderBy('dot_id', 'desc')->first();
+        $periodId = $request->query('periodId') ?? $request->input('periodId');
+        if ($periodId) {
+            $activePeriod = Dot::find($periodId);
+        } else {
+            $lopId = $sinhVien->lop_id;
+            $activePeriod = Dot::where('loai_dot', 'TTTN')
+                ->whereHas('lops', function($q) use ($lopId) {
+                    $q->where('lop.lop_id', $lopId);
+                })->orderBy('dot_id', 'desc')->first();
+        }
 
         if (!$activePeriod) {
             return response()->json([
@@ -244,6 +264,8 @@ class ThucTapController extends Controller
             $status = 'approved';
         } else if ($reg->trang_thai === 'TU_CHOI') {
             $status = 'rejected';
+        } else if ($reg->trang_thai === 'CHO_CAP_GIAY') {
+            $status = 'cho_cap_giay';
         }
 
         return response()->json([

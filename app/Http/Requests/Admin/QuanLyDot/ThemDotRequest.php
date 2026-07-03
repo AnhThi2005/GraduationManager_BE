@@ -19,6 +19,12 @@ class ThemDotRequest extends FormRequest
             'startDate'   => 'required|string',
             'endDate'     => 'required|string',
             'regDeadline' => 'required|string',
+            'regOpenDate' => 'nullable|string',
+            'reportDeadline' => 'nullable|string',
+            'gradingStartDate' => 'nullable|string',
+            'gradingEndDate' => 'nullable|string',
+            'semester'    => 'nullable',
+            'schoolYear'  => 'nullable|string',
             'classIds'    => 'nullable|array',
             'externalStudentIds' => 'nullable|array',
         ];

@@ -5,16 +5,19 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Services\CongTyService;
+use App\Services\NguoiDungService;
 use App\Http\Requests\Admin\QuanLySinhVienThucTap\ThemDoanhNghiepRequest;
 use App\Http\Requests\Admin\QuanLySinhVienThucTap\ThemMoiXacNhanRequest;
 
 class CongTyController extends Controller
 {
     protected $congTyService;
+    protected $nguoiDungService;
 
-    public function __construct(CongTyService $congTyService)
+    public function __construct(CongTyService $congTyService, NguoiDungService $nguoiDungService)
     {
         $this->congTyService = $congTyService;
+        $this->nguoiDungService = $nguoiDungService;
     }
 
     // ==========================================================
@@ -124,6 +127,25 @@ class CongTyController extends Controller
         ], 200);
     }
 
+    public function layDanhSachKhaiBao(Request $request)
+    {
+        $filters = [
+            'periodId' => $request->query('periodId')
+        ];
+
+        $res = $this->congTyService->getListDeclarations($filters);
+
+        return response()->json([
+            'code' => 200,
+            'results' => [
+                'objects' => [
+                    'rows' => $res['rows'],
+                    'total' => $res['total']
+                ]
+            ]
+        ], 200);
+    }
+
     public function xemChiTietXacNhan(Request $request, $id)
     {
         $reg = $this->congTyService->getConfirmationRequestDetail($id);
@@ -147,7 +169,15 @@ class CongTyController extends Controller
 
         $periodId = $request->query('periodId');
 
-        $reg = $this->congTyService->createConfirmationRequest($request->all(), $periodId);
+        try {
+            $reg = $this->congTyService->createConfirmationRequest($request->all(), $periodId);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage()
+            ], 422);
+        }
+
         if (!$reg) {
             return response()->json([
                 'success' => false,
@@ -271,6 +301,27 @@ class CongTyController extends Controller
             'results' => [
                 'object' => $res
             ]
+        ], 200);
+    }
+
+    /**
+     * Xóa mềm sinh viên chưa có nơi thực tập: khóa tài khoản sinh viên
+     * (danh sách này là view tính động từ SinhVien + DangKyThucTap, không phải bảng riêng
+     * nên "xóa" ở đây tái sử dụng cơ chế khóa tài khoản của NguoiDungController::xoaNguoiDung)
+     */
+    public function xoaChuaThucTap(Request $request, $id)
+    {
+        $sv = $this->nguoiDungService->doiTrangThaiSinhVien($id, 0);
+        if (!$sv) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Không tìm thấy sinh viên này!'
+            ], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Khóa tài khoản sinh viên thành công!'
         ], 200);
     }
 }

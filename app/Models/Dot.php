@@ -37,4 +37,22 @@ class Dot extends Model
         return $this->belongsToMany(SinhVien::class, 'dot_sinhvien', 'dot_id', 'sinh_vien_id')
             ->withPivot('ly_do');
     }
+
+    /**
+     * Sinh viên có thuộc đợt này không: qua lớp được gắn vào đợt (dot_lop),
+     * hoặc được thêm thủ công vào đợt (dot_sinhvien, ví dụ sinh viên rớt đợt trước).
+     */
+    public function hasStudent($sinhVienId): bool
+    {
+        $sinhVien = SinhVien::find($sinhVienId);
+        if (!$sinhVien) {
+            return false;
+        }
+
+        if ($sinhVien->lop_id && $this->lops()->where('lop.lop_id', $sinhVien->lop_id)->exists()) {
+            return true;
+        }
+
+        return $this->sinhViens()->where('sinhvien.sinh_vien_id', $sinhVienId)->exists();
+    }
 }

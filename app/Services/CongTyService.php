@@ -186,6 +186,31 @@ class CongTyService
     }
 
     /**
+     * Danh sách yêu cầu khai báo thực tập tốt nghiệp (không lọc theo có hay không đăng ký cấp giấy)
+     */
+    public function getListDeclarations(array $filters)
+    {
+        $query = DangKyThucTap::query()
+            ->with(['sinhVien.lop', 'congTy']);
+
+        // Lọc theo đợt học
+        if (!empty($filters['periodId'])) {
+            $query->where('dot_id', $filters['periodId']);
+        }
+
+        $registrations = $query->get();
+
+        $rows = $registrations->map(function ($reg) {
+            return $this->transformConfirmation($reg);
+        })->all();
+
+        return [
+            'rows' => $rows,
+            'total' => count($rows)
+        ];
+    }
+
+    /**
      * Chi tiết yêu cầu xác nhận thực tập
      */
     public function getConfirmationRequestDetail($id)
@@ -231,6 +256,16 @@ class CongTyService
             $dotId = $activePeriod ? $activePeriod->dot_id : 1;
         }
 
+        $dot = Dot::find($dotId);
+        if (!$dot) {
+            throw new \InvalidArgumentException('Không tìm thấy đợt thực tập tốt nghiệp này!');
+        }
+        if (!$dot->hasStudent($student->sinh_vien_id)) {
+            throw new \InvalidArgumentException(
+                "Sinh viên {$student->ma_so_sinh_vien} không thuộc đợt \"{$dot->ten_dot}\" (lớp chưa được gắn vào đợt này). Vui lòng thêm sinh viên vào đợt trước khi khai báo."
+            );
+        }
+
         $reg = DangKyThucTap::create([
             'sinh_vien_id' => $student->sinh_vien_id,
             'dot_id' => $dotId,
@@ -258,7 +293,13 @@ class CongTyService
 
         $updateData = [];
         if (isset($data['status'])) {
-            $updateData['trang_thai'] = $this->mapFrontendConfirmStatusToBackend($data['status']);
+            $status = $this->mapFrontendConfirmStatusToBackend($data['status']);
+            if ($status === 'DA_DUYET') {
+                if ($reg->trang_thai === 'CHO_DUYET' && !empty($reg->dia_chi_thuc_tap)) {
+                    $status = 'CHO_CAP_GIAY';
+                }
+            }
+            $updateData['trang_thai'] = $status;
         }
         if (isset($data['mentor'])) $updateData['nguoi_huong_dan'] = $data['mentor'];
         if (isset($data['phone'])) $updateData['sdt_huong_dan'] = $data['phone'];
@@ -309,15 +350,31 @@ class CongTyService
             return ['rows' => [], 'total' => 0];
         }
 
-        // Lấy danh sách lớp học tham gia đợt này
+        // Sinh viên thuộc đợt này: qua lớp được gắn vào đợt (dot_lop),
+        // hoặc được thêm thủ công vào đợt (dot_sinhvien) — đồng bộ với Dot::hasStudent()
+        // dùng ở TrangChuController và các endpoint tạo khai báo/xác nhận thực tập.
         $classIds = $period->lops()->pluck('lop.lop_id')->all();
+        $manualStudentIds = $period->sinhViens()->pluck('sinhvien.sinh_vien_id')->all();
 
-        if (empty($classIds)) {
+        if (empty($classIds) && empty($manualStudentIds)) {
             return ['rows' => [], 'total' => 0];
         }
 
-        // Truy vấn tất cả sinh viên thuộc các lớp này
-        $students = SinhVien::with('lop')->whereIn('lop_id', $classIds)->get();
+        // Chỉ lấy tài khoản đang hoạt động (loại tài khoản đã bị khóa/xóa mềm)
+        $students = SinhVien::with('lop')
+            ->where('dang_hoat_dong', 1)
+            ->where(function ($q) use ($classIds, $manualStudentIds) {
+                if (!empty($classIds)) {
+                    $q->orWhereIn('lop_id', $classIds);
+                }
+                if (!empty($manualStudentIds)) {
+                    $q->orWhereIn('sinh_vien_id', $manualStudentIds);
+                }
+            })
+            ->get();
+
+        // Đăng ký thực tập trong đợt này
+        $registrations = DangKyThucTap::where('dot_id', $periodId)->get()->keyBy('sinh_vien_id');
 
         // Lấy phân công theo đợt
         $assignments = PhanCongHdtt::with('giangVien')
@@ -328,16 +385,12 @@ class CongTyService
         $rows = [];
         foreach ($students as $sv) {
             // Kiểm tra xem sinh viên đã có đăng ký thực tập được duyệt hay chưa
-            $reg = DangKyThucTap::where('sinh_vien_id', $sv->sinh_vien_id)
-                ->where('dot_id', $periodId)
-                ->first();
+            $reg = $registrations->get($sv->sinh_vien_id);
 
             // Trạng thái tìm kiếm
             $status = 'not_registered';
-            if ($reg && $reg->trang_thai === 'DA_DUYET') {
+            if ($reg && ($reg->trang_thai === 'DA_DUYET' || $reg->trang_thai === 'CHO_CAP_GIAY')) {
                 $status = 'has_company';
-            } elseif ($reg && ($reg->trang_thai === 'CHO_DUYET' || $reg->trang_thai === 'TU_CHOI')) {
-                $status = 'searching';
             }
 
             $assign = $assignments->get($sv->sinh_vien_id);
@@ -396,10 +449,8 @@ class CongTyService
         }
 
         $status = 'not_registered';
-        if ($reg && $reg->trang_thai === 'DA_DUYET') {
+        if ($reg && ($reg->trang_thai === 'DA_DUYET' || $reg->trang_thai === 'CHO_CAP_GIAY')) {
             $status = 'has_company';
-        } elseif ($reg && ($reg->trang_thai === 'CHO_DUYET' || $reg->trang_thai === 'TU_CHOI')) {
-            $status = 'searching';
         }
 
         $assign = null;
@@ -490,6 +541,8 @@ class CongTyService
             $status = 'approved';
         } elseif ($reg->trang_thai === 'TU_CHOI') {
             $status = 'rejected';
+        } elseif ($reg->trang_thai === 'CHO_CAP_GIAY') {
+            $status = 'cho_cap_giay';
         }
 
         return [
@@ -524,6 +577,8 @@ class CongTyService
             return 'DA_DUYET';
         } elseif ($status === 'rejected') {
             return 'TU_CHOI';
+        } elseif ($status === 'cho_cap_giay') {
+            return 'CHO_CAP_GIAY';
         }
         return 'CHO_DUYET';
     }
@@ -563,8 +618,6 @@ class CongTyService
             if ($reg) {
                 if ($status === 'has_company') {
                     $reg->update(['trang_thai' => 'DA_DUYET']);
-                } elseif ($status === 'searching') {
-                    $reg->update(['trang_thai' => 'CHO_DUYET']);
                 } elseif ($status === 'not_registered') {
                     $reg->update(['trang_thai' => 'TU_CHOI']);
                 }
