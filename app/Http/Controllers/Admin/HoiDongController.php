@@ -92,6 +92,12 @@ class HoiDongController extends Controller
                 $nhomId = $t['nhom_id'] ?? $t['id'] ?? null;
                 if (!$nhomId) continue;
 
+                $status = $request->input('status', 'NHAP');
+                $nhom = \App\Models\Nhom::find($nhomId);
+                if ($status === 'DA_CONG_BO' && $nhom && $nhom->ket_qua_huong_dan !== 'DAT') {
+                    throw new \Exception("Nhóm ID {$nhomId} chưa đạt đánh giá hướng dẫn (GVHD), không thể xếp vào hội đồng đã công bố!");
+                }
+
                 // Update group's council
                 DB::table('nhomsvda')->where('nhom_id', $nhomId)->update([
                     'hoi_dong_id' => $hd->hoi_dong_id
@@ -182,6 +188,12 @@ class HoiDongController extends Controller
                     $nhomId = $t['nhom_id'] ?? $t['id'] ?? null;
                     if (!$nhomId) continue;
 
+                    $newStatus = $request->input('status', $hd->trang_thai);
+                    $nhom = \App\Models\Nhom::find($nhomId);
+                    if ($newStatus === 'DA_CONG_BO' && $nhom && $nhom->ket_qua_huong_dan !== 'DAT') {
+                        throw new \Exception("Nhóm ID {$nhomId} chưa đạt đánh giá hướng dẫn (GVHD), không thể công bố hội đồng!");
+                    }
+
                     // Update group's council
                     DB::table('nhomsvda')->where('nhom_id', $nhomId)->update([
                         'hoi_dong_id' => $hd->hoi_dong_id
@@ -268,7 +280,14 @@ class HoiDongController extends Controller
         $topics = [];
         $topicGroups = [];
 
-        foreach ($hd->nhoms as $nhom) {
+        $nhoms = $hd->nhoms;
+        if ($hd->trang_thai === 'DA_CONG_BO') {
+            $nhoms = $nhoms->filter(function($n) {
+                return $n->ket_qua_huong_dan === 'DAT' && $n->ket_qua_phan_bien === 'DAT';
+            });
+        }
+
+        foreach ($nhoms as $nhom) {
             $code = 'NH' . str_pad($nhom->nhom_id, 2, '0', STR_PAD_LEFT);
             $title = $nhom->deTai ? $nhom->deTai->ten_de_tai : 'Nhóm #' . $nhom->nhom_id;
             $membersCount = $nhom->members->count();

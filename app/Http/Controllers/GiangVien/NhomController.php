@@ -258,11 +258,20 @@ class NhomController extends Controller
             ->whereHas('deTai', function ($q) use ($teacherId) {
                 $q->where('giang_vien_id', $teacherId);
             })
-            ->with(['members', 'deTai'])
+            ->with(['members.lop', 'deTai'])
             ->get()
             ->map(function ($g) {
                 $statusText = $g->ket_qua_huong_dan !== null ? 'reviewed' : 'pending';
                 $eval = $g->ket_qua_huong_dan === 'DAT' ? 'dat' : ($g->ket_qua_huong_dan === 'KHONG_DAT' ? 'khongdat' : '');
+
+                $membersList = $g->members->map(function ($m) {
+                    return [
+                        'id' => (string)$m->ma_so_sinh_vien,
+                        'name' => $m->ho_ten,
+                        'class_name' => $m->lop ? $m->lop->ten_lop : '—',
+                        'is_leader' => (bool)$m->pivot->la_truong_nhom
+                    ];
+                })->all();
 
                 return [
                     'id' => (string)$g->nhom_id,
@@ -270,6 +279,7 @@ class NhomController extends Controller
                     'groupName' => 'Nhóm #' . $g->nhom_id,
                     'topicName' => $g->deTai ? $g->deTai->ten_de_tai : '—',
                     'members' => $g->members->count(),
+                    'members_list' => $membersList,
                     'repo' => 'github.com/datn-nhom' . $g->nhom_id,
                     'latestSubmission' => 'bao_cao_tien_do.pdf',
                     'updatedAt' => date('d/m/Y'),
@@ -287,18 +297,32 @@ class NhomController extends Controller
 
         $reviewGroups = Nhom::whereIn('hoi_dong_id', $myCouncilIds)
             ->where('dot_id', $dotId)
-            ->with(['members', 'deTai'])
+            ->where('ket_qua_huong_dan', 'DAT')
+            ->with(['members.lop', 'deTai.giangVien'])
             ->get()
             ->map(function ($g) {
                 $statusText = $g->ket_qua_phan_bien !== null ? 'reviewed' : 'pending';
                 $eval = $g->ket_qua_phan_bien === 'DAT' ? 'dat' : ($g->ket_qua_phan_bien === 'KHONG_DAT' ? 'khongdat' : '');
+
+                $membersList = $g->members->map(function ($m) {
+                    return [
+                        'id' => (string)$m->ma_so_sinh_vien,
+                        'name' => $m->ho_ten,
+                        'class_name' => $m->lop ? $m->lop->ten_lop : '—',
+                        'is_leader' => (bool)$m->pivot->la_truong_nhom
+                    ];
+                })->all();
+
+                $advisorName = ($g->deTai && $g->deTai->giangVien) ? $g->deTai->giangVien->ho_ten : '—';
 
                 return [
                     'id' => (string)$g->nhom_id,
                     'segment' => 'Nhóm phản biện',
                     'groupName' => 'Nhóm #' . $g->nhom_id,
                     'topicName' => $g->deTai ? $g->deTai->ten_de_tai : '—',
+                    'advisorName' => $advisorName,
                     'members' => $g->members->count(),
+                    'members_list' => $membersList,
                     'repo' => 'github.com/datn-nhom' . $g->nhom_id,
                     'latestSubmission' => 'bao_cao_phien_ban_chinh_thuc.pdf',
                     'updatedAt' => date('d/m/Y'),
@@ -328,7 +352,7 @@ class NhomController extends Controller
         $action = $request->input('action');
         $eval = ($action === 'accept') ? 'DAT' : 'KHONG_DAT';
 
-        $g = Nhom::with(['deTai', 'members'])->find($groupId);
+        $g = Nhom::with(['deTai.giangVien', 'members.lop'])->find($groupId);
         if (!$g) {
             return response()->json(['success' => false, 'message' => 'Không tìm thấy nhóm này!'], 404);
         }
@@ -343,12 +367,25 @@ class NhomController extends Controller
 
         $g->save();
 
+        $membersList = $g->members->map(function ($m) {
+            return [
+                'id' => (string)$m->ma_so_sinh_vien,
+                'name' => $m->ho_ten,
+                'class_name' => $m->lop ? $m->lop->ten_lop : '—',
+                'is_leader' => (bool)$m->pivot->la_truong_nhom
+            ];
+        })->all();
+
+        $advisorName = ($g->deTai && $g->deTai->giangVien) ? $g->deTai->giangVien->ho_ten : '—';
+
         $groupObj = [
             'id' => (string)$g->nhom_id,
             'segment' => $segment,
             'groupName' => 'Nhóm #' . $g->nhom_id,
             'topicName' => $g->deTai ? $g->deTai->ten_de_tai : '—',
+            'advisorName' => $advisorName,
             'members' => $g->members->count(),
+            'members_list' => $membersList,
             'repo' => 'github.com/datn-nhom' . $g->nhom_id,
             'latestSubmission' => $segment === 'Nhóm hướng dẫn' ? 'bao_cao_tien_do.pdf' : 'bao_cao_phien_ban_chinh_thuc.pdf',
             'updatedAt' => date('d/m/Y'),
@@ -356,6 +393,12 @@ class NhomController extends Controller
             'evaluation' => $action === 'accept' ? 'dat' : 'khongdat',
             'note' => $g->nhan_xet_phan_bien ?? ''
         ];
+
+        \App\Services\RealtimeService::broadcast('slot_updated', [
+            'type' => 'group_updated',
+            'groupId' => $groupId,
+            'payload' => $groupObj
+        ]);
 
         return response()->json([
             'success' => true,
@@ -428,6 +471,11 @@ class NhomController extends Controller
                 'loai_nhan_xet' => $loaiBaoCao
             ]
         );
+
+        \App\Services\RealtimeService::broadcast('slot_updated', [
+            'type' => 'group_updated',
+            'payload' => []
+        ]);
 
         return response()->json([
             'success' => true,
