@@ -244,7 +244,14 @@ class BaoCaoController extends Controller
                 }
             }
 
-            $fileUrl = ($r->duong_dan_file && str_starts_with($r->duong_dan_file, 'http')) ? $r->duong_dan_file : null;
+            $fileUrl = null;
+            if ($r->duong_dan_file && $r->duong_dan_file !== '—') {
+                if (str_starts_with($r->duong_dan_file, 'http')) {
+                    $fileUrl = $r->duong_dan_file;
+                } else {
+                    $fileUrl = asset('storage/' . $r->duong_dan_file);
+                }
+            }
 
             return [
                 'name' => $name,
@@ -344,6 +351,15 @@ class BaoCaoController extends Controller
             ]);
         }
 
+        $fileUrl = null;
+        if ($report->duong_dan_file) {
+            if (str_starts_with($report->duong_dan_file, 'http')) {
+                $fileUrl = $report->duong_dan_file;
+            } else {
+                $fileUrl = asset('storage/' . $report->duong_dan_file);
+            }
+        }
+
         return response()->json([
             'code' => 200,
             'message' => 'Nộp bản thảo đồ án thành công!',
@@ -352,7 +368,7 @@ class BaoCaoController extends Controller
                     'name' => $name,
                     'status' => 'Đang chấm điểm',
                     'file' => $report->duong_dan_file ? basename($report->duong_dan_file) : '—',
-                    'fileUrl' => ($report->duong_dan_file && str_starts_with($report->duong_dan_file, 'http')) ? $report->duong_dan_file : null,
+                    'fileUrl' => $fileUrl,
                     'note' => $note,
                     'teacherComment' => null,
                     'updated' => Carbon::parse($report->thoi_gian_nop)->format('d/m/Y')
