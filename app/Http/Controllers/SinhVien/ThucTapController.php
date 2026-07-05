@@ -28,13 +28,6 @@ class ThucTapController extends Controller
                 ->pluck('ten_linh_vuc')
                 ->all();
 
-            $registeredCount = DangKyThucTap::where('cong_ty_id', $company->cong_ty_id)
-                ->where('trang_thai', 'DA_DUYET')
-                ->count();
-
-            $maxSlots = 15;
-            $remainingSlots = max(0, $maxSlots - $registeredCount);
-
             return [
                 'code' => (string)$company->cong_ty_id,
                 'name' => $company->ten_cong_ty,
@@ -44,10 +37,7 @@ class ThucTapController extends Controller
                 'mentor' => $company->nguoi_lien_he ?? 'Chưa cập nhật',
                 'phone' => $company->so_dien_thoai_lh ?? 'Chưa cập nhật',
                 'email' => $company->email_lien_he ?? 'Chưa cập nhật',
-                'slots' => $remainingSlots,
                 'duration' => '8 tuần',
-                'status' => $remainingSlots > 0 ? 'Còn slot' : 'Hết slot',
-                'highlights' => ['Có mentor hỗ trợ', 'Môi trường tốt', 'Hỗ trợ đóng dấu']
             ];
         });
 

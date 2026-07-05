@@ -144,7 +144,7 @@ class ThongKeService
                     'id' => (string)$ri->dang_ky_id,
                     'userName' => $ri->ho_ten,
                     'courseName' => $ri->ten_cong_ty,
-                    'date' => now()->subHours($ri->dang_ky_id % 24)->format('Y-m-d H:i:s'), // Giả lập thời gian
+                    'date' => $ri->ngay_dang_ky ?? now()->subHours($ri->dang_ky_id % 24)->format('Y-m-d H:i:s'),
                     'status' => $statusText,
                     'statusColor' => $statusColor
                 ];

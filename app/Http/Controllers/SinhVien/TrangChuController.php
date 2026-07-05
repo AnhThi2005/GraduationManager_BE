@@ -228,35 +228,8 @@ class TrangChuController extends Controller
             $pendingTasks[] = "Theo dõi thông báo mới nhất từ Khoa / Trường.";
         }
 
-        // 7. Công ty đối tác nổi bật (Lấy 3 công ty đầu tiên từ DB)
-        $congTys = CongTy::where('trang_thai', 'HOAT_DONG')->take(3)->get();
-        $companiesData = [];
-        foreach ($congTys as $ct) {
-            // Lấy lĩnh vực
-            $linhVuc = DB::table('congtylinhvuc')->where('cong_ty_id', $ct->cong_ty_id)->first();
-            $fieldName = $linhVuc ? $linhVuc->ten_linh_vuc : 'Phần mềm';
-            
-            // Tính slots đăng ký (giả lập hoặc dùng 15 làm max)
-            $registeredCount = DangKyThucTap::where('cong_ty_id', $ct->cong_ty_id)->where('trang_thai', 'DA_DUYET')->count();
-            $maxSlots = 15;
-            $openSlots = max(0, $maxSlots - $registeredCount);
-
-            $companiesData[] = [
-                'name' => $ct->ten_cong_ty,
-                'field' => $fieldName,
-                'address' => $ct->dia_chi ?? 'TP.HCM',
-                'slots' => (string)$openSlots
-            ];
-        }
-
-        // Nếu ko có công ty nào trong DB thì trả về mock
-        if (empty($companiesData)) {
-            $companiesData = [
-                ['name' => 'FPT Software', 'field' => 'Phần mềm', 'address' => 'Quận 9, TP.HCM', 'slots' => '15'],
-                ['name' => 'VNG Corp', 'field' => 'Internet', 'address' => 'Quận 7, TP.HCM', 'slots' => '8'],
-                ['name' => 'MoMo', 'field' => 'Fintech', 'address' => 'Quận 3, TP.HCM', 'slots' => '5'],
-            ];
-        }
+        // 7. Số lượng công ty đối tác đang hoạt động và đã công bố cho sinh viên xem
+        $companiesCount = CongTy::where('trang_thai', 'HOAT_DONG')->where('da_cong_bo', true)->count();
 
         // Trả về cấu trúc JSON đồng bộ
         return response()->json([
@@ -277,7 +250,7 @@ class TrangChuController extends Controller
                     'expectedScore' => $expectedScore,
                     'pendingTasks' => $pendingTasks,
                     'milestones' => $milestones,
-                    'companies' => $companiesData
+                    'companiesCount' => $companiesCount
                 ]
             ]
         ]);

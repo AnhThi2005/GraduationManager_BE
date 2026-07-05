@@ -28,16 +28,16 @@ class DiemController extends Controller
         $diemDatn = DB::table('diemtongketdatn')->where('sinh_vien_id', $sinhVienId)->first();
 
         // 1. Dữ liệu TTTN
-        $tttnFinal = $diemTttn && $diemTttn->diem_so !== null ? (string)round($diemTttn->diem_so, 2) : '—';
-        $tttnBaoCao = '—';
-        $tttnHuongDan = $diemTttn && $diemTttn->diem_so !== null ? (string)round($diemTttn->diem_so, 2) : '—';
+        $tttnFinal = $diemTttn && $diemTttn->diem_so !== null ? (string)round($diemTttn->diem_so, 2) : 'Chưa chấm';
+        $tttnBaoCao = 'Chưa chấm';
+        $tttnHuongDan = $diemTttn && $diemTttn->diem_so !== null ? (string)round($diemTttn->diem_so, 2) : 'Chưa chấm';
         $tttnStatus = $diemTttn ? 'Hoàn thành' : 'Đang tổng hợp';
         $tttnNote = $diemTttn ? 'Sinh viên đã hoàn tất quá trình thực tập và được giảng viên chấm điểm.' : 'Đang trong quá trình tổng hợp kết quả báo cáo thực tập.';
 
         // 2. Dữ liệu ĐATN
-        $datnReport = $diemDatn && $diemDatn->diem_bao_cao_chung !== null ? (string)round($diemDatn->diem_bao_cao_chung, 2) : '—';
-        $datnFinal = $diemDatn && $diemDatn->diem_tong_ket !== null ? (string)round($diemDatn->diem_tong_ket, 2) : '—';
-        $datnDefense = $diemDatn && $diemDatn->diem_bao_ve_rieng !== null ? (string)round($diemDatn->diem_bao_ve_rieng, 2) : '—';
+        $datnReport = $diemDatn && $diemDatn->diem_bao_cao_chung !== null ? (string)round($diemDatn->diem_bao_cao_chung, 2) : 'Chưa chấm';
+        $datnFinal = $diemDatn && $diemDatn->diem_tong_ket !== null ? (string)round($diemDatn->diem_tong_ket, 2) : 'Chưa chấm';
+        $datnDefense = $diemDatn && $diemDatn->diem_bao_ve_rieng !== null ? (string)round($diemDatn->diem_bao_ve_rieng, 2) : 'Chưa chấm';
         $datnStatus = $diemDatn && $diemDatn->diem_tong_ket >= 5.0 ? 'ĐẠT' : ($diemDatn ? 'KHÔNG ĐẠT' : 'Đang chấm');
 
         // 3. Quy đổi xếp loại dựa trên điểm ĐATN

@@ -71,6 +71,7 @@ class PhanCongHdttController extends Controller
                     'studentId' => (string) $sv->ma_so_sinh_vien,
                     'name' => $sv->ho_ten,
                     'className' => $sv->lop ? $sv->lop->ten_lop : '—',
+                    'course' => $sv->lop ? $sv->lop->khoa_hoc : '—',
                     'topic' => $topic,
                     'supervisor' => $assign ? $assign->giangVien->ho_ten : null,
                     'assignedAt' => $assign && $assign->ngay_phan_cong ? $assign->ngay_phan_cong->format('d/m/Y H:i') : null,
@@ -138,7 +139,7 @@ class PhanCongHdttController extends Controller
                 ->get()
                 ->groupBy('nhom_id');
 
-            $rows = $students->map(function ($sv) use ($studentGroupMap, $groupRegistrations) {
+             $rows = $students->map(function ($sv) use ($studentGroupMap, $groupRegistrations) {
                 $groupId = null;
                 $groupCode = null;
                 $groupStatus = 'no_group';
@@ -147,6 +148,7 @@ class PhanCongHdttController extends Controller
                 $topicStatus = 'no_registration';
                 $topic = '—';
                 $supervisor = null;
+                $assignedAtDate = null;
 
                 if (isset($studentGroupMap[$sv->sinh_vien_id])) {
                     $group = $studentGroupMap[$sv->sinh_vien_id];
@@ -168,6 +170,15 @@ class PhanCongHdttController extends Controller
                         $topic = $group->deTai ? $group->deTai->ten_de_tai : 'Nhóm đề tài #' . $group->nhom_id;
                         if ($group->deTai && $group->deTai->giangVien) {
                             $supervisor = $group->deTai->giangVien->ho_ten;
+
+                            // Tìm ngày đăng ký đề tài được duyệt của nhóm
+                            $regs = $groupRegistrations->get($group->nhom_id) ?? collect();
+                            $approvedReg = $regs->first(function ($r) use ($group) {
+                                return $r->de_tai_id == $group->de_tai_id && $r->trang_thai_duyet === 'DA_DUYET';
+                            });
+                            if ($approvedReg && !empty($approvedReg->ngay_dang_ky)) {
+                                $assignedAtDate = \Carbon\Carbon::parse($approvedReg->ngay_dang_ky)->format('d/m/Y H:i');
+                            }
                         }
                     } else {
                         $regs = $groupRegistrations->get($group->nhom_id) ?? collect();
@@ -218,9 +229,10 @@ class PhanCongHdttController extends Controller
                     'studentId' => (string) $sv->ma_so_sinh_vien,
                     'name' => $sv->ho_ten,
                     'className' => $sv->lop ? $sv->lop->ten_lop : '—',
+                    'course' => $sv->lop ? $sv->lop->khoa_hoc : '—',
                     'topic' => $topic,
                     'supervisor' => $supervisor,
-                    'assignedAt' => $supervisor ? '16/06/2026' : null,
+                    'assignedAt' => $assignedAtDate,
                     'status' => $supervisor ? 'assigned' : 'unassigned',
                     
                     // Group details
@@ -286,6 +298,7 @@ class PhanCongHdttController extends Controller
                     'studentId' => (string) $sv->ma_so_sinh_vien,
                     'name' => $sv->ho_ten,
                     'className' => $sv->lop ? $sv->lop->ten_lop : '—',
+                    'course' => $sv->lop ? $sv->lop->khoa_hoc : '—',
                     'topic' => '—',
                     'supervisor' => $assign ? $assign->giangVien->ho_ten : null,
                     'assignedAt' => $assign && $assign->ngay_phan_cong ? $assign->ngay_phan_cong->format('d/m/Y H:i') : null,
@@ -400,6 +413,7 @@ class PhanCongHdttController extends Controller
                     'studentId' => (string) $sv->ma_so_sinh_vien,
                     'name' => $sv->ho_ten,
                     'className' => $sv->lop ? $sv->lop->ten_lop : '—',
+                    'course' => $sv->lop ? $sv->lop->khoa_hoc : '—',
                     'topic' => '—',
                     'supervisor' => $assign ? $assign->giangVien->ho_ten : null,
                     'assignedAt' => $assign && $assign->ngay_phan_cong ? $assign->ngay_phan_cong->format('d/m/Y H:i') : null,
