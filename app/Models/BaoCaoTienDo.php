@@ -17,6 +17,7 @@ class BaoCaoTienDo extends Model
         'tuan_so',
         'noi_dung',
         'duong_dan_file',
+        'ten_file_goc',
         'trang_thai',
         'loai_bao_cao',
         'thoi_gian_nop',

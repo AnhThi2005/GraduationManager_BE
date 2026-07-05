@@ -79,7 +79,7 @@ class BaoCaoController extends Controller
                 'week' => (int)$r->tuan_so,
                 'title' => $title,
                 'status' => $status,
-                'file' => $r->duong_dan_file ? basename($r->duong_dan_file) : '—',
+                'file' => $r->ten_file_goc ?: ($r->duong_dan_file ? basename($r->duong_dan_file) : '—'),
                 'fileUrl' => $fileUrl,
                 'note' => $note,
                 'teacherComment' => $comment ? $comment->noi_dung : null,
@@ -109,13 +109,15 @@ class BaoCaoController extends Controller
             'week' => 'required|integer|min:1',
             'title' => 'required|string|max:255',
             'note' => 'required|string',
-            'file' => 'nullable|string|max:500'
+            'file' => 'nullable|string|max:500',
+            'fileName' => 'nullable|string|max:255'
         ]);
 
         $week = (int)$request->input('week');
         $title = trim($request->input('title'));
         $note = trim($request->input('note'));
         $filePath = $request->input('file') ?: null;
+        $fileOriginalName = $request->input('fileName') ?: null;
 
         // Lấy đợt TTTN đang diễn ra của sinh viên
         $lopId = $sinhVien->lop_id;
@@ -150,6 +152,7 @@ class BaoCaoController extends Controller
         }
 
         $filePath = $filePath ?? ($existing->duong_dan_file ?? null);
+        $fileOriginalName = $fileOriginalName ?? ($existing->ten_file_goc ?? null);
 
         // Lưu hoặc cập nhật báo cáo tuần của sinh viên trong đợt này
         $report = BaoCaoTienDo::updateOrCreate([
@@ -160,6 +163,7 @@ class BaoCaoController extends Controller
         ], [
             'noi_dung' => $noiDungStr,
             'duong_dan_file' => $filePath,
+            'ten_file_goc' => $fileOriginalName,
             'trang_thai' => 'DA_NOP',
             'thoi_gian_nop' => Carbon::now()->toDateTimeString()
         ]);
@@ -182,7 +186,7 @@ class BaoCaoController extends Controller
                     'week' => (int)$report->tuan_so,
                     'title' => $title,
                     'status' => 'Chờ duyệt',
-                    'file' => $report->duong_dan_file ? basename($report->duong_dan_file) : '—',
+                    'file' => $report->ten_file_goc ?: ($report->duong_dan_file ? basename($report->duong_dan_file) : '—'),
                     'fileUrl' => $fileUrl,
                     'note' => $note,
                     'teacherComment' => null,
@@ -266,9 +270,10 @@ class BaoCaoController extends Controller
             }
 
             return [
+                'week' => (int)$r->tuan_so,
                 'name' => $name,
                 'status' => $status,
-                'file' => $r->duong_dan_file ? basename($r->duong_dan_file) : '—',
+                'file' => $r->ten_file_goc ?: ($r->duong_dan_file ? basename($r->duong_dan_file) : '—'),
                 'fileUrl' => $fileUrl,
                 'note' => $note,
                 'teacherComment' => $comment ? $comment->noi_dung : null,
@@ -295,14 +300,18 @@ class BaoCaoController extends Controller
         }
 
         $request->validate([
+            'week' => 'required|integer|min:1',
             'name' => 'required|string|max:255',
             'note' => 'required|string',
-            'file' => 'nullable|string'
+            'file' => 'nullable|string',
+            'fileName' => 'nullable|string|max:255'
         ]);
 
+        $week = (int)$request->input('week');
         $name = trim($request->input('name'));
         $note = trim($request->input('note'));
         $file = $request->input('file');
+        $fileOriginalName = $request->input('fileName') ?: null;
 
         // Tìm nhóm ĐATN đã được duyệt của sinh viên (ưu tiên nhóm thực tế thay vì suy luận đợt qua lớp,
         // vì một lớp có thể liên kết nhiều đợt ĐATN cùng lúc)
@@ -329,15 +338,11 @@ class BaoCaoController extends Controller
             ->pluck('sinh_vien_id')
             ->all();
 
-        // Tìm xem đã có báo cáo trùng tên bản thảo chưa (so sánh dòng đầu tiên của cột noi_dung) của bất kỳ thành viên nào trong nhóm
-        // Dùng cả 2 điều kiện vì bản ghi không có ghi chú thì noi_dung = tên (không có ký tự xuống dòng theo sau)
+        // Tìm xem tuần này đã có báo cáo của bất kỳ thành viên nào trong nhóm chưa (giống cơ chế bên TTTN)
         $report = BaoCaoTienDo::whereIn('sinh_vien_id', $memberIds)
             ->where('dot_id', $nhom->dot_id)
+            ->where('tuan_so', $week)
             ->where('loai_bao_cao', 'DO_AN')
-            ->where(function ($q) use ($name) {
-                $q->where('noi_dung', $name)
-                    ->orWhere('noi_dung', 'like', $name . "\n%");
-            })
             ->first();
 
         // Chặn nộp lại nếu bản thảo này đã được giảng viên duyệt Đạt, tránh sửa bài sau khi đã được chấm
@@ -346,33 +351,29 @@ class BaoCaoController extends Controller
             if ($existingComment && $existingComment->danh_gia === 'DAT') {
                 return response()->json([
                     'success' => false,
-                    'message' => "Bản thảo \"{$name}\" đã được giảng viên duyệt Đạt. Bạn không thể nộp lại bản thảo này nữa."
+                    'message' => "Bản thảo tuần {$week} đã được giảng viên duyệt Đạt. Bạn không thể nộp lại tuần này nữa."
                 ], 400);
             }
         }
 
         if (!$report) {
-            // Đếm số báo cáo ĐATN hiện có của nhóm để tính số tuần tuần tự
-            $count = BaoCaoTienDo::whereIn('sinh_vien_id', $memberIds)
-                ->where('dot_id', $nhom->dot_id)
-                ->where('loai_bao_cao', 'DO_AN')
-                ->count();
-
             $report = BaoCaoTienDo::create([
                 'sinh_vien_id' => $sinhVien->sinh_vien_id,
                 'dot_id' => $nhom->dot_id,
-                'tuan_so' => $count + 1,
+                'tuan_so' => $week,
                 'loai_bao_cao' => 'DO_AN',
                 'noi_dung' => $noiDungStr,
                 'duong_dan_file' => $file ?: null,
+                'ten_file_goc' => $fileOriginalName,
                 'trang_thai' => 'DA_NOP',
                 'thoi_gian_nop' => Carbon::now()->toDateTimeString()
             ]);
         } else {
-            // Cập nhật bản ghi cũ
+            // Cập nhật bản ghi cũ, giữ lại tên file gốc cũ nếu lần nộp này không đính kèm file mới
             $report->update([
                 'noi_dung' => $noiDungStr,
                 'duong_dan_file' => $file ?? $report->duong_dan_file,
+                'ten_file_goc' => $fileOriginalName ?? $report->ten_file_goc,
                 'trang_thai' => 'DA_NOP',
                 'thoi_gian_nop' => Carbon::now()->toDateTimeString()
             ]);
@@ -392,9 +393,10 @@ class BaoCaoController extends Controller
             'message' => 'Nộp bản thảo đồ án thành công!',
             'results' => [
                 'object' => [
+                    'week' => $week,
                     'name' => $name,
                     'status' => 'Đang chấm điểm',
-                    'file' => $report->duong_dan_file ? basename($report->duong_dan_file) : '—',
+                    'file' => $report->ten_file_goc ?: ($report->duong_dan_file ? basename($report->duong_dan_file) : '—'),
                     'fileUrl' => $fileUrl,
                     'note' => $note,
                     'teacherComment' => null,
