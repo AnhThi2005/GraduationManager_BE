@@ -281,6 +281,7 @@ class ThucTapController extends Controller
                     'internshipAddress' => $reg->dia_chi_thuc_tap,
                     'mentor' => $reg->nguoi_huong_dan,
                     'phone' => $reg->sdt_huong_dan,
+                    'position' => $reg->vi_tri_cong_viec,
                     'duration' => $reg->thoi_gian_thuc_tap
                 ]
             ]

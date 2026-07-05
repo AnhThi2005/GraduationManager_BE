@@ -19,6 +19,7 @@ class Nhom extends Model
         'hoi_dong_id',
         'trang_thai_nhom',
         'trang_thai_duyet',
+        'ngay_dang_ky',
         'ket_qua_huong_dan',
         'nhan_xet_phan_bien',
         'ket_qua_phan_bien'

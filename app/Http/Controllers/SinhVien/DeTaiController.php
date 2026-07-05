@@ -26,28 +26,14 @@ class DeTaiController extends Controller
             ], 401);
         }
 
-        // Lấy đợt ĐATN đang diễn ra của sinh viên
-        $lopId = $sinhVien->lop_id;
-        $activePeriod = Dot::where('loai_dot', 'DATN')
-            ->whereHas('lops', function($q) use ($lopId) {
-                $q->where('lop.lop_id', $lopId);
-            })->orderBy('dot_id', 'desc')->first();
-
-        if (!$activePeriod) {
-            return response()->json([
-                'code' => 200,
-                'results' => [
-                    'object' => null
-                ]
-            ]);
-        }
-
-        // Tìm nhóm mà sinh viên là thành viên
-        $nhom = Nhom::with(['deTai', 'dot'])
-            ->where('dot_id', $activePeriod->dot_id)
+        // Tìm nhóm ĐATN mà sinh viên là thành viên (ưu tiên nhóm thực tế thay vì suy luận đợt qua lớp,
+        // vì một lớp có thể liên kết nhiều đợt ĐATN cùng lúc)
+        $nhom = Nhom::with(['deTai.giangVien', 'dot', 'members'])
             ->whereHas('members', function($q) use ($sinhVien) {
                 $q->where('sinhvien.sinh_vien_id', $sinhVien->sinh_vien_id);
-            })->first();
+            })
+            ->orderBy('dot_id', 'desc')
+            ->first();
 
         if (!$nhom) {
             return response()->json([
@@ -74,10 +60,17 @@ class DeTaiController extends Controller
                     'topicId' => (string)$nhom->de_tai_id,
                     'topicTitle' => $nhom->deTai ? $nhom->deTai->ten_de_tai : 'Chưa chọn đề tài',
                     'groupName' => 'Nhóm số #' . $nhom->nhom_id,
-                    'batch' => $nhom->dot ? $nhom->dot->ten_dot : $activePeriod->ten_dot,
-                    'submittedAt' => '24/06/2026 21:00', // Mocked date
+                    'batch' => $nhom->dot ? $nhom->dot->ten_dot : '',
+                    'submittedAt' => $nhom->ngay_dang_ky ? date('d/m/Y H:i', strtotime($nhom->ngay_dang_ky)) : '—',
                     'status' => $status,
-                    'note' => $note
+                    'note' => $note,
+                    'instructor' => ($nhom->deTai && $nhom->deTai->giangVien) ? $nhom->deTai->giangVien->ho_ten : null,
+                    'members' => $nhom->members->map(function ($sv) {
+                        return [
+                            'studentCode' => $sv->ma_so_sinh_vien,
+                            'name' => $sv->ho_ten
+                        ];
+                    })->values()
                 ]
             ]
         ]);
@@ -442,7 +435,8 @@ class DeTaiController extends Controller
                     'de_tai_id' => $topicId, // Có thể null nếu sinh viên chưa chọn đề tài mà chỉ tạo nhóm trước
                     'dot_id' => $activePeriod->dot_id,
                     'trang_thai_nhom' => 'MOI_TAO',
-                    'trang_thai_duyet' => 'CHO_DUYET'
+                    'trang_thai_duyet' => 'CHO_DUYET',
+                    'ngay_dang_ky' => now()
                 ]);
 
                 // Thêm sinh viên hiện tại làm trưởng nhóm

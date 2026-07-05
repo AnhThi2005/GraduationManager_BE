@@ -160,6 +160,7 @@ class NhomController extends Controller
         $g->de_tai_id = $body['de_tai_id'] ?? null;
         $g->trang_thai_duyet = $g->de_tai_id ? 'DA_DUYET' : 'CHO_DUYET';
         $g->trang_thai_nhom = 'DU_THANH_VIEN';
+        $g->ngay_dang_ky = now();
         $g->save();
 
         if ($g->de_tai_id) {
