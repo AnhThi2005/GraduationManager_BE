@@ -31,6 +31,7 @@ class DiemController extends Controller
             ->where('phanconghdtt.giang_vien_id', $teacherId)
             ->where('phanconghdtt.dot_id', $dotId)
             ->join('sinhvien', 'phanconghdtt.sinh_vien_id', '=', 'sinhvien.sinh_vien_id')
+            ->leftJoin('lop', 'sinhvien.lop_id', '=', 'lop.lop_id')
             ->leftJoin('dangkythuctap', function ($join) use ($dotId) {
                 $join->on('sinhvien.sinh_vien_id', '=', 'dangkythuctap.sinh_vien_id')
                      ->where('dangkythuctap.dot_id', '=', $dotId);
@@ -43,16 +44,22 @@ class DiemController extends Controller
             ->select([
                 'sinhvien.ma_so_sinh_vien as id',
                 'sinhvien.ho_ten as name',
+                'sinhvien.ngay_sinh as dob',
+                'lop.ten_lop as class',
                 'congty.ten_cong_ty as company',
-                'diemthuctap.diem_so as score'
+                'diemthuctap.diem_so as score',
+                'diemthuctap.updated_at as updated_at'
             ])
             ->get()
             ->map(function ($row) {
                 return [
                     'id' => (string)$row->id,
                     'name' => $row->name,
-                    'company' => $row->company ?? '—',
-                    'score' => $row->score !== null ? (string)$row->score : ''
+                    'dob' => $row->dob ? date('d/m/Y', strtotime($row->dob)) : '—',
+                    'class' => $row->class ?? '—',
+                    'company' => $row->company ?? 'Chưa có công ty thực tập',
+                    'score' => $row->score !== null ? (string)$row->score : '',
+                    'updated_at' => $row->updated_at
                 ];
             })
             ->all();
@@ -146,11 +153,21 @@ class DiemController extends Controller
             ];
         }
 
+        $lastUpdatedAt = null;
+        foreach ($tttnRows as $row) {
+            if (!empty($row['updated_at'])) {
+                if ($lastUpdatedAt === null || strcmp($row['updated_at'], $lastUpdatedAt) > 0) {
+                    $lastUpdatedAt = $row['updated_at'];
+                }
+            }
+        }
+
         return response()->json([
             'success' => true,
             'tttnRows' => $tttnRows,
             'councilGroups' => $councilGroups,
-            'scoreRows' => $scoreRows
+            'scoreRows' => $scoreRows,
+            'lastUpdatedAt' => $lastUpdatedAt ? date('Y-m-d H:i:s', strtotime($lastUpdatedAt)) : null
         ]);
     }
 
@@ -238,10 +255,17 @@ class DiemController extends Controller
                     'diem_bao_ve_rieng' => $defenseTotal,
                     'diem_bao_cao_chung' => $report,
                     'diem_tong_ket' => $finalScore,
-                    'trang_thai' => $statusVal
+                    'trang_thai' => $statusVal,
+                    'updated_at' => now()
                 ]
             );
         }
+
+        \App\Services\RealtimeService::broadcast('notification', [
+            'type' => 'score_updated',
+            'groupId' => $groupId,
+            'message' => 'Điểm hội đồng đồ án tốt nghiệp đã được cập nhật'
+        ]);
 
         return response()->json([
             'success' => true,
@@ -300,7 +324,7 @@ class DiemController extends Controller
 
         foreach ($scores as $s) {
             $studentCode = $s['id'] ?? '';
-            $scoreVal = $s['score'] !== '' && $s['score'] !== null ? floatval($s['score']) : null;
+            $scoreVal = $s['score'] !== '' && $s['score'] !== null ? round(floatval($s['score']), 1) : null;
 
             $sv = \App\Models\SinhVien::where('ma_so_sinh_vien', $studentCode)->first();
             if (!$sv) continue;
@@ -327,11 +351,18 @@ class DiemController extends Controller
                     ],
                     [
                         'giang_vien_id' => $teacherId,
-                        'diem_so' => $scoreVal
+                        'diem_so' => $scoreVal,
+                        'updated_at' => now()
                     ]
                 );
             }
         }
+
+        \App\Services\RealtimeService::broadcast('notification', [
+            'type' => 'tttn_score_updated',
+            'periodId' => $dotId,
+            'message' => 'Điểm thực tập tốt nghiệp đã được cập nhật'
+        ]);
 
         return response()->json([
             'success' => true,

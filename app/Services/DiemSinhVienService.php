@@ -326,7 +326,7 @@ class DiemSinhVienService
         }
 
         if ($loai === 'THUC_TAP') {
-            $finalScore = $data['finalScore'] ?? null;
+            $finalScore = isset($data['finalScore']) && $data['finalScore'] !== '' && $data['finalScore'] !== null ? round(floatval($data['finalScore']), 1) : null;
             
             // Cần tìm giang_vien_id để lưu vào diemthuctap
             $assignment = DB::table('phanconghdtt')
@@ -343,14 +343,19 @@ class DiemSinhVienService
             if ($existing) {
                 DB::table('diemthuctap')
                     ->where('diem_id', $existing->diem_id)
-                    ->update(['diem_so' => $finalScore, 'giang_vien_id' => $giangVienId]);
+                    ->update([
+                        'diem_so' => $finalScore, 
+                        'giang_vien_id' => $giangVienId,
+                        'updated_at' => now()
+                    ]);
                 $scoreId = $existing->diem_id;
             } else {
                 $scoreId = DB::table('diemthuctap')->insertGetId([
                     'sinh_vien_id' => $sinhVienId,
                     'dot_id' => $dotId,
                     'giang_vien_id' => $giangVienId,
-                    'diem_so' => $finalScore
+                    'diem_so' => $finalScore,
+                    'updated_at' => now()
                 ]);
             }
         } else {
@@ -390,7 +395,8 @@ class DiemSinhVienService
                         'diem_bao_cao_chung' => $report,
                         'diem_tong_ket' => $finalScore,
                         'trang_thai' => $statusVal,
-                        'nhom_id' => $nhomId
+                        'nhom_id' => $nhomId,
+                        'updated_at' => now()
                     ]);
                 $scoreId = $existing->tong_ket_id;
             } else {
@@ -400,7 +406,8 @@ class DiemSinhVienService
                     'diem_bao_ve_rieng' => $defense,
                     'diem_bao_cao_chung' => $report,
                     'diem_tong_ket' => $finalScore,
-                    'trang_thai' => $statusVal
+                    'trang_thai' => $statusVal,
+                    'updated_at' => now()
                 ]);
             }
         }
