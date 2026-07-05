@@ -40,7 +40,7 @@ class BaoCaoController extends Controller
         $reports = BaoCaoTienDo::where('sinh_vien_id', $sinhVien->sinh_vien_id)
             ->where('dot_id', $activePeriod->dot_id)
             ->where('loai_bao_cao', 'THUC_TAP')
-            ->orderBy('tuan_so', 'asc')
+            ->orderBy('thoi_gian_nop', 'desc')
             ->get();
 
         $formatted = $reports->map(function ($r) {
@@ -218,7 +218,7 @@ class BaoCaoController extends Controller
         $reports = BaoCaoTienDo::whereIn('sinh_vien_id', $memberIds)
             ->where('dot_id', $nhom->dot_id)
             ->where('loai_bao_cao', 'DO_AN')
-            ->orderBy('tuan_so', 'asc')
+            ->orderBy('thoi_gian_nop', 'desc')
             ->get();
 
         $formatted = $reports->map(function ($r) {
