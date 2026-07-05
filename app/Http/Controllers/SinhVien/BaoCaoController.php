@@ -137,6 +137,18 @@ class BaoCaoController extends Controller
             'tuan_so' => $week,
             'loai_bao_cao' => 'THUC_TAP'
         ])->first();
+
+        // Chặn nộp lại nếu tuần này đã được giảng viên duyệt Đạt, tránh sửa bài sau khi đã được chấm
+        if ($existing) {
+            $existingComment = DB::table('nhanxetbaocao')->where('bao_cao_id', $existing->bao_cao_id)->first();
+            if ($existingComment && $existingComment->danh_gia === 'DAT') {
+                return response()->json([
+                    'success' => false,
+                    'message' => "Nhật ký tuần {$week} đã được giảng viên duyệt Đạt. Bạn không thể nộp lại tuần này nữa."
+                ], 400);
+            }
+        }
+
         $filePath = $filePath ?? ($existing->duong_dan_file ?? null);
 
         // Lưu hoặc cập nhật báo cáo tuần của sinh viên trong đợt này
@@ -318,11 +330,26 @@ class BaoCaoController extends Controller
             ->all();
 
         // Tìm xem đã có báo cáo trùng tên bản thảo chưa (so sánh dòng đầu tiên của cột noi_dung) của bất kỳ thành viên nào trong nhóm
+        // Dùng cả 2 điều kiện vì bản ghi không có ghi chú thì noi_dung = tên (không có ký tự xuống dòng theo sau)
         $report = BaoCaoTienDo::whereIn('sinh_vien_id', $memberIds)
             ->where('dot_id', $nhom->dot_id)
             ->where('loai_bao_cao', 'DO_AN')
-            ->where('noi_dung', 'like', $name . "\n%")
+            ->where(function ($q) use ($name) {
+                $q->where('noi_dung', $name)
+                    ->orWhere('noi_dung', 'like', $name . "\n%");
+            })
             ->first();
+
+        // Chặn nộp lại nếu bản thảo này đã được giảng viên duyệt Đạt, tránh sửa bài sau khi đã được chấm
+        if ($report) {
+            $existingComment = DB::table('nhanxetbaocao')->where('bao_cao_id', $report->bao_cao_id)->first();
+            if ($existingComment && $existingComment->danh_gia === 'DAT') {
+                return response()->json([
+                    'success' => false,
+                    'message' => "Bản thảo \"{$name}\" đã được giảng viên duyệt Đạt. Bạn không thể nộp lại bản thảo này nữa."
+                ], 400);
+            }
+        }
 
         if (!$report) {
             // Đếm số báo cáo ĐATN hiện có của nhóm để tính số tuần tuần tự
