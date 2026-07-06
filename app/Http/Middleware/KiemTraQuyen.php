@@ -12,10 +12,10 @@ class KiemTraQuyen
     {
         $user = $request->user();
 
-        if (!$user) {
+        if (! $user) {
             return response()->json([
                 'success' => false,
-                'message' => 'Bạn chưa đăng nhập vào hệ thống.'
+                'message' => 'Bạn chưa đăng nhập vào hệ thống.',
             ], 401);
         }
 
@@ -23,11 +23,15 @@ class KiemTraQuyen
             if ($user->tokenCan($quyen)) {
                 return $next($request);
             }
+            // Cho phép ADMIN truy cập các chức năng của GIANG_VIEN
+            if ($quyen === 'GIANG_VIEN' && $user->tokenCan('ADMIN')) {
+                return $next($request);
+            }
         }
 
         return response()->json([
             'success' => false,
-            'message' => 'Từ chối truy cập: Bạn không có quyền hạn thực hiện hành động này!'
+            'message' => 'Từ chối truy cập: Bạn không có quyền hạn thực hiện hành động này!',
         ], 403);
     }
 }

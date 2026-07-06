@@ -3,12 +3,14 @@
 namespace App\Http\Controllers\GiangVien;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use App\Models\Dot;
 use App\Models\HoiDong;
 use App\Models\Nhom;
 use App\Models\SinhVien;
+use App\Services\DiemSinhVienService;
+use App\Services\RealtimeService;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class DiemController extends Controller
 {
@@ -34,12 +36,12 @@ class DiemController extends Controller
             ->leftJoin('lop', 'sinhvien.lop_id', '=', 'lop.lop_id')
             ->leftJoin('dangkythuctap', function ($join) use ($dotId) {
                 $join->on('sinhvien.sinh_vien_id', '=', 'dangkythuctap.sinh_vien_id')
-                     ->where('dangkythuctap.dot_id', '=', $dotId);
+                    ->where('dangkythuctap.dot_id', '=', $dotId);
             })
             ->leftJoin('congty', 'dangkythuctap.cong_ty_id', '=', 'congty.cong_ty_id')
             ->leftJoin('diemthuctap', function ($join) use ($dotId) {
                 $join->on('sinhvien.sinh_vien_id', '=', 'diemthuctap.sinh_vien_id')
-                     ->where('diemthuctap.dot_id', '=', $dotId);
+                    ->where('diemthuctap.dot_id', '=', $dotId);
             })
             ->select([
                 'sinhvien.ma_so_sinh_vien as id',
@@ -48,18 +50,18 @@ class DiemController extends Controller
                 'lop.ten_lop as class',
                 'congty.ten_cong_ty as company',
                 'diemthuctap.diem_so as score',
-                'diemthuctap.updated_at as updated_at'
+                'diemthuctap.updated_at as updated_at',
             ])
             ->get()
             ->map(function ($row) {
                 return [
-                    'id' => (string)$row->id,
+                    'id' => (string) $row->id,
                     'name' => $row->name,
                     'dob' => $row->dob ? date('d/m/Y', strtotime($row->dob)) : '—',
                     'class' => $row->class ?? '—',
                     'company' => $row->company ?? 'Chưa có công ty thực tập',
-                    'score' => $row->score !== null ? (string)$row->score : '',
-                    'updated_at' => $row->updated_at
+                    'score' => $row->score !== null ? (string) $row->score : '',
+                    'updated_at' => $row->updated_at,
                 ];
             })
             ->all();
@@ -88,9 +90,9 @@ class DiemController extends Controller
 
             $members = $hd->giangViens->map(function ($gv) {
                 return [
-                    'id' => (string)$gv->giang_vien_id,
+                    'id' => (string) $gv->giang_vien_id,
                     'name' => $gv->ho_ten,
-                    'role' => $gv->pivot->vai_tro === 'CHU_TICH' ? 'Chủ tịch' : ($gv->pivot->vai_tro === 'PHAN_BIEN' ? 'Ủy viên phản biên' : 'Ủy viên')
+                    'role' => $gv->pivot->vai_tro === 'CHU_TICH' ? 'Chủ tịch' : ($gv->pivot->vai_tro === 'PHAN_BIEN' ? 'Ủy viên phản biên' : 'Ủy viên'),
                 ];
             })->all();
 
@@ -98,29 +100,42 @@ class DiemController extends Controller
             foreach ($hd->nhoms as $g) {
                 $studentsList = $g->members->map(function ($m) {
                     return [
-                        'id' => (string)$m->ma_so_sinh_vien,
+                        'id' => (string) $m->ma_so_sinh_vien,
                         'name' => $m->ho_ten,
-                        'class' => $m->lop ? $m->lop->ten_lop : '—'
+                        'class' => $m->lop ? $m->lop->ten_lop : '—',
                     ];
                 })->all();
 
+                $lich = DB::table('lichbaove')->where('nhom_id', $g->nhom_id)->first();
+                $reviewerId = null;
+                if ($lich && $lich->ghi_chu) {
+                    $decoded = json_decode($lich->ghi_chu, true);
+                    $reviewerId = $decoded['reviewer_id'] ?? null;
+                }
+
                 $groups[] = [
-                    'id' => (string)$g->nhom_id,
-                    'groupCode' => 'G' . str_pad($g->nhom_id, 2, '0', STR_PAD_LEFT),
-                    'topic' => $g->deTai ? $g->deTai->ten_de_tai : 'Nhóm #' . $g->nhom_id,
-                    'students' => $studentsList
+                    'id' => (string) $g->nhom_id,
+                    'groupCode' => 'G'.str_pad($g->nhom_id, 2, '0', STR_PAD_LEFT),
+                    'topic' => $g->deTai ? $g->deTai->ten_de_tai : 'Nhóm #'.$g->nhom_id,
+                    'advisorId' => $g->deTai ? (string) $g->deTai->giang_vien_id : null,
+                    'reviewerId' => $reviewerId ? (string) $reviewerId : null,
+                    'students' => $studentsList,
                 ];
 
                 foreach ($g->members as $m) {
-                    $scoreRecord = DB::table('diemtongketdatn')->where('sinh_vien_id', $m->sinh_vien_id)->first();
+                    $myScore = DB::table('diemhoidongbaove')
+                        ->where('sinh_vien_id', $m->sinh_vien_id)
+                        ->where('giang_vien_id', $teacherId)
+                        ->first();
+
                     $scoreRows[] = [
-                        'id' => (string)$m->ma_so_sinh_vien,
+                        'id' => (string) $m->ma_so_sinh_vien,
                         'name' => $m->ho_ten,
-                        'chair' => $scoreRecord ? (string)$scoreRecord->diem_bao_ve_rieng : '',
-                        'secretary' => $scoreRecord ? (string)$scoreRecord->diem_bao_ve_rieng : '',
-                        'member' => $scoreRecord ? (string)$scoreRecord->diem_bao_ve_rieng : '',
-                        'advisor' => $scoreRecord ? (string)$scoreRecord->diem_bao_cao_chung : '',
-                        'reviewer' => $scoreRecord ? (string)$scoreRecord->diem_bao_ve_rieng : ''
+                        'chair' => $myScore ? (string) $myScore->diem_bao_ve : '',
+                        'secretary' => $myScore ? (string) $myScore->diem_bao_ve : '',
+                        'member' => $myScore ? (string) $myScore->diem_bao_ve : '',
+                        'advisor' => $myScore ? (string) $myScore->diem_bao_ve : '',
+                        'reviewer' => $myScore ? (string) $myScore->diem_bao_ve : '',
                     ];
                 }
             }
@@ -129,8 +144,11 @@ class DiemController extends Controller
             foreach ($hd->nhoms as $g) {
                 $hasAllScores = true;
                 foreach ($g->members as $m) {
-                    $exists = DB::table('diemtongketdatn')->where('sinh_vien_id', $m->sinh_vien_id)->exists();
-                    if (!$exists) {
+                    $exists = DB::table('diemhoidongbaove')
+                        ->where('sinh_vien_id', $m->sinh_vien_id)
+                        ->where('giang_vien_id', $teacherId)
+                        ->exists();
+                    if (! $exists) {
                         $hasAllScores = false;
                         break;
                     }
@@ -141,21 +159,21 @@ class DiemController extends Controller
             }
 
             $councilGroups[] = [
-                'code' => 'HD' . str_pad($hd->hoi_dong_id, 2, '0', STR_PAD_LEFT),
+                'code' => 'HD'.str_pad($hd->hoi_dong_id, 2, '0', STR_PAD_LEFT),
                 'name' => $hd->ten_hoi_dong,
-                'date' => $hd->ngay_bao_ve ? date('d/m/Y', strtotime($hd->ngay_bao_ve)) . ' • ' . ($hd->gio_bao_ve ?? '08:00') : '—',
+                'date' => $hd->ngay_bao_ve ? date('d/m/Y', strtotime($hd->ngay_bao_ve)).' • '.($hd->gio_bao_ve ?? '08:00') : '—',
                 'room' => $hd->phong_bao_ve ?? '—',
                 'role' => $roleText,
                 'done' => $done,
                 'total' => $hd->nhoms->count(),
                 'members' => $members,
-                'groups' => $groups
+                'groups' => $groups,
             ];
         }
 
         $lastUpdatedAt = null;
         foreach ($tttnRows as $row) {
-            if (!empty($row['updated_at'])) {
+            if (! empty($row['updated_at'])) {
                 if ($lastUpdatedAt === null || strcmp($row['updated_at'], $lastUpdatedAt) > 0) {
                     $lastUpdatedAt = $row['updated_at'];
                 }
@@ -164,10 +182,11 @@ class DiemController extends Controller
 
         return response()->json([
             'success' => true,
+            'teacherId' => (string) $teacherId,
             'tttnRows' => $tttnRows,
             'councilGroups' => $councilGroups,
             'scoreRows' => $scoreRows,
-            'lastUpdatedAt' => $lastUpdatedAt ? date('Y-m-d H:i:s', strtotime($lastUpdatedAt)) : null
+            'lastUpdatedAt' => $lastUpdatedAt ? date('Y-m-d H:i:s', strtotime($lastUpdatedAt)) : null,
         ]);
     }
 
@@ -176,49 +195,81 @@ class DiemController extends Controller
      */
     public function getScores(Request $request)
     {
+        $teacher = $request->user();
+        $teacherId = $teacher->giang_vien_id;
+
         $groupId = $request->input('group');
         if (empty($groupId)) {
             return response()->json(['success' => false, 'message' => 'GroupId is required.'], 400);
         }
 
         $group = Nhom::with('members')->find($groupId);
-        if (!$group) {
+        if (! $group) {
             return response()->json(['success' => false, 'message' => 'Group not found.'], 404);
+        }
+
+        // Find gvhdId and gvpbId for the group
+        $nhom = DB::table('nhomsvda')->where('nhom_id', $groupId)->first();
+        $deTai = $nhom && $nhom->de_tai_id ? DB::table('detai')->where('de_tai_id', $nhom->de_tai_id)->first() : null;
+        $gvhdId = $deTai ? $deTai->giang_vien_id : null;
+
+        $gvpbId = null;
+        if ($nhom && $nhom->hoi_dong_id) {
+            $thanhVienPb = DB::table('thanhvienhoidong')
+                ->where('hoi_dong_id', $nhom->hoi_dong_id)
+                ->where('vai_tro', 'PHAN_BIEN')
+                ->first();
+            $gvpbId = $thanhVienPb ? $thanhVienPb->giang_vien_id : null;
         }
 
         $rows = [];
         foreach ($group->members as $m) {
-            $scoreRecord = DB::table('diemtongketdatn')->where('sinh_vien_id', $m->sinh_vien_id)->first();
-            
-            $presentation = null;
-            $demo = null;
-            $qna = null;
+            // Load this lecturer's defense scores
+            $hdbv = DB::table('diemhoidongbaove')
+                ->where('sinh_vien_id', $m->sinh_vien_id)
+                ->where('giang_vien_id', $teacherId)
+                ->first();
+
+            $presentation = $hdbv ? ($hdbv->diem_thuyet_trinh !== null ? floatval($hdbv->diem_thuyet_trinh) : null) : null;
+            $demo = $hdbv ? ($hdbv->diem_demo !== null ? floatval($hdbv->diem_demo) : null) : null;
+            $qna = $hdbv ? ($hdbv->diem_van_dap !== null ? floatval($hdbv->diem_van_dap) : null) : null;
+
+            // Load report score based on role
+            $dbc = DB::table('diembaocao')->where('sinh_vien_id', $m->sinh_vien_id)->first();
             $report = null;
 
-            if ($scoreRecord) {
-                $split = $this->splitDefenseScore($scoreRecord->diem_bao_ve_rieng);
-                $presentation = $split['presentation'];
-                $demo = $split['demo'];
-                $qna = $split['qna'];
-                $report = $scoreRecord->diem_bao_cao_chung !== null ? floatval($scoreRecord->diem_bao_cao_chung) : null;
+            if ($teacherId == $gvhdId) {
+                $report = $dbc ? ($dbc->diem_gvhd !== null ? floatval($dbc->diem_gvhd) : null) : null;
+            } elseif ($teacherId == $gvpbId) {
+                $report = $dbc ? ($dbc->diem_gvpb !== null ? floatval($dbc->diem_gvpb) : null) : null;
+            } else {
+                $report = $dbc ? ($dbc->diem_trung_binh !== null ? floatval($dbc->diem_trung_binh) : null) : null;
+            }
+
+            // Fallback to diemtongketdatn if diembaocao is not created yet
+            if ($report === null) {
+                $scoreRecord = DB::table('diemtongketdatn')->where('sinh_vien_id', $m->sinh_vien_id)->first();
+                if ($scoreRecord && $scoreRecord->diem_bao_cao_chung !== null) {
+                    $report = floatval($scoreRecord->diem_bao_cao_chung);
+                }
             }
 
             $rows[] = [
-                'id' => (string)$m->ma_so_sinh_vien,
+                'id' => (string) $m->ma_so_sinh_vien,
                 'name' => $m->ho_ten,
                 'class' => $m->lop ? $m->lop->ten_lop : '—',
                 'presentation' => $presentation,
                 'demo' => $demo,
                 'qna' => $qna,
-                'report' => $report
+                'report' => $report,
             ];
         }
 
         return response()->json([
             'success' => true,
             'data' => [
-                'rows' => $rows
-            ]
+                'rows' => $rows,
+            ],
         ]);
     }
 
@@ -227,6 +278,9 @@ class DiemController extends Controller
      */
     public function saveScores(Request $request)
     {
+        $teacher = $request->user();
+        $teacherId = $teacher->giang_vien_id;
+
         $groupId = $request->input('group');
         $rows = $request->input('rows', []);
 
@@ -234,42 +288,117 @@ class DiemController extends Controller
             return response()->json(['success' => false, 'message' => 'GroupId is required.'], 400);
         }
 
+        // Find nhomsvda and related fields
+        $nhom = DB::table('nhomsvda')->where('nhom_id', $groupId)->first();
+        if (! $nhom) {
+            return response()->json(['success' => false, 'message' => 'Nhom not found.'], 404);
+        }
+        $hoiDongId = $nhom->hoi_dong_id;
+
+        $deTai = $nhom->de_tai_id ? DB::table('detai')->where('de_tai_id', $nhom->de_tai_id)->first() : null;
+        $gvhdId = $deTai ? $deTai->giang_vien_id : null;
+
+        // Resolve the specific GVPB (Reviewer) assigned to this group from the schedule
+        $lich = DB::table('lichbaove')->where('nhom_id', $groupId)->first();
+        $reviewerId = null;
+        if ($lich && $lich->ghi_chu) {
+            $decoded = json_decode($lich->ghi_chu, true);
+            $reviewerId = $decoded['reviewer_id'] ?? null;
+        }
+
         foreach ($rows as $row) {
             $studentCode = $row['id'] ?? '';
             $sv = SinhVien::where('ma_so_sinh_vien', $studentCode)->first();
-            if (!$sv) continue;
+            if (! $sv) {
+                continue;
+            }
 
             $presentation = isset($row['presentation']) ? floatval($row['presentation']) : 0;
             $demo = isset($row['demo']) ? floatval($row['demo']) : 0;
             $qna = isset($row['qna']) ? floatval($row['qna']) : 0;
-            $report = isset($row['report']) ? floatval($row['report']) : 0;
+            $report = (isset($row['report']) && $row['report'] !== null && $row['report'] !== '') ? floatval($row['report']) : null;
 
-            $defenseTotal = $presentation + $demo + $qna;
-            $finalScore = round(($defenseTotal * 0.8) + ($report * 0.2), 1);
-            $statusVal = $finalScore >= 5 ? 'DAT' : 'KHONG_DAT';
+            if ($presentation < 0 || $presentation > 3 || $demo < 0 || $demo > 5 || $qna < 0 || $qna > 2 || ($report !== null && ($report < 0 || $report > 10))) {
+                return response()->json(['success' => false, 'message' => 'Điểm thành phần không hợp lệ.'], 400);
+            }
 
-            DB::table('diemtongketdatn')->updateOrInsert(
+            // A. Điểm Báo cáo (20%):
+            $existingDbc = DB::table('diembaocao')->where('sinh_vien_id', $sv->sinh_vien_id)->first();
+            $diemGvhd = $existingDbc ? $existingDbc->diem_gvhd : null;
+            $diemGvpb = $existingDbc ? $existingDbc->diem_gvpb : null;
+
+            if ($teacherId == $gvhdId) {
+                $diemGvhd = $report;
+            } elseif ($teacherId == $reviewerId) {
+                $diemGvpb = $report;
+            } else {
+                // Đối với giảng viên khác, nếu điểm báo cáo gửi lên khác với điểm trung bình hiện có tức là họ đang cố tình sửa điểm báo cáo
+                $originalAvg = $existingDbc ? ($existingDbc->diem_trung_binh !== null ? floatval($existingDbc->diem_trung_binh) : null) : null;
+                if ($report !== null && ($originalAvg === null || abs($originalAvg - $report) > 0.0001)) {
+                    return response()->json(['success' => false, 'message' => 'Bạn không có quyền thay đổi điểm báo cáo (chỉ GVHD hoặc GVPB được phân công cho nhóm mới được phép).'], 403);
+                }
+            }
+
+            $diemBaoCaoTrungBinh = null;
+            if ($diemGvhd !== null || $diemGvpb !== null) {
+                $diemBaoCaoTrungBinh = round((floatval($diemGvhd ?? 0) + floatval($diemGvpb ?? 0)) / 2, 2);
+            }
+
+            // GVPB ID to store in diembaocao
+            $gvpbToStore = $reviewerId ?? 0;
+
+            DB::table('diembaocao')->updateOrInsert(
                 ['sinh_vien_id' => $sv->sinh_vien_id],
                 [
                     'nhom_id' => $groupId,
-                    'diem_bao_ve_rieng' => $defenseTotal,
-                    'diem_bao_cao_chung' => $report,
-                    'diem_tong_ket' => $finalScore,
-                    'trang_thai' => $statusVal,
-                    'updated_at' => now()
+                    'giang_vien_hd_id' => $gvhdId ?? 0,
+                    'giang_vien_pb_id' => $gvpbToStore,
+                    'diem_gvhd' => $diemGvhd,
+                    'diem_gvpb' => $diemGvpb,
+                    'diem_trung_binh' => $diemBaoCaoTrungBinh,
+                    'ngay_cap_nhat' => now(),
                 ]
             );
+
+            // B. Điểm Bảo vệ (80%):
+            // 1. Tính điểm bảo vệ của từng giảng viên: diem_bao_ve = diem_thuyet_trinh + diem_demo + diem_van_dap
+            $diemBaoVeGv = round($presentation + $demo + $qna, 2);
+
+            DB::table('diemhoidongbaove')->updateOrInsert(
+                [
+                    'sinh_vien_id' => $sv->sinh_vien_id,
+                    'nhom_id' => $groupId,
+                    'giang_vien_id' => $teacherId,
+                ],
+                [
+                    'diem_thuyet_trinh' => $presentation,
+                    'diem_demo' => $demo,
+                    'diem_van_dap' => $qna,
+                    'diem_bao_ve' => $diemBaoVeGv,
+                    'ngay_cham' => now(),
+                ]
+            );
+
+            // Tự động tính toán lại điểm trung bình bảo vệ, báo cáo và điểm tổng kết
+            $diemSinhVienService = app(DiemSinhVienService::class);
+            $diemSinhVienService->recalculateScores($sv->sinh_vien_id, $groupId);
         }
 
-        \App\Services\RealtimeService::broadcast('notification', [
+        RealtimeService::broadcast('score_updated', [
             'type' => 'score_updated',
             'groupId' => $groupId,
-            'message' => 'Điểm hội đồng đồ án tốt nghiệp đã được cập nhật'
+            'message' => 'Điểm hội đồng đồ án tốt nghiệp đã được cập nhật',
+        ]);
+
+        RealtimeService::broadcast('notification', [
+            'type' => 'score_updated',
+            'groupId' => $groupId,
+            'message' => 'Điểm hội đồng đồ án tốt nghiệp đã được cập nhật',
         ]);
 
         return response()->json([
             'success' => true,
-            'message' => 'Lưu điểm thành công.'
+            'message' => 'Lưu điểm thành công.',
         ]);
     }
 
@@ -282,7 +411,7 @@ class DiemController extends Controller
         $defense = round($totalScore * 0.3, 2);
         $demo = round($totalScore * 0.5, 2);
         $qa = round($totalScore - $defense - $demo, 2);
-        
+
         if ($defense > 3) {
             $diff = $defense - 3;
             $defense = 3;
@@ -299,11 +428,11 @@ class DiemController extends Controller
         if ($qa < 0) {
             $qa = 0;
         }
-        
+
         return [
             'presentation' => $defense,
             'demo' => $demo,
-            'qna' => $qa
+            'qna' => $qa,
         ];
     }
 
@@ -316,7 +445,7 @@ class DiemController extends Controller
         $teacherId = $teacher->giang_vien_id;
         $dotId = $request->input('periodId');
         if (empty($dotId)) {
-            $latestPeriod = \App\Models\Dot::orderBy('dot_id', 'desc')->first();
+            $latestPeriod = Dot::orderBy('dot_id', 'desc')->first();
             $dotId = $latestPeriod ? $latestPeriod->dot_id : 1;
         }
 
@@ -326,47 +455,57 @@ class DiemController extends Controller
             $studentCode = $s['id'] ?? '';
             $scoreVal = $s['score'] !== '' && $s['score'] !== null ? round(floatval($s['score']), 1) : null;
 
-            $sv = \App\Models\SinhVien::where('ma_so_sinh_vien', $studentCode)->first();
-            if (!$sv) continue;
+            $sv = SinhVien::where('ma_so_sinh_vien', $studentCode)->first();
+            if (! $sv) {
+                continue;
+            }
 
             // Verify teacher is assigned to this student in this period
-            $assigned = \Illuminate\Support\Facades\DB::table('phanconghdtt')
+            $assigned = DB::table('phanconghdtt')
                 ->where('giang_vien_id', $teacherId)
                 ->where('sinh_vien_id', $sv->sinh_vien_id)
                 ->where('dot_id', $dotId)
                 ->exists();
 
-            if (!$assigned) continue;
+            if (! $assigned) {
+                continue;
+            }
 
             if ($scoreVal === null) {
-                \Illuminate\Support\Facades\DB::table('diemthuctap')
+                DB::table('diemthuctap')
                     ->where('sinh_vien_id', $sv->sinh_vien_id)
                     ->where('dot_id', $dotId)
                     ->delete();
             } else {
-                \Illuminate\Support\Facades\DB::table('diemthuctap')->updateOrInsert(
+                DB::table('diemthuctap')->updateOrInsert(
                     [
                         'sinh_vien_id' => $sv->sinh_vien_id,
-                        'dot_id' => $dotId
+                        'dot_id' => $dotId,
                     ],
                     [
                         'giang_vien_id' => $teacherId,
                         'diem_so' => $scoreVal,
-                        'updated_at' => now()
+                        'updated_at' => now(),
                     ]
                 );
             }
         }
 
-        \App\Services\RealtimeService::broadcast('notification', [
+        RealtimeService::broadcast('score_updated', [
             'type' => 'tttn_score_updated',
             'periodId' => $dotId,
-            'message' => 'Điểm thực tập tốt nghiệp đã được cập nhật'
+            'message' => 'Điểm thực tập tốt nghiệp đã được cập nhật',
+        ]);
+
+        RealtimeService::broadcast('notification', [
+            'type' => 'tttn_score_updated',
+            'periodId' => $dotId,
+            'message' => 'Điểm thực tập tốt nghiệp đã được cập nhật',
         ]);
 
         return response()->json([
             'success' => true,
-            'message' => 'Lưu điểm thực tập thành công.'
+            'message' => 'Lưu điểm thực tập thành công.',
         ]);
     }
 }
