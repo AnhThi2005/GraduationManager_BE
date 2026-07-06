@@ -69,14 +69,15 @@ class MockAuthController extends Controller
         }
 
         $email = $payload['email'] ?? null;
-        if (!$email || ($payload['email_verified'] ?? 'false') !== 'true') {
+        $googleId = $payload['sub'] ?? null;
+        if (!$email || !$googleId || ($payload['email_verified'] ?? 'false') !== 'true') {
             return response()->json([
                 'success' => false,
                 'message' => 'Tài khoản Google chưa xác minh email.'
             ], 401);
         }
 
-        $ketQua = $this->xacThucService->xuLyDangNhapBangEmail($email);
+        $ketQua = $this->xacThucService->xuLyDangNhapBangGoogle($googleId, $email);
 
         if (!$ketQua) {
             return response()->json([
