@@ -185,6 +185,19 @@ class DeTaiService
         $maxSlots = $deTai->so_luong_sv_toi_da ?? 4;
         $slotsStr = $occupiedSlots . '/' . $maxSlots;
 
+        // Tính số lượng SV đã được duyệt vào đề tài này
+        $approvedSlots = DB::table('thanhviennhom')
+            ->join('nhomsvda', 'thanhviennhom.nhom_id', '=', 'nhomsvda.nhom_id')
+            ->where('nhomsvda.de_tai_id', $deTai->de_tai_id)
+            ->where('nhomsvda.trang_thai_duyet', 'DA_DUYET')
+            ->count();
+
+        if ($approvedSlots > $maxSlots) {
+            $approvedSlots = $maxSlots;
+        }
+
+        $approvedStudentsVal = ($deTai->trang_thai !== 'DA_DUYET' || $approvedSlots === 0) ? 'chưa có' : (string)$approvedSlots;
+
         // Định dạng tên giảng viên kèm học vị
         $teacherName = 'Chưa phân công';
         if ($deTai->giangVien) {
@@ -197,6 +210,7 @@ class DeTaiService
             'name' => $deTai->ten_de_tai,
             'teacher' => $teacherName,
             'slots' => $slotsStr,
+            'approved_students' => $approvedStudentsVal,
             'rejectReason' => $deTai->ly_do_tu_choi ?? '',
             'status' => $this->mapBackendStatusToFrontend($deTai->trang_thai),
             'description' => $deTai->mo_ta ?? '',

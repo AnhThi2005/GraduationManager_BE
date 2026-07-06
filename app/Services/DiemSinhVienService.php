@@ -63,7 +63,10 @@ class DiemSinhVienService
                 ->leftJoin('lop', 'sinhvien.lop_id', '=', 'lop.lop_id')
                 ->leftJoin('detai', 'nhomsvda.de_tai_id', '=', 'detai.de_tai_id')
                 ->leftJoin('giangvien', 'detai.giang_vien_id', '=', 'giangvien.giang_vien_id')
-                ->leftJoin('diemtongketdatn', 'sinhvien.sinh_vien_id', '=', 'diemtongketdatn.sinh_vien_id')
+                ->leftJoin('diemtongketdatn', function($join) {
+                    $join->on('sinhvien.sinh_vien_id', '=', 'diemtongketdatn.sinh_vien_id')
+                         ->on('nhomsvda.nhom_id', '=', 'diemtongketdatn.nhom_id');
+                })
                 ->select([
                     'sinhvien.sinh_vien_id',
                     'sinhvien.ma_so_sinh_vien as studentId',
@@ -72,9 +75,9 @@ class DiemSinhVienService
                     'detai.ten_de_tai as topicName',
                     'giangvien.ho_ten as mentor',
                     'diemtongketdatn.tong_ket_id as id',
-                    DB::raw('(SELECT COALESCE(AVG(diem_thuyet_trinh), 0) FROM diemhoidongbaove WHERE diemhoidongbaove.sinh_vien_id = sinhvien.sinh_vien_id AND diemhoidongbaove.diem_bao_ve > 0) as defenseScore'),
-                    DB::raw('(SELECT COALESCE(AVG(diem_demo), 0) FROM diemhoidongbaove WHERE diemhoidongbaove.sinh_vien_id = sinhvien.sinh_vien_id AND diemhoidongbaove.diem_bao_ve > 0) as demoScore'),
-                    DB::raw('(SELECT COALESCE(AVG(diem_van_dap), 0) FROM diemhoidongbaove WHERE diemhoidongbaove.sinh_vien_id = sinhvien.sinh_vien_id AND diemhoidongbaove.diem_bao_ve > 0) as qaScore'),
+                    DB::raw('(SELECT COALESCE(AVG(diem_thuyet_trinh), 0) FROM diemhoidongbaove WHERE diemhoidongbaove.sinh_vien_id = sinhvien.sinh_vien_id AND diemhoidongbaove.nhom_id = nhomsvda.nhom_id AND diemhoidongbaove.diem_bao_ve > 0) as defenseScore'),
+                    DB::raw('(SELECT COALESCE(AVG(diem_demo), 0) FROM diemhoidongbaove WHERE diemhoidongbaove.sinh_vien_id = sinhvien.sinh_vien_id AND diemhoidongbaove.nhom_id = nhomsvda.nhom_id AND diemhoidongbaove.diem_bao_ve > 0) as demoScore'),
+                    DB::raw('(SELECT COALESCE(AVG(diem_van_dap), 0) FROM diemhoidongbaove WHERE diemhoidongbaove.sinh_vien_id = sinhvien.sinh_vien_id AND diemhoidongbaove.nhom_id = nhomsvda.nhom_id AND diemhoidongbaove.diem_bao_ve > 0) as qaScore'),
                     'diemtongketdatn.diem_bao_cao_chung as reportScore',
                     'diemtongketdatn.diem_tong_ket as finalScore',
                     DB::raw("CASE WHEN diemtongketdatn.trang_thai IS NOT NULL THEN 'finalized' ELSE 'draft' END as status"),
@@ -231,7 +234,10 @@ class DiemSinhVienService
                 ->leftJoin('nhomsvda', 'thanhviennhom.nhom_id', '=', 'nhomsvda.nhom_id')
                 ->leftJoin('detai', 'nhomsvda.de_tai_id', '=', 'detai.de_tai_id')
                 ->leftJoin('giangvien', 'detai.giang_vien_id', '=', 'giangvien.giang_vien_id')
-                ->leftJoin('diemtongketdatn', 'sinhvien.sinh_vien_id', '=', 'diemtongketdatn.sinh_vien_id')
+                ->leftJoin('diemtongketdatn', function($join) {
+                    $join->on('sinhvien.sinh_vien_id', '=', 'diemtongketdatn.sinh_vien_id')
+                         ->on('nhomsvda.nhom_id', '=', 'diemtongketdatn.nhom_id');
+                })
                 ->select([
                     'sinhvien.sinh_vien_id',
                     'sinhvien.ma_so_sinh_vien as studentId',
@@ -240,9 +246,9 @@ class DiemSinhVienService
                     'detai.ten_de_tai as topicName',
                     'giangvien.ho_ten as mentor',
                     'diemtongketdatn.tong_ket_id as id',
-                    DB::raw('(SELECT COALESCE(AVG(diem_thuyet_trinh), 0) FROM diemhoidongbaove WHERE diemhoidongbaove.sinh_vien_id = sinhvien.sinh_vien_id AND diemhoidongbaove.diem_bao_ve > 0) as defenseScore'),
-                    DB::raw('(SELECT COALESCE(AVG(diem_demo), 0) FROM diemhoidongbaove WHERE diemhoidongbaove.sinh_vien_id = sinhvien.sinh_vien_id AND diemhoidongbaove.diem_bao_ve > 0) as demoScore'),
-                    DB::raw('(SELECT COALESCE(AVG(diem_van_dap), 0) FROM diemhoidongbaove WHERE diemhoidongbaove.sinh_vien_id = sinhvien.sinh_vien_id AND diemhoidongbaove.diem_bao_ve > 0) as qaScore'),
+                    DB::raw('(SELECT COALESCE(AVG(diem_thuyet_trinh), 0) FROM diemhoidongbaove WHERE diemhoidongbaove.sinh_vien_id = sinhvien.sinh_vien_id AND diemhoidongbaove.nhom_id = nhomsvda.nhom_id AND diemhoidongbaove.diem_bao_ve > 0) as defenseScore'),
+                    DB::raw('(SELECT COALESCE(AVG(diem_demo), 0) FROM diemhoidongbaove WHERE diemhoidongbaove.sinh_vien_id = sinhvien.sinh_vien_id AND diemhoidongbaove.nhom_id = nhomsvda.nhom_id AND diemhoidongbaove.diem_bao_ve > 0) as demoScore'),
+                    DB::raw('(SELECT COALESCE(AVG(diem_van_dap), 0) FROM diemhoidongbaove WHERE diemhoidongbaove.sinh_vien_id = sinhvien.sinh_vien_id AND diemhoidongbaove.nhom_id = nhomsvda.nhom_id AND diemhoidongbaove.diem_bao_ve > 0) as qaScore'),
                     'diemtongketdatn.diem_bao_cao_chung as reportScore',
                     'diemtongketdatn.diem_tong_ket as finalScore',
                     DB::raw("CASE WHEN diemtongketdatn.trang_thai IS NOT NULL THEN 'finalized' ELSE 'draft' END as status"),
@@ -359,20 +365,25 @@ class DiemSinhVienService
                     ]);
                 }
             } else {
-                $existing = DB::table('diemtongketdatn')
-                    ->where('sinh_vien_id', $sinhVienId)
-                    ->first();
-
                 // Find group
                 $groupMember = DB::table('thanhviennhom')
-                    ->where('sinh_vien_id', $sinhVienId)
+                    ->join('nhomsvda', 'thanhviennhom.nhom_id', '=', 'nhomsvda.nhom_id')
+                    ->where('thanhviennhom.sinh_vien_id', $sinhVienId)
+                    ->where('nhomsvda.dot_id', $dotId)
+                    ->select('thanhviennhom.nhom_id')
                     ->first();
                 $nhomId = $groupMember ? $groupMember->nhom_id : 1;
+
+                $existing = DB::table('diemtongketdatn')
+                    ->where('sinh_vien_id', $sinhVienId)
+                    ->where('nhom_id', $nhomId)
+                    ->first();
 
                 if ($existing) {
                     // Find actual averages of components from diemhoidongbaove
                     $avgScores = DB::table('diemhoidongbaove')
                         ->where('sinh_vien_id', $sinhVienId)
+                        ->where('nhom_id', $nhomId)
                         ->where('diem_bao_ve', '>', 0)
                         ->select([
                             DB::raw('AVG(diem_thuyet_trinh) as avg_presentation'),
@@ -494,7 +505,7 @@ class DiemSinhVienService
                 // C. Recalculate using optimized helper method
                 $this->recalculateScores($sinhVienId, $nhomId);
 
-                $updatedSummary = DB::table('diemtongketdatn')->where('sinh_vien_id', $sinhVienId)->first();
+                $updatedSummary = DB::table('diemtongketdatn')->where('sinh_vien_id', $sinhVienId)->where('nhom_id', $nhomId)->first();
                 $scoreId = $updatedSummary ? $updatedSummary->tong_ket_id : null;
             }
             DB::commit();
@@ -551,12 +562,13 @@ class DiemSinhVienService
     public function recalculateScores($sinhVienId, $nhomId)
     {
         // 1. Lấy điểm Báo cáo trung bình
-        $dbc = DB::table('diembaocao')->where('sinh_vien_id', $sinhVienId)->first();
+        $dbc = DB::table('diembaocao')->where('sinh_vien_id', $sinhVienId)->where('nhom_id', $nhomId)->first();
         $diemBaoCaoTrungBinh = $dbc ? $dbc->diem_trung_binh : null;
 
         // 2. Lấy điểm Bảo vệ trung bình của toàn hội đồng
         $avgDefense = DB::table('diemhoidongbaove')
             ->where('sinh_vien_id', $sinhVienId)
+            ->where('nhom_id', $nhomId)
             ->where('diem_bao_ve', '>', 0)
             ->avg('diem_bao_ve');
 
@@ -568,7 +580,7 @@ class DiemSinhVienService
 
         // 4. Cập nhật bảng diemtongketdatn
         DB::table('diemtongketdatn')->updateOrInsert(
-            ['sinh_vien_id' => $sinhVienId],
+            ['sinh_vien_id' => $sinhVienId, 'nhom_id' => $nhomId],
             [
                 'nhom_id' => $nhomId,
                 'diem_bao_cao_chung' => $diemBaoCaoTrungBinh,

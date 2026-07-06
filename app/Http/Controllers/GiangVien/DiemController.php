@@ -131,6 +131,7 @@ class DiemController extends Controller
                 foreach ($g->members as $m) {
                     $myScore = DB::table('diemhoidongbaove')
                         ->where('sinh_vien_id', $m->sinh_vien_id)
+                        ->where('nhom_id', $g->nhom_id)
                         ->where('giang_vien_id', $teacherId)
                         ->first();
 
@@ -152,6 +153,7 @@ class DiemController extends Controller
                 foreach ($g->members as $m) {
                     $exists = DB::table('diemhoidongbaove')
                         ->where('sinh_vien_id', $m->sinh_vien_id)
+                        ->where('nhom_id', $g->nhom_id)
                         ->where('giang_vien_id', $teacherId)
                         ->exists();
                     if (! $exists) {
@@ -261,6 +263,7 @@ class DiemController extends Controller
             // Load this lecturer's defense scores
             $hdbv = DB::table('diemhoidongbaove')
                 ->where('sinh_vien_id', $m->sinh_vien_id)
+                ->where('nhom_id', $groupId)
                 ->where('giang_vien_id', $teacherId)
                 ->first();
 
@@ -270,7 +273,7 @@ class DiemController extends Controller
             $diemBaoVe = $hdbv ? ($hdbv->diem_bao_ve !== null ? floatval($hdbv->diem_bao_ve) : null) : null;
 
             // Load report score based on role
-            $dbc = DB::table('diembaocao')->where('sinh_vien_id', $m->sinh_vien_id)->first();
+            $dbc = DB::table('diembaocao')->where('sinh_vien_id', $m->sinh_vien_id)->where('nhom_id', $groupId)->first();
             $report = null;
 
             if ($teacherId == $gvhdId) {
@@ -283,7 +286,7 @@ class DiemController extends Controller
 
             // Fallback to diemtongketdatn if diembaocao is not created yet
             if ($report === null) {
-                $scoreRecord = DB::table('diemtongketdatn')->where('sinh_vien_id', $m->sinh_vien_id)->first();
+                $scoreRecord = DB::table('diemtongketdatn')->where('sinh_vien_id', $m->sinh_vien_id)->where('nhom_id', $groupId)->first();
                 if ($scoreRecord && $scoreRecord->diem_bao_cao_chung !== null) {
                     $report = floatval($scoreRecord->diem_bao_cao_chung);
                 }
@@ -306,7 +309,7 @@ class DiemController extends Controller
             $diemGvpb = $dbc ? ($dbc->diem_gvpb !== null ? floatval($dbc->diem_gvpb) : null) : null;
 
             // 3. Get defense average and final total score from diemtongketdatn
-            $summary = DB::table('diemtongketdatn')->where('sinh_vien_id', $m->sinh_vien_id)->first();
+            $summary = DB::table('diemtongketdatn')->where('sinh_vien_id', $m->sinh_vien_id)->where('nhom_id', $groupId)->first();
             $diemTbBaoVe = $summary ? ($summary->diem_bao_ve_rieng !== null ? floatval($summary->diem_bao_ve_rieng) : null) : null;
             $diemTongKet = $summary ? ($summary->diem_tong_ket !== null ? floatval($summary->diem_tong_ket) : null) : null;
 
@@ -315,6 +318,7 @@ class DiemController extends Controller
             if ($group->hoi_dong_id) {
                 $allHdbv = DB::table('diemhoidongbaove')
                     ->where('sinh_vien_id', $m->sinh_vien_id)
+                    ->where('nhom_id', $group->nhom_id)
                     ->get();
                 foreach ($allHdbv as $sc) {
                     $lecturerScores[(string) $sc->giang_vien_id] = $sc->diem_bao_ve !== null ? floatval($sc->diem_bao_ve) : 0;
@@ -425,9 +429,11 @@ class DiemController extends Controller
             $gvpbToStore = $reviewerId ?? 0;
 
             DB::table('diembaocao')->updateOrInsert(
-                ['sinh_vien_id' => $sv->sinh_vien_id],
                 [
+                    'sinh_vien_id' => $sv->sinh_vien_id,
                     'nhom_id' => $groupId,
+                ],
+                [
                     'giang_vien_hd_id' => $gvhdId ?? 0,
                     'giang_vien_pb_id' => $gvpbToStore,
                     'diem_gvhd' => $diemGvhd,

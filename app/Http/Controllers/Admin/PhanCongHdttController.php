@@ -93,10 +93,12 @@ class PhanCongHdttController extends Controller
                 ->concat($groupStudentIds)
                 ->unique();
 
-            // Danh sách sinh viên có hoạt động nhóm ở các đợt khác
+            // Danh sách sinh viên có hoạt động nhóm ở các đợt khác mà đợt đó chưa đóng (đang hoạt động)
             $studentIdsInOtherPeriods = DB::table('thanhviennhom')
                 ->join('nhomsvda', 'thanhviennhom.nhom_id', '=', 'nhomsvda.nhom_id')
+                ->join('dot', 'nhomsvda.dot_id', '=', 'dot.dot_id')
                 ->where('nhomsvda.dot_id', '!=', $dotId)
+                ->where('dot.trang_thai', '!=', 'DA_DONG')
                 ->pluck('thanhviennhom.sinh_vien_id')
                 ->unique();
 
