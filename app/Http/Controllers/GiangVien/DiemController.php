@@ -71,7 +71,7 @@ class DiemController extends Controller
             ->whereHas('giangViens', function ($q) use ($teacherId) {
                 $q->where('giangvien.giang_vien_id', $teacherId);
             })
-            ->with(['giangViens', 'nhoms.members.lop', 'nhoms.deTai'])
+            ->with(['giangViens', 'nhoms.members.lop', 'nhoms.deTai.giangVien'])
             ->get();
 
         $councilGroups = [];
@@ -113,11 +113,17 @@ class DiemController extends Controller
                     $reviewerId = $decoded['reviewer_id'] ?? null;
                 }
 
+                $advisorName = '—';
+                if ($g->deTai && $g->deTai->giangVien) {
+                    $advisorName = ($g->deTai->giangVien->hoc_vi ? $g->deTai->giangVien->hoc_vi.' ' : 'ThS. ').$g->deTai->giangVien->ho_ten;
+                }
+
                 $groups[] = [
                     'id' => (string) $g->nhom_id,
                     'groupCode' => 'G'.str_pad($g->nhom_id, 2, '0', STR_PAD_LEFT),
                     'topic' => $g->deTai ? $g->deTai->ten_de_tai : 'Nhóm #'.$g->nhom_id,
                     'advisorId' => $g->deTai ? (string) $g->deTai->giang_vien_id : null,
+                    'advisorName' => $advisorName,
                     'reviewerId' => $reviewerId ? (string) $reviewerId : null,
                     'students' => $studentsList,
                 ];
