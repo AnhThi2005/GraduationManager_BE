@@ -15,6 +15,7 @@ use App\Http\Controllers\Admin\HoiDongController;
 use App\Http\Controllers\Auth\MockAuthController;
 
 Route::post('/dang-nhap-gia-lap', [MockAuthController::class, 'dangNhap']);
+Route::post('/dang-nhap-google', [MockAuthController::class, 'dangNhapGoogle']);
 Route::post('/lam-moi-token', [MockAuthController::class, 'lamMoiToken']);
 Route::get('/v1/realtime/stream', [\App\Http\Controllers\RealtimeController::class, 'stream']);
 

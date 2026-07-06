@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Services\XacThucService;
 use Laravel\Sanctum\PersonalAccessToken;
+use Illuminate\Support\Facades\Http;
 use Carbon\Carbon;
 // use OpenApi\Attributes as OA;
 
@@ -34,6 +35,59 @@ class MockAuthController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Đăng nhập giả lập hệ thống thành công!',
+            'data' => $ketQua
+        ], 200);
+    }
+
+    /**
+     * Đăng nhập bằng Google — nhận ID token (credential) do Google Identity Services trả về
+     * ở phía frontend, xác minh trực tiếp với Google rồi tái dùng đúng logic tìm-email hiện có.
+     */
+    public function dangNhapGoogle(Request $request)
+    {
+        $request->validate(['credential' => 'required|string']);
+
+        $verifyRes = Http::get('https://oauth2.googleapis.com/tokeninfo', [
+            'id_token' => $request->input('credential'),
+        ]);
+
+        if (!$verifyRes->successful()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Token Google không hợp lệ hoặc đã hết hạn.'
+            ], 401);
+        }
+
+        $payload = $verifyRes->json();
+
+        $expectedClientId = config('services.google.client_id');
+        if (!$expectedClientId || ($payload['aud'] ?? null) !== $expectedClientId) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Token Google không hợp lệ (sai ứng dụng).'
+            ], 401);
+        }
+
+        $email = $payload['email'] ?? null;
+        if (!$email || ($payload['email_verified'] ?? 'false') !== 'true') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Tài khoản Google chưa xác minh email.'
+            ], 401);
+        }
+
+        $ketQua = $this->xacThucService->xuLyDangNhapBangEmail($email);
+
+        if (!$ketQua) {
+            return response()->json([
+                'success' => false,
+                'message' => "Tài khoản Google ({$email}) chưa được đăng ký trong hệ thống."
+            ], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Đăng nhập bằng Google thành công!',
             'data' => $ketQua
         ], 200);
     }
