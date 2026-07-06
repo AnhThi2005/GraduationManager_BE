@@ -50,7 +50,6 @@ class DiemController extends Controller
                 'lop.ten_lop as class',
                 'congty.ten_cong_ty as company',
                 'diemthuctap.diem_so as score',
-                'diemthuctap.updated_at as updated_at',
             ])
             ->get()
             ->map(function ($row) {
@@ -61,7 +60,8 @@ class DiemController extends Controller
                     'class' => $row->class ?? '—',
                     'company' => $row->company ?? 'Chưa có công ty thực tập',
                     'score' => $row->score !== null ? (string) $row->score : '',
-                    'updated_at' => $row->updated_at,
+                    // Bảng diemthuctap không lưu thời điểm cập nhật, nên không có dữ liệu thật để hiện ở đây
+                    'updated_at' => null,
                 ];
             })
             ->all();
@@ -421,15 +421,12 @@ class DiemController extends Controller
                 $diemBaoCaoTrungBinh = round((floatval($diemGvhd ?? 0) + floatval($diemGvpb ?? 0)) / 2, 2);
             }
 
-            // GVPB ID to store in diembaocao
-            $gvpbToStore = $reviewerId ?? 0;
-
             DB::table('diembaocao')->updateOrInsert(
                 ['sinh_vien_id' => $sv->sinh_vien_id],
                 [
                     'nhom_id' => $groupId,
-                    'giang_vien_hd_id' => $gvhdId ?? 0,
-                    'giang_vien_pb_id' => $gvpbToStore,
+                    'giang_vien_hd_id' => $gvhdId,
+                    'giang_vien_pb_id' => $reviewerId,
                     'diem_gvhd' => $diemGvhd,
                     'diem_gvpb' => $diemGvpb,
                     'diem_trung_binh' => $diemBaoCaoTrungBinh,
@@ -562,7 +559,6 @@ class DiemController extends Controller
                     [
                         'giang_vien_id' => $teacherId,
                         'diem_so' => $scoreVal,
-                        'updated_at' => now(),
                     ]
                 );
             }

@@ -32,65 +32,126 @@ class BaoCaoController extends Controller
             return response()->json([
                 'code' => 200,
                 'results' => [
-                    'objects' => []
+                    'objects' => [],
+                    'hasGvhd' => true
                 ]
             ]);
         }
 
+        // Kiểm tra xem sinh viên đã được phân công Giảng viên hướng dẫn (GVHD) chưa
+        $coGvhd = DB::table('phanconghdtt')
+            ->where('sinh_vien_id', $sinhVien->sinh_vien_id)
+            ->where('dot_id', $activePeriod->dot_id)
+            ->where('da_cong_bo', true)
+            ->whereNull('deleted_at')
+            ->exists();
+
+        if (!$coGvhd) {
+            return response()->json([
+                'code' => 200,
+                'results' => [
+                    'objects' => [],
+                    'hasGvhd' => false
+                ]
+            ]);
+        }
+
+        $start = Carbon::parse($activePeriod->ngay_bat_dau, 'Asia/Ho_Chi_Minh');
+        $end = Carbon::parse($activePeriod->ngay_ket_thuc, 'Asia/Ho_Chi_Minh');
+        $now = Carbon::now();
+
         $reports = BaoCaoTienDo::where('sinh_vien_id', $sinhVien->sinh_vien_id)
             ->where('dot_id', $activePeriod->dot_id)
             ->where('loai_bao_cao', 'THUC_TAP')
-            ->orderBy('thoi_gian_nop', 'desc')
-            ->get();
+            ->get()
+            ->keyBy('tuan_so');
 
-        $formatted = $reports->map(function ($r) {
-            // Tách title và note từ cột noi_dung
-            $noiDung = $r->noi_dung ?? '';
-            $parts = explode("\n", $noiDung, 2);
-            $title = $parts[0] ?? 'Chưa có tiêu đề';
-            $note = $parts[1] ?? '';
+        // Lấy tất cả gia hạn cho sinh viên này trong đợt này
+        $extensions = DB::table('gia_han_nop_bao_cao')
+            ->where('sinh_vien_id', $sinhVien->sinh_vien_id)
+            ->where('dot_id', $activePeriod->dot_id)
+            ->where('loai_bao_cao', 'THUC_TAP')
+            ->get()
+            ->keyBy('tuan');
 
-            // Định dạng ngày cập nhật
-            $updatedAt = $r->thoi_gian_nop ? Carbon::parse($r->thoi_gian_nop)->format('d/m/Y') : '—';
+        $formatted = [];
+        $w = 1;
 
-            // Lấy nhận xét từ GV để xác định trạng thái duyệt
-            $comment = DB::table('nhanxetbaocao')->where('bao_cao_id', $r->bao_cao_id)->first();
-
-            // Map trạng thái sang chuẩn Frontend mong đợi
-            $status = 'Chờ duyệt';
-            if ($comment) {
-                if ($comment->danh_gia === 'DAT') {
-                    $status = 'Đã duyệt';
-                } else if ($comment->danh_gia === 'CHUA_DAT') {
-                    $status = 'Bị từ chối';
-                }
+        while (true) {
+            $startOfWeek = $start->copy()->addWeeks($w - 1);
+            if ($startOfWeek->gt($end)) {
+                break;
             }
 
-            $fileUrl = null;
-            if ($r->duong_dan_file && $r->duong_dan_file !== '—') {
-                if (str_starts_with($r->duong_dan_file, 'http')) {
-                    $fileUrl = $r->duong_dan_file;
-                } else {
-                    $fileUrl = asset('storage/' . $r->duong_dan_file);
-                }
+            $r = $reports->get($w);
+            if ($startOfWeek->gt($now) && !$r) {
+                break;
             }
 
-            return [
-                'week' => (int)$r->tuan_so,
-                'title' => $title,
-                'status' => $status,
-                'file' => $r->ten_file_goc ?: ($r->duong_dan_file ? basename($r->duong_dan_file) : '—'),
-                'fileUrl' => $fileUrl,
-                'note' => $note,
-                'teacherComment' => $comment ? $comment->noi_dung : null,
-                'updated' => $updatedAt
-            ];
+            $extension = $extensions->get($w);
+            $standardDeadline = $start->copy()->addWeeks($w)->endOfDay();
+            $appliedDeadline = $extension ? Carbon::parse($extension->han_nop_moi) : $standardDeadline;
+
+            if ($r) {
+                // Tách title và note từ cột noi_dung
+                $noiDung = $r->noi_dung ?? '';
+                $parts = explode("\n", $noiDung, 2);
+                $title = $parts[0] ?? 'Chưa có tiêu đề';
+                $note = $parts[1] ?? '';
+
+                // Định dạng ngày cập nhật
+                $updatedAt = $r->thoi_gian_nop ? Carbon::parse($r->thoi_gian_nop)->format('d/m/Y') : '—';
+
+                // Lấy nhận xét từ GV
+                $comment = DB::table('nhanxetbaocao')->where('bao_cao_id', $r->bao_cao_id)->first();
+
+                $fileUrl = null;
+                if ($r->duong_dan_file && $r->duong_dan_file !== '—') {
+                    if (str_starts_with($r->duong_dan_file, 'http')) {
+                        $fileUrl = $r->duong_dan_file;
+                    } else {
+                        $fileUrl = asset('storage/' . $r->duong_dan_file);
+                    }
+                }
+
+                $formatted[] = [
+                    'week' => $w,
+                    'title' => $title,
+                    'status' => 'Đã nộp',
+                    'file' => $r->ten_file_goc ?: ($r->duong_dan_file ? basename($r->duong_dan_file) : '—'),
+                    'fileUrl' => $fileUrl,
+                    'note' => $note,
+                    'teacherComment' => $comment ? $comment->noi_dung : null,
+                    'updated' => $updatedAt
+                ];
+            } else {
+                // Chưa nộp: kiểm tra xem đã quá hạn nộp chưa
+                $status = $now->gt($appliedDeadline) ? 'Thiếu' : 'Chưa nộp';
+
+                $formatted[] = [
+                    'week' => $w,
+                    'title' => 'Chưa nộp báo cáo',
+                    'status' => $status,
+                    'file' => '—',
+                    'fileUrl' => null,
+                    'note' => 'Sinh viên chưa nộp báo cáo tuần này.',
+                    'teacherComment' => null,
+                    'updated' => '—'
+                ];
+            }
+            $w++;
+        }
+
+        // Sắp xếp các tuần theo thứ tự giảm dần
+        usort($formatted, function($a, $b) {
+            return $b['week'] <=> $a['week'];
         });
 
         return response()->json([
             'code' => 200,
             'results' => [
-                'objects' => $formatted
+                'objects' => $formatted,
+                'hasGvhd' => true
             ]
         ]);
     }
@@ -130,6 +191,49 @@ class BaoCaoController extends Controller
             return response()->json(['success' => false, 'message' => 'Không tìm thấy đợt thực tập tốt nghiệp hiện tại.'], 400);
         }
 
+        // Kiểm tra xem sinh viên đã được phân công Giảng viên hướng dẫn (GVHD) chưa
+        $coGvhd = DB::table('phanconghdtt')
+            ->where('sinh_vien_id', $sinhVien->sinh_vien_id)
+            ->where('dot_id', $activePeriod->dot_id)
+            ->where('da_cong_bo', true)
+            ->whereNull('deleted_at')
+            ->exists();
+
+        if (!$coGvhd) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Bạn chưa được phân công Giảng viên hướng dẫn cho đợt này. Bạn không thể thực hiện nộp báo cáo!'
+            ], 403);
+        }
+
+        // Chặn nộp trước các tuần ở tương lai
+        $startOfWeek = Carbon::parse($activePeriod->ngay_bat_dau, 'Asia/Ho_Chi_Minh')->addWeeks($week - 1);
+        if (Carbon::now()->lt($startOfWeek)) {
+            return response()->json([
+                'success' => false,
+                'message' => "Tuần {$week} chưa bắt đầu. Bạn chưa thể nộp báo cáo cho tuần này!"
+            ], 400);
+        }
+
+        // Kiểm tra thời hạn nộp báo cáo
+        $extension = DB::table('gia_han_nop_bao_cao')
+            ->where([
+                'sinh_vien_id' => $sinhVien->sinh_vien_id,
+                'dot_id' => $activePeriod->dot_id,
+                'loai_bao_cao' => 'THUC_TAP',
+                'tuan' => $week
+            ])->first();
+
+        $standardDeadline = Carbon::parse($activePeriod->ngay_bat_dau, 'Asia/Ho_Chi_Minh')->addWeeks($week)->endOfDay();
+        $appliedDeadline = $extension ? Carbon::parse($extension->han_nop_moi) : $standardDeadline;
+
+        if (Carbon::now()->gt($appliedDeadline)) {
+            return response()->json([
+                'success' => false,
+                'message' => "Đã hết hạn nộp hoặc cập nhật báo cáo tuần {$week} (Hạn nộp: " . $appliedDeadline->copy()->setTimezone('Asia/Ho_Chi_Minh')->format('d/m/Y H:i') . ")."
+            ], 400);
+        }
+
         $noiDungStr = $title . "\n" . $note;
 
         // Giữ lại file cũ nếu lần nộp này không đính kèm file mới
@@ -139,17 +243,6 @@ class BaoCaoController extends Controller
             'tuan_so' => $week,
             'loai_bao_cao' => 'THUC_TAP'
         ])->first();
-
-        // Chặn nộp lại nếu tuần này đã được giảng viên duyệt Đạt, tránh sửa bài sau khi đã được chấm
-        if ($existing) {
-            $existingComment = DB::table('nhanxetbaocao')->where('bao_cao_id', $existing->bao_cao_id)->first();
-            if ($existingComment && $existingComment->danh_gia === 'DAT') {
-                return response()->json([
-                    'success' => false,
-                    'message' => "Nhật ký tuần {$week} đã được giảng viên duyệt Đạt. Bạn không thể nộp lại tuần này nữa."
-                ], 400);
-            }
-        }
 
         $filePath = $filePath ?? ($existing->duong_dan_file ?? null);
         $fileOriginalName = $fileOriginalName ?? ($existing->ten_file_goc ?? null);
@@ -177,7 +270,6 @@ class BaoCaoController extends Controller
             }
         }
 
-        // Trả về đối tượng vừa nộp theo định dạng khớp Frontend
         return response()->json([
             'code' => 200,
             'message' => 'Nộp báo cáo thực tập thành công!',
@@ -185,7 +277,7 @@ class BaoCaoController extends Controller
                 'object' => [
                     'week' => (int)$report->tuan_so,
                     'title' => $title,
-                    'status' => 'Chờ duyệt',
+                    'status' => 'Đã nộp',
                     'file' => $report->ten_file_goc ?: ($report->duong_dan_file ? basename($report->duong_dan_file) : '—'),
                     'fileUrl' => $fileUrl,
                     'note' => $note,
@@ -206,8 +298,7 @@ class BaoCaoController extends Controller
             return response()->json(['success' => false, 'message' => 'Bạn chưa đăng nhập.'], 401);
         }
 
-        // Tìm nhóm ĐATN đã được duyệt của sinh viên (ưu tiên nhóm thực tế thay vì suy luận đợt qua lớp,
-        // vì một lớp có thể liên kết nhiều đợt ĐATN cùng lúc)
+        // Tìm nhóm ĐATN đã được duyệt của sinh viên
         $nhom = DB::table('nhomsvda')
             ->join('thanhviennhom', 'nhomsvda.nhom_id', '=', 'thanhviennhom.nhom_id')
             ->where('thanhviennhom.sinh_vien_id', $sinhVien->sinh_vien_id)
@@ -225,6 +316,20 @@ class BaoCaoController extends Controller
             ]);
         }
 
+        $activePeriod = Dot::find($nhom->dot_id);
+        if (!$activePeriod) {
+            return response()->json([
+                'code' => 200,
+                'results' => [
+                    'objects' => []
+                ]
+            ]);
+        }
+
+        $start = Carbon::parse($activePeriod->ngay_bat_dau, 'Asia/Ho_Chi_Minh');
+        $end = Carbon::parse($activePeriod->ngay_ket_thuc, 'Asia/Ho_Chi_Minh');
+        $now = Carbon::now();
+
         // Lấy danh sách ID của tất cả thành viên trong nhóm
         $memberIds = DB::table('thanhviennhom')
             ->where('nhom_id', $nhom->nhom_id)
@@ -234,51 +339,88 @@ class BaoCaoController extends Controller
         $reports = BaoCaoTienDo::whereIn('sinh_vien_id', $memberIds)
             ->where('dot_id', $nhom->dot_id)
             ->where('loai_bao_cao', 'DO_AN')
-            ->orderBy('thoi_gian_nop', 'desc')
-            ->get();
+            ->get()
+            ->keyBy('tuan_so');
 
-        $formatted = $reports->map(function ($r) {
-            // Tách name, note từ cột noi_dung
-            $noiDung = $r->noi_dung ?? '';
-            $parts = explode("\n", $noiDung, 2);
-            $name = $parts[0] ?? 'Chưa đặt tên';
-            $note = $parts[1] ?? '';
+        // Lấy tất cả gia hạn cho nhóm này trong đợt này
+        $extensions = DB::table('gia_han_nop_bao_cao')
+            ->whereIn('sinh_vien_id', $memberIds)
+            ->where('dot_id', $nhom->dot_id)
+            ->where('loai_bao_cao', 'DO_AN')
+            ->get()
+            ->keyBy('tuan');
 
-            // Định dạng ngày cập nhật
-            $updatedAt = $r->thoi_gian_nop ? Carbon::parse($r->thoi_gian_nop)->format('d/m/Y') : '—';
+        $formatted = [];
+        $w = 1;
 
-            // Lấy nhận xét từ GV để xác định trạng thái duyệt
-            $comment = DB::table('nhanxetbaocao')->where('bao_cao_id', $r->bao_cao_id)->first();
-
-            // Map trạng thái sang chuẩn Frontend mong đợi ('Đã duyệt' | 'Đang chấm điểm' | 'Nháp')
-            $status = 'Đang chấm điểm';
-            if ($comment) {
-                if ($comment->danh_gia === 'DAT') {
-                    $status = 'Đã duyệt';
-                } else if ($comment->danh_gia === 'CHUA_DAT') {
-                    $status = 'Bị từ chối';
-                }
+        while (true) {
+            $startOfWeek = $start->copy()->addWeeks($w - 1);
+            if ($startOfWeek->gt($end)) {
+                break;
             }
 
-            $fileUrl = null;
-            if ($r->duong_dan_file && $r->duong_dan_file !== '—') {
-                if (str_starts_with($r->duong_dan_file, 'http')) {
-                    $fileUrl = $r->duong_dan_file;
-                } else {
-                    $fileUrl = asset('storage/' . $r->duong_dan_file);
-                }
+            $r = $reports->get($w);
+            if ($startOfWeek->gt($now) && !$r) {
+                break;
             }
 
-            return [
-                'week' => (int)$r->tuan_so,
-                'name' => $name,
-                'status' => $status,
-                'file' => $r->ten_file_goc ?: ($r->duong_dan_file ? basename($r->duong_dan_file) : '—'),
-                'fileUrl' => $fileUrl,
-                'note' => $note,
-                'teacherComment' => $comment ? $comment->noi_dung : null,
-                'updated' => $updatedAt
-            ];
+            $extension = $extensions->get($w);
+            $standardDeadline = $start->copy()->addWeeks($w)->endOfDay();
+            $appliedDeadline = $extension ? Carbon::parse($extension->han_nop_moi) : $standardDeadline;
+
+            if ($r) {
+                // Tách name, note từ cột noi_dung
+                $noiDung = $r->noi_dung ?? '';
+                $parts = explode("\n", $noiDung, 2);
+                $name = $parts[0] ?? 'Chưa đặt tên';
+                $note = $parts[1] ?? '';
+
+                // Định dạng ngày cập nhật
+                $updatedAt = $r->thoi_gian_nop ? Carbon::parse($r->thoi_gian_nop)->format('d/m/Y') : '—';
+
+                // Lấy nhận xét từ GV
+                $comment = DB::table('nhanxetbaocao')->where('bao_cao_id', $r->bao_cao_id)->first();
+
+                $fileUrl = null;
+                if ($r->duong_dan_file && $r->duong_dan_file !== '—') {
+                    if (str_starts_with($r->duong_dan_file, 'http')) {
+                        $fileUrl = $r->duong_dan_file;
+                    } else {
+                        $fileUrl = asset('storage/' . $r->duong_dan_file);
+                    }
+                }
+
+                $formatted[] = [
+                    'week' => $w,
+                    'name' => $name,
+                    'status' => 'Đã nộp',
+                    'file' => $r->ten_file_goc ?: ($r->duong_dan_file ? basename($r->duong_dan_file) : '—'),
+                    'fileUrl' => $fileUrl,
+                    'note' => $note,
+                    'teacherComment' => $comment ? $comment->noi_dung : null,
+                    'updated' => $updatedAt
+                ];
+            } else {
+                // Chưa nộp: kiểm tra xem đã quá hạn nộp chưa
+                $status = $now->gt($appliedDeadline) ? 'Thiếu' : 'Chưa nộp';
+
+                $formatted[] = [
+                    'week' => $w,
+                    'name' => 'Chưa nộp bản thảo',
+                    'status' => $status,
+                    'file' => '—',
+                    'fileUrl' => null,
+                    'note' => 'Nhóm chưa nộp bản thảo tuần này.',
+                    'teacherComment' => null,
+                    'updated' => '—'
+                ];
+            }
+            $w++;
+        }
+
+        // Sắp xếp các tuần theo thứ tự giảm dần
+        usort($formatted, function($a, $b) {
+            return $b['week'] <=> $a['week'];
         });
 
         return response()->json([
@@ -313,8 +455,7 @@ class BaoCaoController extends Controller
         $file = $request->input('file');
         $fileOriginalName = $request->input('fileName') ?: null;
 
-        // Tìm nhóm ĐATN đã được duyệt của sinh viên (ưu tiên nhóm thực tế thay vì suy luận đợt qua lớp,
-        // vì một lớp có thể liên kết nhiều đợt ĐATN cùng lúc)
+        // Tìm nhóm ĐATN đã được duyệt của sinh viên
         $nhom = DB::table('nhomsvda')
             ->join('thanhviennhom', 'nhomsvda.nhom_id', '=', 'thanhviennhom.nhom_id')
             ->where('thanhviennhom.sinh_vien_id', $sinhVien->sinh_vien_id)
@@ -330,7 +471,19 @@ class BaoCaoController extends Controller
             ], 403);
         }
 
-        $noiDungStr = $name . "\n" . $note;
+        $activePeriod = Dot::find($nhom->dot_id);
+        if (!$activePeriod) {
+            return response()->json(['success' => false, 'message' => 'Không tìm thấy đợt tốt nghiệp tương ứng.'], 400);
+        }
+
+        // Chặn nộp trước các tuần ở tương lai
+        $startOfWeek = Carbon::parse($activePeriod->ngay_bat_dau, 'Asia/Ho_Chi_Minh')->addWeeks($week - 1);
+        if (Carbon::now()->lt($startOfWeek)) {
+            return response()->json([
+                'success' => false,
+                'message' => "Tuần {$week} chưa bắt đầu. Bạn chưa thể nộp báo cáo cho tuần này!"
+            ], 400);
+        }
 
         // Lấy danh sách ID của tất cả thành viên trong nhóm để kiểm tra/nộp chung báo cáo nhóm
         $memberIds = DB::table('thanhviennhom')
@@ -338,23 +491,32 @@ class BaoCaoController extends Controller
             ->pluck('sinh_vien_id')
             ->all();
 
+        // Kiểm tra thời hạn nộp báo cáo ĐATN (cho cả nhóm)
+        $extension = DB::table('gia_han_nop_bao_cao')
+            ->whereIn('sinh_vien_id', $memberIds)
+            ->where('dot_id', $nhom->dot_id)
+            ->where('loai_bao_cao', 'DO_AN')
+            ->where('tuan', $week)
+            ->first();
+
+        $standardDeadline = Carbon::parse($activePeriod->ngay_bat_dau, 'Asia/Ho_Chi_Minh')->addWeeks($week)->endOfDay();
+        $appliedDeadline = $extension ? Carbon::parse($extension->han_nop_moi) : $standardDeadline;
+
+        if (Carbon::now()->gt($appliedDeadline)) {
+            return response()->json([
+                'success' => false,
+                'message' => "Đã hết hạn nộp hoặc cập nhật báo cáo bản thảo tuần {$week} (Hạn nộp: " . $appliedDeadline->copy()->setTimezone('Asia/Ho_Chi_Minh')->format('d/m/Y H:i') . ")."
+            ], 400);
+        }
+
+        $noiDungStr = $name . "\n" . $note;
+
         // Tìm xem tuần này đã có báo cáo của bất kỳ thành viên nào trong nhóm chưa (giống cơ chế bên TTTN)
         $report = BaoCaoTienDo::whereIn('sinh_vien_id', $memberIds)
             ->where('dot_id', $nhom->dot_id)
             ->where('tuan_so', $week)
             ->where('loai_bao_cao', 'DO_AN')
             ->first();
-
-        // Chặn nộp lại nếu bản thảo này đã được giảng viên duyệt Đạt, tránh sửa bài sau khi đã được chấm
-        if ($report) {
-            $existingComment = DB::table('nhanxetbaocao')->where('bao_cao_id', $report->bao_cao_id)->first();
-            if ($existingComment && $existingComment->danh_gia === 'DAT') {
-                return response()->json([
-                    'success' => false,
-                    'message' => "Bản thảo tuần {$week} đã được giảng viên duyệt Đạt. Bạn không thể nộp lại tuần này nữa."
-                ], 400);
-            }
-        }
 
         if (!$report) {
             $report = BaoCaoTienDo::create([
@@ -395,7 +557,7 @@ class BaoCaoController extends Controller
                 'object' => [
                     'week' => $week,
                     'name' => $name,
-                    'status' => 'Đang chấm điểm',
+                    'status' => 'Đã nộp',
                     'file' => $report->ten_file_goc ?: ($report->duong_dan_file ? basename($report->duong_dan_file) : '—'),
                     'fileUrl' => $fileUrl,
                     'note' => $note,

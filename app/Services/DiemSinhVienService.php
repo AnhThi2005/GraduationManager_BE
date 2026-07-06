@@ -346,7 +346,6 @@ class DiemSinhVienService
                         ->update([
                             'diem_so' => $finalScore,
                             'giang_vien_id' => $giangVienId,
-                            'updated_at' => now(),
                         ]);
                     $scoreId = $existing->diem_id;
                 } else {
@@ -355,7 +354,6 @@ class DiemSinhVienService
                         'dot_id' => $dotId,
                         'giang_vien_id' => $giangVienId,
                         'diem_so' => $finalScore,
-                        'updated_at' => now(),
                     ]);
                 }
             } else {
@@ -429,8 +427,8 @@ class DiemSinhVienService
                     DB::table('diembaocao')->insert([
                         'sinh_vien_id' => $sinhVienId,
                         'nhom_id' => $nhomId,
-                        'giang_vien_hd_id' => $gvhdId ?? 0,
-                        'giang_vien_pb_id' => $gvpbId ?? 0,
+                        'giang_vien_hd_id' => $gvhdId,
+                        'giang_vien_pb_id' => $gvpbId,
                         'diem_gvhd' => null,
                         'diem_gvpb' => null,
                         'diem_trung_binh' => $report,
@@ -575,7 +573,6 @@ class DiemSinhVienService
                 'diem_bao_ve_rieng' => $diemBaoVeTrungBinh,
                 'diem_tong_ket' => $finalScore,
                 'trang_thai' => $statusVal,
-                'updated_at' => now(),
             ]
         );
     }

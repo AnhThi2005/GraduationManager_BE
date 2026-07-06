@@ -85,6 +85,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/topics/import', [\App\Http\Controllers\GiangVien\DeTaiController::class, 'import']);
         Route::get('/students', [\App\Http\Controllers\GiangVien\NhomController::class, 'layDanhSachSinhVien']);
         Route::post('/report-comment', [\App\Http\Controllers\GiangVien\NhomController::class, 'saveReportComment']);
+        Route::post('/report-extend', [\App\Http\Controllers\GiangVien\NhomController::class, 'giaHanBaoCao']);
     });
 
     // Nhóm route Tiếng Việt chuẩn hóa cho Giảng viên (kebab-case)
@@ -119,6 +120,7 @@ Route::middleware('auth:sanctum')->group(function () {
         // 6. Quản lý sinh viên hướng dẫn & theo dõi tiến độ
         Route::get('/sinh-vien-huong-dan', [\App\Http\Controllers\GiangVien\NhomController::class, 'layDanhSachSinhVien']);
         Route::post('/nhan-xet-bao-cao', [\App\Http\Controllers\GiangVien\NhomController::class, 'saveReportComment']);
+        Route::post('/gia-han-bao-cao', [\App\Http\Controllers\GiangVien\NhomController::class, 'giaHanBaoCao']);
 
         // 7. Nộp & Quản lý tài liệu (Upload tài liệu dành riêng cho giảng viên)
         Route::post('/tai-len-tai-lieu', [\App\Http\Controllers\Admin\TaiLenController::class, 'upload']);

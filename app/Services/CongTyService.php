@@ -20,7 +20,7 @@ class CongTyService
      */
     public function getListCompany()
     {
-        $companies = CongTy::all();
+        $companies = CongTy::orderBy('cong_ty_id', 'desc')->get();
 
         $rows = $companies->map(function ($company) {
             return $this->transformCompany($company);
@@ -110,12 +110,9 @@ class CongTyService
 
         $company->update($updateData);
 
-        // Nếu công ty được duyệt hoạt động, tự động duyệt tất cả các đơn đăng ký thực tập đang chờ của sinh viên tại công ty này
-        if ($company->trang_thai === 'HOAT_DONG') {
-            DangKyThucTap::where('cong_ty_id', $id)
-                ->where('trang_thai', 'CHO_DUYET')
-                ->update(['trang_thai' => 'DA_DUYET']);
-        } elseif ($company->trang_thai === 'NGUNG_HOAT_DONG') {
+        // Công ty được duyệt hoạt động KHÔNG có nghĩa là khai báo thực tập của sinh viên tại công ty đó
+        // cũng được duyệt theo — đây là 2 quyết định độc lập, Admin vẫn phải tự duyệt từng khai báo.
+        if ($company->trang_thai === 'NGUNG_HOAT_DONG') {
             // Công ty bị từ chối/tạm dừng: các khai báo đang chờ duyệt tại công ty này không thể được duyệt nữa
             // nên tự động từ chối theo. Không đụng tới khai báo đã duyệt/chờ cấp giấy (SV đã/đang thực tập thật)
             // vì đó là quyết định nghiệp vụ cần admin tự xử lý thủ công.

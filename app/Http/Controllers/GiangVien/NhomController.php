@@ -21,8 +21,24 @@ class NhomController extends Controller
         $dotId = $request->input('periodId');
         if (empty($dotId)) {
             $latestPeriod = Dot::orderBy('dot_id', 'desc')->first();
+            $activePeriod = $latestPeriod;
             $dotId = $latestPeriod ? $latestPeriod->dot_id : 1;
+        } else {
+            $activePeriod = Dot::find($dotId);
         }
+
+        if (!$activePeriod) {
+            return response()->json([
+                'success' => true,
+                'tttn' => [],
+                'datn' => []
+            ]);
+        }
+
+        $start = \Carbon\Carbon::parse($activePeriod->ngay_bat_dau, 'Asia/Ho_Chi_Minh');
+        $end = \Carbon\Carbon::parse($activePeriod->ngay_ket_thuc, 'Asia/Ho_Chi_Minh');
+        $now = \Carbon\Carbon::now();
+        $totalWeeks = max(1, (int)ceil($start->diffInDays($end) / 7));
 
         // 1. TTTN List (chỉ tính phân công đã được admin công bố, chưa bị xóa mềm)
         $tttnList = DB::table('phanconghdtt')
@@ -56,51 +72,92 @@ class NhomController extends Controller
                 'congty.email_lien_he'
             ])
             ->get()
-            ->map(function ($row) use ($dotId) {
-                $latestReport = DB::table('baocaotiendo')
+            ->map(function ($row) use ($dotId, $activePeriod, $totalWeeks, $end, $now) {
+                $dbReports = DB::table('baocaotiendo')
                     ->where('sinh_vien_id', $row->sinh_vien_id)
                     ->where('dot_id', $dotId)
                     ->where('loai_bao_cao', 'THUC_TAP')
-                    ->orderBy('tuan_so', 'desc')
-                    ->first();
-
-                $statusVal = 'Chưa nộp';
-                $reportText = '—';
-                $dateText = '—';
-                $comment = '';
-                if ($latestReport) {
-                    $statusVal = $latestReport->trang_thai === 'DA_NOP' ? 'Đã nộp' : 'Trễ hạn';
-                    $reportText = 'Tuần ' . $latestReport->tuan_so;
-                    $dateText = date('d/m/Y', strtotime($latestReport->thoi_gian_nop));
-
-                    $commentRecord = DB::table('nhanxetbaocao')
-                        ->where('bao_cao_id', $latestReport->bao_cao_id)
-                        ->first();
-                    $comment = $commentRecord ? $commentRecord->noi_dung : '';
-                }
-
-                $reports = DB::table('baocaotiendo')
-                    ->where('sinh_vien_id', $row->sinh_vien_id)
-                    ->where('dot_id', $dotId)
-                    ->where('loai_bao_cao', 'THUC_TAP')
-                    ->orderBy('tuan_so', 'asc')
                     ->get()
-                    ->map(function ($rep) {
+                    ->keyBy('tuan_so');
+
+                $extensions = DB::table('gia_han_nop_bao_cao')
+                    ->where('sinh_vien_id', $row->sinh_vien_id)
+                    ->where('dot_id', $dotId)
+                    ->where('loai_bao_cao', 'THUC_TAP')
+                    ->get()
+                    ->keyBy('tuan');
+
+                $reports = [];
+                $w = 1;
+                $latestReportWeek = 0;
+
+                while (true) {
+                    $startOfWeek = \Carbon\Carbon::parse($activePeriod->ngay_bat_dau, 'Asia/Ho_Chi_Minh')->addWeeks($w - 1);
+                    if ($startOfWeek->gt($end)) {
+                        break;
+                    }
+
+                    $rep = $dbReports->get($w);
+                    if ($startOfWeek->gt($now) && !$rep) {
+                        break;
+                    }
+
+                    $ext = $extensions->get($w);
+                    $standardDeadline = \Carbon\Carbon::parse($activePeriod->ngay_bat_dau, 'Asia/Ho_Chi_Minh')->addWeeks($w)->endOfDay();
+                    $appliedDeadline = $ext ? \Carbon\Carbon::parse($ext->han_nop_moi) : $standardDeadline;
+
+                    if ($rep) {
                         $commentRecord = DB::table('nhanxetbaocao')
                             ->where('bao_cao_id', $rep->bao_cao_id)
                             ->first();
 
-                        return [
+                        $reports[] = [
                             'bao_cao_id' => $rep->bao_cao_id,
                             'tuan_so' => $rep->tuan_so,
                             'noi_dung' => $rep->noi_dung ?? '',
                             'duong_dan_file' => $rep->duong_dan_file ?? '',
-                            'trang_thai' => $rep->trang_thai === 'DA_NOP' ? 'Đã nộp' : 'Trễ hạn',
+                            'trang_thai' => 'Đã nộp',
                             'thoi_gian_nop' => date('d/m/Y H:i', strtotime($rep->thoi_gian_nop)),
-                            'comment' => $commentRecord ? $commentRecord->noi_dung : ''
+                            'comment' => $commentRecord ? $commentRecord->noi_dung : '',
+                            'deadline' => $appliedDeadline->copy()->setTimezone('Asia/Ho_Chi_Minh')->toIso8601String(),
+                            'isExtended' => !empty($ext)
                         ];
-                    })
-                    ->all();
+
+                        if ($w > $latestReportWeek) {
+                            $latestReportWeek = $w;
+                            $statusVal = 'Đã nộp';
+                            $reportText = 'Tuần ' . $w;
+                            $dateText = date('d/m/Y', strtotime($rep->thoi_gian_nop));
+                            $comment = $commentRecord ? $commentRecord->noi_dung : '';
+                        }
+                    } else {
+                        $trangThaiWeek = $now->gt($appliedDeadline) ? 'Thiếu' : 'Chưa nộp';
+                        $reports[] = [
+                            'bao_cao_id' => null,
+                            'tuan_so' => $w,
+                            'noi_dung' => 'Sinh viên chưa nộp báo cáo.',
+                            'duong_dan_file' => '',
+                            'trang_thai' => $trangThaiWeek,
+                            'thoi_gian_nop' => '—',
+                            'comment' => '',
+                            'deadline' => $appliedDeadline->copy()->setTimezone('Asia/Ho_Chi_Minh')->toIso8601String(),
+                            'isExtended' => !empty($ext)
+                        ];
+
+                        if ($trangThaiWeek === 'Thiếu' && $w > $latestReportWeek) {
+                            $latestReportWeek = $w;
+                            $statusVal = 'Thiếu';
+                            $reportText = 'Tuần ' . $w;
+                            $dateText = '—';
+                            $comment = '';
+                        }
+                    }
+                    $w++;
+                }
+
+                usort($reports, function($a, $b) {
+                    return $b['tuan_so'] <=> $a['tuan_so'];
+                });
 
                 $hasCompany = !empty($row->ten_cong_ty);
 
@@ -150,52 +207,94 @@ class NhomController extends Controller
             })
             ->with(['members.lop', 'deTai'])
             ->get()
-            ->map(function ($g) use ($dotId) {
+            ->map(function ($g) use ($dotId, $activePeriod, $totalWeeks, $end, $now) {
                 $memberIds = $g->members->pluck('sinh_vien_id');
-                $latestReport = DB::table('baocaotiendo')
+
+                $dbReports = DB::table('baocaotiendo')
                     ->whereIn('sinh_vien_id', $memberIds)
                     ->where('dot_id', $dotId)
                     ->where('loai_bao_cao', 'DO_AN')
-                    ->orderBy('tuan_so', 'desc')
-                    ->first();
-
-                $statusVal = 'Chưa nộp';
-                $latestText = '—';
-                $dateText = '—';
-                $comment = '';
-                if ($latestReport) {
-                    $statusVal = $latestReport->trang_thai === 'DA_NOP' ? 'Đã nộp' : 'Trễ hạn';
-                    $latestText = 'Bản thảo Chương ' . $latestReport->tuan_so;
-                    $dateText = date('d/m/Y', strtotime($latestReport->thoi_gian_nop));
-
-                    $commentRecord = DB::table('nhanxetbaocao')
-                        ->where('bao_cao_id', $latestReport->bao_cao_id)
-                        ->first();
-                    $comment = $commentRecord ? $commentRecord->noi_dung : '';
-                }
-
-                $reports = DB::table('baocaotiendo')
-                    ->whereIn('sinh_vien_id', $memberIds)
-                    ->where('dot_id', $dotId)
-                    ->where('loai_bao_cao', 'DO_AN')
-                    ->orderBy('tuan_so', 'asc')
                     ->get()
-                    ->map(function ($rep) {
+                    ->keyBy('tuan_so');
+
+                $extensions = DB::table('gia_han_nop_bao_cao')
+                    ->whereIn('sinh_vien_id', $memberIds)
+                    ->where('dot_id', $dotId)
+                    ->where('loai_bao_cao', 'DO_AN')
+                    ->get()
+                    ->keyBy('tuan');
+
+                $reports = [];
+                $w = 1;
+                $latestReportWeek = 0;
+
+                while (true) {
+                    $startOfWeek = \Carbon\Carbon::parse($activePeriod->ngay_bat_dau, 'Asia/Ho_Chi_Minh')->addWeeks($w - 1);
+                    if ($startOfWeek->gt($end)) {
+                        break;
+                    }
+
+                    $rep = $dbReports->get($w);
+                    if ($startOfWeek->gt($now) && !$rep) {
+                        break;
+                    }
+
+                    $ext = $extensions->get($w);
+                    $standardDeadline = \Carbon\Carbon::parse($activePeriod->ngay_bat_dau, 'Asia/Ho_Chi_Minh')->addWeeks($w)->endOfDay();
+                    $appliedDeadline = $ext ? \Carbon\Carbon::parse($ext->han_nop_moi) : $standardDeadline;
+
+                    if ($rep) {
                         $commentRecord = DB::table('nhanxetbaocao')
                             ->where('bao_cao_id', $rep->bao_cao_id)
                             ->first();
 
-                        return [
+                        $reports[] = [
                             'bao_cao_id' => $rep->bao_cao_id,
                             'tuan_so' => $rep->tuan_so,
                             'noi_dung' => $rep->noi_dung ?? '',
                             'duong_dan_file' => $rep->duong_dan_file ?? '',
-                            'trang_thai' => $rep->trang_thai === 'DA_NOP' ? 'Đã nộp' : 'Trễ hạn',
+                            'trang_thai' => 'Đã nộp',
                             'thoi_gian_nop' => date('d/m/Y H:i', strtotime($rep->thoi_gian_nop)),
-                            'comment' => $commentRecord ? $commentRecord->noi_dung : ''
+                            'comment' => $commentRecord ? $commentRecord->noi_dung : '',
+                            'deadline' => $appliedDeadline->copy()->setTimezone('Asia/Ho_Chi_Minh')->toIso8601String(),
+                            'isExtended' => !empty($ext)
                         ];
-                    })
-                    ->all();
+
+                        if ($w > $latestReportWeek) {
+                            $latestReportWeek = $w;
+                            $statusVal = 'Đã nộp';
+                            $latestText = 'Bản thảo Chương ' . $w;
+                            $dateText = date('d/m/Y', strtotime($rep->thoi_gian_nop));
+                            $comment = $commentRecord ? $commentRecord->noi_dung : '';
+                        }
+                    } else {
+                        $trangThaiWeek = $now->gt($appliedDeadline) ? 'Thiếu' : 'Chưa nộp';
+                        $reports[] = [
+                            'bao_cao_id' => null,
+                            'tuan_so' => $w,
+                            'noi_dung' => 'Nhóm chưa nộp bản thảo.',
+                            'duong_dan_file' => '',
+                            'trang_thai' => $trangThaiWeek,
+                            'thoi_gian_nop' => '—',
+                            'comment' => '',
+                            'deadline' => $appliedDeadline->copy()->setTimezone('Asia/Ho_Chi_Minh')->toIso8601String(),
+                            'isExtended' => !empty($ext)
+                        ];
+
+                        if ($trangThaiWeek === 'Thiếu' && $w > $latestReportWeek) {
+                            $latestReportWeek = $w;
+                            $statusVal = 'Thiếu';
+                            $latestText = 'Bản thảo Chương ' . $w;
+                            $dateText = '—';
+                            $comment = '';
+                        }
+                    }
+                    $w++;
+                }
+
+                usort($reports, function($a, $b) {
+                    return $b['tuan_so'] <=> $a['tuan_so'];
+                });
 
                 $membersList = $g->members->map(function ($m) {
                     return [
@@ -482,4 +581,69 @@ class NhomController extends Controller
             'message' => 'Lưu nhận xét báo cáo thành công.'
         ]);
     }
+
+    /**
+     * POST /private/v1/teacher/report-extend
+     */
+    public function giaHanBaoCao(Request $request)
+    {
+        $teacher = $request->user();
+        $teacherId = $teacher->giang_vien_id;
+
+        $request->validate([
+            'studentCode' => 'required|string',
+            'periodId' => 'nullable|integer',
+            'type' => 'required|string|in:TTTN,DATN',
+            'week' => 'required|integer|min:1',
+            'newDeadline' => 'required|date_format:Y-m-d H:i:s'
+        ]);
+
+        $studentCode = $request->input('studentCode');
+        $dotId = $request->input('periodId');
+        $loai = $request->input('type');
+        $week = (int)$request->input('week');
+        $newDeadline = $request->input('newDeadline');
+
+        if (empty($dotId)) {
+            $latestPeriod = Dot::orderBy('dot_id', 'desc')->first();
+            $dotId = $latestPeriod ? $latestPeriod->dot_id : 1;
+        }
+
+        $loaiBaoCao = $loai === 'TTTN' ? 'THUC_TAP' : 'DO_AN';
+
+        if ($loai === 'DATN' && preg_match('/^G(\d+)$/i', $studentCode, $matches)) {
+            $nhomId = (int)$matches[1];
+            $memberIds = DB::table('thanhviennhom')
+                ->where('nhom_id', $nhomId)
+                ->pluck('sinh_vien_id');
+        } else {
+            $sv = \App\Models\SinhVien::where('ma_so_sinh_vien', $studentCode)->first();
+            if (!$sv) {
+                return response()->json(['success' => false, 'message' => 'Không tìm thấy sinh viên!'], 404);
+            }
+            $memberIds = [$sv->sinh_vien_id];
+        }
+
+        foreach ($memberIds as $svId) {
+            DB::table('gia_han_nop_bao_cao')->updateOrInsert(
+                [
+                    'sinh_vien_id' => $svId,
+                    'dot_id' => $dotId,
+                    'loai_bao_cao' => $loaiBaoCao,
+                    'tuan' => $week
+                ],
+                [
+                    'han_nop_moi' => $newDeadline,
+                    'nguoi_gia_han_id' => $teacherId,
+                    'ngay_gia_han' => now()
+                ]
+            );
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Gia hạn nộp báo cáo trễ thành công!'
+        ]);
+    }
 }
+
