@@ -3,9 +3,10 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
-use App\Services\DiemSinhVienService;
 use App\Http\Requests\Admin\QuanLyDiem\CapNhatDiemSinhVienRequest;
+use App\Services\DiemSinhVienService;
+use App\Services\RealtimeService;
+use Illuminate\Http\Request;
 
 class DiemSinhVienController extends Controller
 {
@@ -26,7 +27,7 @@ class DiemSinhVienController extends Controller
             'mode' => $request->input('mode', 'internship'),
             'keyword' => $request->input('keyword'),
             'className' => $request->input('className'),
-            'status' => $request->input('status')
+            'status' => $request->input('status'),
         ];
 
         $res = $this->diemSinhVienService->getScoresList($filters);
@@ -36,9 +37,9 @@ class DiemSinhVienController extends Controller
             'results' => [
                 'objects' => [
                     'rows' => $res['rows'],
-                    'total' => $res['total']
-                ]
-            ]
+                    'total' => $res['total'],
+                ],
+            ],
         ], 200);
     }
 
@@ -50,18 +51,18 @@ class DiemSinhVienController extends Controller
         $mode = $request->input('mode', 'internship');
         $score = $this->diemSinhVienService->getScoreDetail($id, $mode);
 
-        if (!$score) {
+        if (! $score) {
             return response()->json([
                 'success' => false,
-                'message' => 'Không tìm thấy điểm số của sinh viên này!'
+                'message' => 'Không tìm thấy điểm số của sinh viên này!',
             ], 404);
         }
 
         return response()->json([
             'code' => 200,
             'results' => [
-                'object' => $score
-            ]
+                'object' => $score,
+            ],
         ], 200);
     }
 
@@ -73,24 +74,32 @@ class DiemSinhVienController extends Controller
 
         $score = $this->diemSinhVienService->updateScore($id, $request->all());
 
-        if (!$score) {
+        if (! $score) {
             return response()->json([
                 'success' => false,
-                'message' => 'Không tìm thấy thông tin hoặc đợt tốt nghiệp tương ứng để chấm điểm!'
+                'message' => 'Không tìm thấy thông tin hoặc đợt tốt nghiệp tương ứng để chấm điểm!',
             ], 404);
         }
 
-        \App\Services\RealtimeService::broadcast('score_updated', [
+        RealtimeService::broadcast('score_updated', [
             'type' => 'score_updated',
             'studentId' => $id,
-            'payload' => $score
+            'payload' => $score,
+        ]);
+
+        RealtimeService::broadcast('notification', [
+            'type' => 'score_updated',
+            'studentId' => $id,
+            'title' => 'Cập nhật điểm số',
+            'message' => 'Điểm số của sinh viên đã được cập nhật bởi Admin',
+            'payload' => $score,
         ]);
 
         return response()->json([
             'code' => 200,
             'results' => [
-                'object' => $score
-            ]
+                'object' => $score,
+            ],
         ], 200);
     }
 }

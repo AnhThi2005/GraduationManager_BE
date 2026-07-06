@@ -294,6 +294,11 @@ class DeTaiController extends Controller
         }
  
         if ($action === 'accept') {
+            $memberCount = DB::table('thanhviennhom')->where('nhom_id', $groupId)->count();
+            if ($memberCount < 2) {
+                return response()->json(['success' => false, 'message' => 'Nhóm phải có đủ ít nhất 2 thành viên mới được duyệt đề tài!'], 400);
+            }
+
             DB::table('dangkydetai')->where('nhom_id', $groupId)->update(['trang_thai_duyet' => 'DA_DUYET']);
             DB::table('nhomsvda')->where('nhom_id', $groupId)->update([
                 'de_tai_id' => $dangkydetai->de_tai_id,

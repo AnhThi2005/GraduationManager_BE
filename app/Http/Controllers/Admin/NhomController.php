@@ -68,11 +68,21 @@ class NhomController extends Controller
             $status = $body['status'];
             $dbStatus = 'CHO_DUYET';
             if ($status === 'APPROVED') {
+                $memberCount = DB::table('thanhviennhom')->where('nhom_id', $id)->count();
+                if ($memberCount < 2) {
+                    return response()->json(['success' => false, 'message' => 'Nhóm phải có đủ ít nhất 2 thành viên mới được duyệt!'], 400);
+                }
                 $g->trang_thai_duyet = 'DA_DUYET';
                 $dbStatus = 'DA_DUYET';
+                
+                $dangkydetai = DB::table('dangkydetai')->where('nhom_id', $id)->first();
+                if ($dangkydetai) {
+                    $g->de_tai_id = $dangkydetai->de_tai_id;
+                }
             } elseif ($status === 'LOCKED' || $status === 'DISSOLVED') {
                 $g->trang_thai_duyet = 'TU_CHOI';
                 $dbStatus = 'TU_CHOI';
+                $g->de_tai_id = null;
             } elseif ($status === 'PENDING') {
                 $g->trang_thai_duyet = 'CHO_DUYET';
                 $dbStatus = 'CHO_DUYET';
@@ -255,6 +265,15 @@ class NhomController extends Controller
             ], 404);
         }
 
+        $memberCount = DB::table('thanhviennhom')->where('nhom_id', $id)->count();
+        if ($memberCount < 2) {
+            return response()->json(['success' => false, 'message' => 'Nhóm phải có đủ ít nhất 2 thành viên mới được duyệt!'], 400);
+        }
+
+        $dangkydetai = DB::table('dangkydetai')->where('nhom_id', $id)->first();
+        if ($dangkydetai) {
+            $g->de_tai_id = $dangkydetai->de_tai_id;
+        }
         $g->trang_thai_duyet = 'DA_DUYET';
         $g->save();
         DB::table('dangkydetai')->where('nhom_id', $id)->update(['trang_thai_duyet' => 'DA_DUYET']);
