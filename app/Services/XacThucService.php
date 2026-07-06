@@ -65,7 +65,8 @@ class XacThucService
 
     private function capToken($user, string $quyen)
     {
-        $accessTokenResult = $user->createToken('access_token', [$quyen], Carbon::now()->addHours(8));
+        $abilities = self::tinhDanhSachQuyen($quyen);
+        $accessTokenResult = $user->createToken('access_token', $abilities, Carbon::now()->addHours(8));
         $refreshTokenResult = $user->createToken('refresh_token', ['issue-access-token'], Carbon::now()->addDays(7));
 
         return [
@@ -74,5 +75,15 @@ class XacThucService
             'refresh_token' => $refreshTokenResult->plainTextToken,
             'user' => $user
         ];
+    }
+
+    /**
+     * Nơi DUY NHẤT quy định quyền thực tế của token theo vai trò — mọi chỗ cấp token (đăng nhập,
+     * làm mới phiên...) đều phải gọi qua đây, để không phải sửa rải rác từng nơi kiểm tra quyền.
+     * ADMIN được xem như có luôn quyền giảng viên (nhưng không có quyền sinh viên).
+     */
+    public static function tinhDanhSachQuyen(string $quyen): array
+    {
+        return $quyen === 'ADMIN' ? ['ADMIN', 'GIANG_VIEN'] : [$quyen];
     }
 }

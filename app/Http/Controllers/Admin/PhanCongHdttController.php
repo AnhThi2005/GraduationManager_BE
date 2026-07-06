@@ -312,7 +312,7 @@ class PhanCongHdttController extends Controller
     /**
      * Số lượng sinh viên tối đa 1 giảng viên được hướng dẫn TTTN trong 1 đợt
      */
-    const MAX_STUDENTS_PER_TEACHER = 5;
+    const MAX_STUDENTS_PER_TEACHER = 20;
 
     public function capNhat(Request $request, $id)
     {
@@ -526,7 +526,9 @@ class PhanCongHdttController extends Controller
                 'name' => $gv->ho_ten,
                 'degree' => $gv->hoc_vi ?? 'ThS.',
                 'major' => $gv->chuyen_mon ?? 'Phần mềm',
-                'status' => $status
+                'status' => $status,
+                'assignedCount' => $count,
+                'maxSlots' => self::MAX_STUDENTS_PER_TEACHER
             ];
         })->all();
 

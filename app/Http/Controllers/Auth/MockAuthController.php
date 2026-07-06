@@ -111,8 +111,8 @@ class MockAuthController extends Controller
         $user = $tokenModel->tokenable;
         $role = ($tokenModel->tokenable_type === 'App\Models\GiangVien') ? $user->vai_tro : 'SINH_VIEN';
 
-        // Cấp Access Token mới có thời hạn 8 tiếng
-        $newAccessToken = $user->createToken('access_token', [$role], Carbon::now()->addHours(8));
+        // Cấp Access Token mới có thời hạn 8 tiếng (dùng chung 1 nơi quy định quyền với lúc đăng nhập)
+        $newAccessToken = $user->createToken('access_token', XacThucService::tinhDanhSachQuyen($role), Carbon::now()->addHours(8));
 
         return response()->json([
             'success' => true,
