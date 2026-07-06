@@ -214,6 +214,16 @@ class DiemController extends Controller
             return response()->json(['success' => false, 'message' => 'Group not found.'], 404);
         }
 
+        // Kiểm tra xem giảng viên đang đăng nhập có phải là Chủ tịch hội đồng của nhóm này không
+        $isChair = false;
+        if ($group->hoi_dong_id) {
+            $isChair = DB::table('thanhvienhoidong')
+                ->where('hoi_dong_id', $group->hoi_dong_id)
+                ->where('giang_vien_id', $teacherId)
+                ->where('vai_tro', 'CHU_TICH')
+                ->exists();
+        }
+
         // Find gvhdId and gvpbId for the group
         $nhom = DB::table('nhomsvda')->where('nhom_id', $groupId)->first();
         $deTai = $nhom && $nhom->de_tai_id ? DB::table('detai')->where('de_tai_id', $nhom->de_tai_id)->first() : null;
@@ -228,6 +238,24 @@ class DiemController extends Controller
             $gvpbId = $thanhVienPb ? $thanhVienPb->giang_vien_id : null;
         }
 
+        // Fetch council members list
+        $councilMembers = [];
+        if ($group->hoi_dong_id) {
+            $councilMembers = DB::table('thanhvienhoidong')
+                ->join('giangvien', 'thanhvienhoidong.giang_vien_id', '=', 'giangvien.giang_vien_id')
+                ->where('thanhvienhoidong.hoi_dong_id', $group->hoi_dong_id)
+                ->select('giangvien.giang_vien_id as id', 'giangvien.ho_ten as name', 'thanhvienhoidong.vai_tro as role')
+                ->get()
+                ->map(function ($m) {
+                    return [
+                        'id' => (string) $m->id,
+                        'name' => $m->name,
+                        'role' => $m->role === 'CHU_TICH' ? 'Chủ tịch' : ($m->role === 'PHAN_BIEN' ? 'Ủy viên phản biên' : 'Ủy viên'),
+                    ];
+                })
+                ->all();
+        }
+
         $rows = [];
         foreach ($group->members as $m) {
             // Load this lecturer's defense scores
@@ -239,6 +267,7 @@ class DiemController extends Controller
             $presentation = $hdbv ? ($hdbv->diem_thuyet_trinh !== null ? floatval($hdbv->diem_thuyet_trinh) : null) : null;
             $demo = $hdbv ? ($hdbv->diem_demo !== null ? floatval($hdbv->diem_demo) : null) : null;
             $qna = $hdbv ? ($hdbv->diem_van_dap !== null ? floatval($hdbv->diem_van_dap) : null) : null;
+            $diemBaoVe = $hdbv ? ($hdbv->diem_bao_ve !== null ? floatval($hdbv->diem_bao_ve) : null) : null;
 
             // Load report score based on role
             $dbc = DB::table('diembaocao')->where('sinh_vien_id', $m->sinh_vien_id)->first();
@@ -260,6 +289,38 @@ class DiemController extends Controller
                 }
             }
 
+            // 1. Get GVHD and GVPB names
+            $gvhdName = '—';
+            if ($gvhdId) {
+                $gv = DB::table('giangvien')->where('giang_vien_id', $gvhdId)->first();
+                $gvhdName = $gv ? $gv->ho_ten : '—';
+            }
+            $gvpbName = '—';
+            if ($gvpbId) {
+                $gv = DB::table('giangvien')->where('giang_vien_id', $gvpbId)->first();
+                $gvpbName = $gv ? $gv->ho_ten : '—';
+            }
+
+            // 2. Get report scores from diembaocao
+            $diemGvhd = $dbc ? ($dbc->diem_gvhd !== null ? floatval($dbc->diem_gvhd) : null) : null;
+            $diemGvpb = $dbc ? ($dbc->diem_gvpb !== null ? floatval($dbc->diem_gvpb) : null) : null;
+
+            // 3. Get defense average and final total score from diemtongketdatn
+            $summary = DB::table('diemtongketdatn')->where('sinh_vien_id', $m->sinh_vien_id)->first();
+            $diemTbBaoVe = $summary ? ($summary->diem_bao_ve_rieng !== null ? floatval($summary->diem_bao_ve_rieng) : null) : null;
+            $diemTongKet = $summary ? ($summary->diem_tong_ket !== null ? floatval($summary->diem_tong_ket) : null) : null;
+
+            // 4. Load defense scores for each lecturer in the council from diemhoidongbaove
+            $lecturerScores = [];
+            if ($group->hoi_dong_id) {
+                $allHdbv = DB::table('diemhoidongbaove')
+                    ->where('sinh_vien_id', $m->sinh_vien_id)
+                    ->get();
+                foreach ($allHdbv as $sc) {
+                    $lecturerScores[(string) $sc->giang_vien_id] = $sc->diem_bao_ve !== null ? floatval($sc->diem_bao_ve) : 0;
+                }
+            }
+
             $rows[] = [
                 'id' => (string) $m->ma_so_sinh_vien,
                 'name' => $m->ho_ten,
@@ -268,12 +329,22 @@ class DiemController extends Controller
                 'demo' => $demo,
                 'qna' => $qna,
                 'report' => $report,
+                'gvhdName' => $gvhdName,
+                'gvpbName' => $gvpbName,
+                'diemGvhd' => $diemGvhd,
+                'diemGvpb' => $diemGvpb,
+                'diemTbBaoVe' => $diemTbBaoVe,
+                'diemTongKet' => $diemTongKet,
+                'diemBaoVe' => $diemBaoVe,
+                'lecturerScores' => $lecturerScores,
             ];
         }
 
         return response()->json([
             'success' => true,
             'data' => [
+                'isChair' => $isChair,
+                'councilMembers' => $councilMembers,
                 'rows' => $rows,
             ],
         ]);
