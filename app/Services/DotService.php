@@ -74,10 +74,14 @@ class DotService
      */
     public function createPeriod(array $data)
     {
+        $loaiDot = isset($data['type']) ? strtoupper($data['type']) : 'TTTN';
+        $trangThaiMoi = isset($data['status']) ? $this->mapFrontendStatusToBackend($data['status']) : 'CHO_MO';
+        $this->assertKhongTrungDotDangHoatDong($loaiDot, $trangThaiMoi);
+
         $insertData = [
             'ten_dot' => $data['name'] ?? '',
-            'loai_dot' => isset($data['type']) ? strtoupper($data['type']) : 'TTTN',
-            'trang_thai' => isset($data['status']) ? $this->mapFrontendStatusToBackend($data['status']) : 'CHO_MO',
+            'loai_dot' => $loaiDot,
+            'trang_thai' => $trangThaiMoi,
             'ngay_bat_dau' => $this->parseDate($data['startDate'] ?? null),
             'ngay_ket_thuc' => $this->parseDate($data['endDate'] ?? null),
             'han_dang_ky' => $this->parseDate($data['regDeadline'] ?? null),
@@ -125,7 +129,12 @@ class DotService
         $updateData = [];
         if (isset($data['name'])) $updateData['ten_dot'] = $data['name'];
         if (isset($data['type'])) $updateData['loai_dot'] = strtoupper($data['type']);
-        if (isset($data['status'])) $updateData['trang_thai'] = $this->mapFrontendStatusToBackend($data['status']);
+        if (isset($data['status'])) {
+            $trangThaiMoi = $this->mapFrontendStatusToBackend($data['status']);
+            $loaiDotForCheck = isset($data['type']) ? strtoupper($data['type']) : $dot->loai_dot;
+            $this->assertKhongTrungDotDangHoatDong($loaiDotForCheck, $trangThaiMoi, $dot->dot_id);
+            $updateData['trang_thai'] = $trangThaiMoi;
+        }
         if (isset($data['startDate'])) $updateData['ngay_bat_dau'] = $this->parseDate($data['startDate']);
         if (isset($data['endDate'])) $updateData['ngay_ket_thuc'] = $this->parseDate($data['endDate']);
         if (isset($data['regDeadline'])) $updateData['han_dang_ky'] = $this->parseDate($data['regDeadline']);
@@ -169,6 +178,33 @@ class DotService
     // ==========================================================
     // HELPER FUNCTIONS
     // ==========================================================
+
+    /**
+     * Đảm bảo cùng 1 loại đợt (TTTN/ĐATN) chỉ có tối đa 1 đợt ở trạng thái "chưa đóng"
+     * (đang mở / đã công bố / đang chấm điểm) tại một thời điểm — các đợt còn lại cùng loại
+     * phải đóng hết mới hợp logic. Nhiều đợt cùng loại cùng "hoạt động" song song chính là
+     * nguyên nhân gốc của nhiều bug suy luận sai "đợt hiện tại của sinh viên" đã gặp trong dự
+     * án (lớp liên kết nhiều đợt cùng lúc) — chặn ngay lúc đổi trạng thái là cách xử lý triệt để.
+     */
+    private function assertKhongTrungDotDangHoatDong($loaiDot, $trangThaiMoi, $excludeDotId = null)
+    {
+        if ($trangThaiMoi === 'DA_DONG') {
+            return;
+        }
+
+        $query = Dot::where('loai_dot', $loaiDot)->where('trang_thai', '!=', 'DA_DONG');
+        if ($excludeDotId) {
+            $query->where('dot_id', '!=', $excludeDotId);
+        }
+
+        $dangHoatDong = $query->first();
+        if ($dangHoatDong) {
+            $tenLoai = $loaiDot === 'DATN' ? 'ĐATN' : 'TTTN';
+            throw new \InvalidArgumentException(
+                "Đợt \"{$dangHoatDong->ten_dot}\" ({$tenLoai}) đang hoạt động (chưa đóng). Vui lòng đóng đợt đó trước khi mở/kích hoạt đợt này — mỗi loại đợt chỉ được có 1 đợt hoạt động cùng lúc."
+            );
+        }
+    }
 
     /**
      * Chuyển đổi bản ghi Database sang cấu trúc Front-End mong đợi

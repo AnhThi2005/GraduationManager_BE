@@ -33,6 +33,7 @@ Route::middleware([
     Route::patch('/private/v1/classes/{id}', [LopController::class, 'capNhat']);
     Route::delete('/private/v1/classes/{id}', [LopController::class, 'xoa']);
 
+    Route::get('/private/v1/companies/lookup-tax', [CongTyController::class, 'traCuuMaSoThue']);
     Route::get('/private/v1/companies', [CongTyController::class, 'layDanhSach']);
     Route::get('/private/v1/companies/{id}', [CongTyController::class, 'xemChiTiet']);
     Route::post('/private/v1/companies', [CongTyController::class, 'themMoi']);
@@ -93,6 +94,7 @@ Route::middleware([
 ])->group(function () {
     Route::get('/private/v1/student/dashboard', [\App\Http\Controllers\SinhVien\TrangChuController::class, 'layThongTinTrangChu']);
     Route::get('/private/v1/student/companies', [\App\Http\Controllers\SinhVien\ThucTapController::class, 'layDanhSachCongTy']);
+    Route::get('/private/v1/student/companies/lookup-tax', [\App\Http\Controllers\SinhVien\ThucTapController::class, 'traCuuMaSoThue']);
     Route::post('/private/v1/student/internships/declare', [\App\Http\Controllers\SinhVien\ThucTapController::class, 'khaiBaoThucTap']);
     Route::get('/private/v1/student/internships/my-request', [\App\Http\Controllers\SinhVien\ThucTapController::class, 'xemYeuCauCuaToi']);
     Route::get('/private/v1/student/thesis/my-registration', [\App\Http\Controllers\SinhVien\DeTaiController::class, 'xemDangKyCuaToi']);

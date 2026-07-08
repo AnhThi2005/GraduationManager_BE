@@ -289,10 +289,10 @@ class CongTyService
             'cong_ty_id' => $company->cong_ty_id,
             'nguoi_huong_dan' => $data['mentor'] ?? '',
             'sdt_huong_dan' => $data['phone'] ?? '',
-            'vi_tri_thuc_tap' => $data['internshipLocation'] ?? $data['vi_tri_thuc_tap'] ?? '',
+            'vi_tri_thuc_tap' => $data['field'] ?? '',
             'vi_tri_cong_viec' => $data['position'] ?? $data['vi_tri_cong_viec'] ?? '',
-            'thoi_gian_thuc_tap' => $data['thoi_gian_thuc_tap'] ?? '8 tuần',
-            'dia_chi_thuc_tap' => $data['companyAddress'] ?? '',
+            'thoi_gian_thuc_tap' => ($data['thoi_gian_thuc_tap'] ?? null) ?: $dot->moTaThoiGianThucTap(),
+            'dia_chi_thuc_tap' => $data['internshipLocation'] ?? '',
             'trang_thai' => 'CHO_DUYET',
             'ngay_dang_ky' => now()
         ]);
@@ -322,9 +322,11 @@ class CongTyService
         }
         if (isset($data['mentor'])) $updateData['nguoi_huong_dan'] = $data['mentor'];
         if (isset($data['phone'])) $updateData['sdt_huong_dan'] = $data['phone'];
-        if (isset($data['internshipLocation'])) $updateData['vi_tri_thuc_tap'] = $data['internshipLocation'];
+        if (isset($data['internshipLocation'])) $updateData['dia_chi_thuc_tap'] = $data['internshipLocation'];
         if (isset($data['position'])) $updateData['vi_tri_cong_viec'] = $data['position'];
-        if (isset($data['companyAddress'])) $updateData['dia_chi_thuc_tap'] = $data['companyAddress'];
+        if (isset($data['companyAddress']) && $reg->congTy) {
+            $reg->congTy->update(['dia_chi' => $data['companyAddress']]);
+        }
 
         $reg->update($updateData);
 
@@ -484,9 +486,8 @@ class CongTyService
         $companyName = '—';
         $internshipLocation = '—';
         if ($reg) {
-            $reg->load('congTy');
             $companyName = $reg->congTy ? $reg->congTy->ten_cong_ty : ($reg->dia_chi_thuc_tap ?? '—');
-            $internshipLocation = $reg->vi_tri_thuc_tap ?? '—';
+            $internshipLocation = $reg->dia_chi_thuc_tap ?? '—';
         }
 
         return [
@@ -566,17 +567,36 @@ class CongTyService
             $status = 'cho_cap_giay';
         }
 
+        // Giảng viên hướng dẫn (GVHD) do trường phân công cho sinh viên trong đợt này —
+        // dùng để in vào giấy giới thiệu, khác với "mentor" (người hướng dẫn phía công ty).
+        $gvhdName = '';
+        if ($reg->sinhVien) {
+            $phanCong = DB::table('phanconghdtt')
+                ->join('giangvien', 'phanconghdtt.giang_vien_id', '=', 'giangvien.giang_vien_id')
+                ->where('phanconghdtt.sinh_vien_id', $reg->sinhVien->sinh_vien_id)
+                ->where('phanconghdtt.dot_id', $reg->dot_id)
+                ->where('phanconghdtt.da_cong_bo', true)
+                ->whereNull('phanconghdtt.deleted_at')
+                ->select('giangvien.ho_ten', 'giangvien.hoc_vi')
+                ->first();
+            if ($phanCong) {
+                $gvhdName = ($phanCong->hoc_vi ? $phanCong->hoc_vi . '. ' : '') . $phanCong->ho_ten;
+            }
+        }
+
         return [
             'id' => (string)$reg->dang_ky_id,
             'studentId' => $reg->sinhVien ? $reg->sinhVien->ma_so_sinh_vien : '',
             'studentName' => $reg->sinhVien ? $reg->sinhVien->ho_ten : '',
+            'studentPhone' => $reg->sinhVien ? ($reg->sinhVien->so_dien_thoai ?? '') : '',
             'className' => ($reg->sinhVien && $reg->sinhVien->lop) ? $reg->sinhVien->lop->ten_lop : '',
             'companyName' => $reg->congTy ? $reg->congTy->ten_cong_ty : '',
-            'companyAddress' => $reg->congTy ? $reg->congTy->dia_chi : ($reg->dia_chi_thuc_tap ?? ''),
-            'internshipLocation' => $reg->vi_tri_thuc_tap ?? '',
+            'companyAddress' => $reg->congTy ? $reg->congTy->dia_chi : '',
+            'internshipLocation' => $reg->dia_chi_thuc_tap ?? '',
             'position' => $reg->vi_tri_cong_viec ?? '',
             'taxId' => $reg->congTy ? $reg->congTy->ma_so_thue : '',
             'mentor' => $reg->nguoi_huong_dan ?? '',
+            'gvhdName' => $gvhdName,
             'regDate' => $reg->ngay_dang_ky ? $reg->ngay_dang_ky->format('d/m/Y') : '',
             'status' => $status
         ];

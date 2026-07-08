@@ -55,4 +55,60 @@ class Dot extends Model
 
         return $this->sinhViens()->where('sinhvien.sinh_vien_id', $sinhVienId)->exists();
     }
+
+    /**
+     * Số tuần thực tập/đồ án của đợt, tính từ mốc ngày bắt đầu - kết thúc thực tế lúc tạo đợt,
+     * thay vì mặc định cứng "8 tuần" (sai với cả 2 hệ: Cao đẳng nghề 14 tuần, Cao đẳng 12 tuần —
+     * admin đã tự cấu hình đúng số tuần thật qua ngày bắt đầu/kết thúc nên tính lại từ đó là đúng
+     * cho mọi hệ, không cần biết riêng hệ đào tạo là gì).
+     */
+    public function tinhSoTuan(): int
+    {
+        if (!$this->ngay_bat_dau || !$this->ngay_ket_thuc) {
+            return 8;
+        }
+
+        $start = \Carbon\Carbon::parse($this->ngay_bat_dau, 'Asia/Ho_Chi_Minh');
+        $end = \Carbon\Carbon::parse($this->ngay_ket_thuc, 'Asia/Ho_Chi_Minh');
+
+        return max(1, (int) ceil($start->diffInDays($end) / 7));
+    }
+
+    public function moTaThoiGianThucTap(): string
+    {
+        return $this->tinhSoTuan() . ' tuần';
+    }
+
+    // ==========================================================
+    // TRẠNG THÁI ĐỢT → QUYỀN CHỈNH SỬA
+    // Nguồn duy nhất cho quy tắc khóa/mở theo trạng thái đợt — mọi controller phải gọi
+    // qua đây (qua trait KiemTraTrangThaiDot), không tự so sánh trang_thai rải rác.
+    // ==========================================================
+
+    /**
+     * Đợt đã đóng: KHÔNG AI được sửa gì nữa — kể cả admin. Chỉ xem.
+     */
+    public function daKhoaHoanToan(): bool
+    {
+        return $this->trang_thai === 'DA_DONG';
+    }
+
+    /**
+     * Đợt đã bắt đầu chấm điểm trở đi (Chấm điểm / Đã công bố / Đã đóng):
+     * sinh viên không được tự sửa dữ liệu của mình trong đợt này nữa
+     * (báo cáo, khai báo thực tập, đăng ký/rời nhóm đề tài...).
+     */
+    public function daKhoaThaoTacSinhVien(): bool
+    {
+        return in_array($this->trang_thai, ['CHAM_DIEM', 'CHO_MO', 'DA_DONG'], true);
+    }
+
+    /**
+     * Đợt đã công bố hoặc đã đóng: giảng viên không được sửa điểm nữa (điểm đã chốt).
+     * Trong giai đoạn "Chấm điểm" (CHAM_DIEM) thì vẫn được sửa bình thường.
+     */
+    public function daKhoaSuaDiem(): bool
+    {
+        return in_array($this->trang_thai, ['CHO_MO', 'DA_DONG'], true);
+    }
 }

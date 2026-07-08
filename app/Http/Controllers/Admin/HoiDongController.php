@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Concerns\KiemTraTrangThaiDot;
 use Illuminate\Http\Request;
 use App\Models\HoiDong;
 use App\Models\GiangVien;
@@ -12,6 +13,8 @@ use App\Http\Requests\Admin\QuanLyHoiDong\ThemHoiDongRequest;
 
 class HoiDongController extends Controller
 {
+    use KiemTraTrangThaiDot;
+
     public function layDanhSach(Request $request)
     {
         $councils = HoiDong::with(['giangViens', 'nhoms.members', 'nhoms.deTai'])->get();
@@ -53,6 +56,10 @@ class HoiDongController extends Controller
         if (empty($dotId)) {
             $activePeriod = Dot::orderBy('dot_id', 'desc')->first();
             $dotId = $activePeriod ? $activePeriod->dot_id : 1;
+        }
+
+        if ($resp = $this->chanNeuDotDaDong(Dot::find($dotId))) {
+            return $resp;
         }
 
         return DB::transaction(function() use ($request, $dotId) {
@@ -141,6 +148,10 @@ class HoiDongController extends Controller
                 'success' => false,
                 'message' => 'Không tìm thấy hội đồng!'
             ], 404);
+        }
+
+        if ($resp = $this->chanNeuDotDaDong($hd->dot)) {
+            return $resp;
         }
 
         return DB::transaction(function() use ($request, $hd) {
@@ -238,6 +249,10 @@ class HoiDongController extends Controller
                 'success' => false,
                 'message' => 'Không tìm thấy hội đồng!'
             ], 404);
+        }
+
+        if ($resp = $this->chanNeuDotDaDong($hd->dot)) {
+            return $resp;
         }
 
         DB::table('nhomsvda')->where('hoi_dong_id', $id)->update(['hoi_dong_id' => null]);

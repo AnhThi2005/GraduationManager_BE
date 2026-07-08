@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\GiangVien;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Concerns\KiemTraTrangThaiDot;
 use Illuminate\Http\Request;
 use App\Services\DeTaiService;
 use App\Http\Requests\GiangVien\ThemDeTaiRequest;
@@ -13,6 +14,8 @@ use App\Models\Nhom;
 
 class DeTaiController extends Controller
 {
+    use KiemTraTrangThaiDot;
+
     protected $deTaiService;
 
     public function __construct(DeTaiService $deTaiService)
@@ -98,6 +101,13 @@ class DeTaiController extends Controller
         $teacher = $request->user();
         $periodId = $request->query('periodId');
 
+        $dot = $periodId
+            ? Dot::find($periodId)
+            : Dot::where('loai_dot', 'DATN')->orderBy('dot_id', 'desc')->first();
+        if ($resp = $this->chanNeuDotDaDong($dot)) {
+            return $resp;
+        }
+
         $payload = $request->all();
         // Force the teacher parameter to the logged in teacher's name so lookup matches
         $payload['teacher'] = $teacher->ho_ten;
@@ -152,6 +162,10 @@ class DeTaiController extends Controller
             ], 403);
         }
 
+        if ($resp = $this->chanNeuDotDaDong(Dot::find($dbTopic->dot_id))) {
+            return $resp;
+        }
+
         $payload = $request->all();
         $payload['teacher'] = $teacher->ho_ten;
 
@@ -192,6 +206,10 @@ class DeTaiController extends Controller
                 'success' => false,
                 'message' => 'Bạn không có quyền xóa đề tài của giảng viên khác!'
             ], 403);
+        }
+
+        if ($resp = $this->chanNeuDotDaDong(Dot::find($dbTopic->dot_id))) {
+            return $resp;
         }
 
         $success = $this->deTaiService->deleteTopic($id);
@@ -292,7 +310,12 @@ class DeTaiController extends Controller
         if (!$dangkydetai) {
             return response()->json(['success' => false, 'message' => 'Không tìm thấy đăng ký đề tài của nhóm!'], 404);
         }
- 
+
+        $nhomDotId = DB::table('nhomsvda')->where('nhom_id', $groupId)->value('dot_id');
+        if ($resp = $this->chanNeuDotDaDong(Dot::find($nhomDotId))) {
+            return $resp;
+        }
+
         if ($action === 'accept') {
             $memberCount = DB::table('thanhviennhom')->where('nhom_id', $groupId)->count();
             if ($memberCount < 2) {
@@ -386,6 +409,10 @@ class DeTaiController extends Controller
         if (empty($dotId)) {
             $latestPeriod = Dot::where('loai_dot', 'DATN')->orderBy('dot_id', 'desc')->first();
             $dotId = $latestPeriod ? $latestPeriod->dot_id : 1;
+        }
+
+        if ($resp = $this->chanNeuDotDaDong(Dot::find($dotId))) {
+            return $resp;
         }
 
         $file = $request->file('file');

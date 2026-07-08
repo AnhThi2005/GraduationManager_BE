@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Concerns\KiemTraTrangThaiDot;
 use Illuminate\Http\Request;
 use App\Models\SinhVien;
 use App\Models\GiangVien;
@@ -13,6 +14,8 @@ use Illuminate\Support\Facades\DB;
 
 class PhanCongHdttController extends Controller
 {
+    use KiemTraTrangThaiDot;
+
     public function layDanhSach(Request $request)
     {
         // Lấy đợt tốt nghiệp từ tham số truyền lên, nếu không có thì lấy đợt mới nhất
@@ -93,10 +96,12 @@ class PhanCongHdttController extends Controller
                 ->concat($groupStudentIds)
                 ->unique();
 
-            // Danh sách sinh viên có hoạt động nhóm ở các đợt khác
+            // Danh sách sinh viên có hoạt động nhóm ở các đợt khác mà đợt đó chưa đóng (đang hoạt động)
             $studentIdsInOtherPeriods = DB::table('thanhviennhom')
                 ->join('nhomsvda', 'thanhviennhom.nhom_id', '=', 'nhomsvda.nhom_id')
+                ->join('dot', 'nhomsvda.dot_id', '=', 'dot.dot_id')
                 ->where('nhomsvda.dot_id', '!=', $dotId)
+                ->where('dot.trang_thai', '!=', 'DA_DONG')
                 ->pluck('thanhviennhom.sinh_vien_id')
                 ->unique();
 
@@ -344,6 +349,10 @@ class PhanCongHdttController extends Controller
             ], 400);
         }
 
+        if ($resp = $this->chanNeuDotDaDong($dot)) {
+            return $resp;
+        }
+
         $supervisorName = $request->input('supervisor');
 
         if (empty($supervisorName)) {
@@ -446,6 +455,10 @@ class PhanCongHdttController extends Controller
             $dotId = $activePeriod ? $activePeriod->dot_id : 1;
         }
 
+        if ($resp = $this->chanNeuDotDaDong(Dot::find($dotId))) {
+            return $resp;
+        }
+
         $deleted = PhanCongHdtt::where('sinh_vien_id', $sv->sinh_vien_id)
             ->where('dot_id', $dotId)
             ->delete();
@@ -473,6 +486,10 @@ class PhanCongHdttController extends Controller
         if (empty($dotId)) {
             $activePeriod = Dot::orderBy('dot_id', 'desc')->first();
             $dotId = $activePeriod ? $activePeriod->dot_id : 1;
+        }
+
+        if ($resp = $this->chanNeuDotDaDong(Dot::find($dotId))) {
+            return $resp;
         }
 
         $publishedCount = PhanCongHdtt::where('dot_id', $dotId)

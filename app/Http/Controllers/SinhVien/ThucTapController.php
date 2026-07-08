@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\SinhVien;
 
+use App\Http\Controllers\Concerns\KiemTraTrangThaiDot;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\CongTy;
@@ -9,10 +10,62 @@ use App\Models\DangKyThucTap;
 use App\Models\SinhVien;
 use App\Models\Dot;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use App\Services\RealtimeService;
 
 class ThucTapController extends Controller
 {
+    use KiemTraTrangThaiDot;
+
+    /**
+     * Tra cứu thông tin doanh nghiệp theo mã số thuế (proxy qua VietQR) để sinh viên
+     * tự động điền tên công ty/địa chỉ khi khai báo, đỡ phải gõ tay và tránh sai lệch
+     * dữ liệu so với đăng ký thuế thật. Không có API chính thức miễn phí từ Tổng cục
+     * Thuế nên dùng dịch vụ tổng hợp cộng đồng VietQR (api.vietqr.io), có thể đổi
+     * provider sau này mà không ảnh hưởng đến phía frontend vì chỉ đi qua endpoint này.
+     */
+    public function traCuuMaSoThue(Request $request)
+    {
+        $taxId = trim((string) $request->query('taxId'));
+
+        if (!preg_match('/^[0-9]{10}([0-9]{3})?$/', $taxId)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Mã số thuế phải gồm 10 hoặc 13 chữ số.'
+            ], 422);
+        }
+
+        try {
+            $response = Http::timeout(6)->get("https://api.vietqr.io/v2/business/{$taxId}");
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Dịch vụ tra cứu mã số thuế tạm thời không khả dụng, vui lòng nhập thủ công.'
+            ], 503);
+        }
+
+        $body = $response->json();
+
+        if (!$response->successful() || empty($body['data'])) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Không tìm thấy doanh nghiệp với mã số thuế này.'
+            ], 404);
+        }
+
+        $data = $body['data'];
+
+        return response()->json([
+            'code' => 200,
+            'results' => [
+                'object' => [
+                    'name' => $data['name'] ?? '',
+                    'address' => $data['address'] ?? '',
+                ]
+            ]
+        ]);
+    }
+
     /**
      * Lấy danh sách doanh nghiệp đối tác dành cho sinh viên
      */
@@ -22,7 +75,16 @@ class ThucTapController extends Controller
             ->where('da_cong_bo', true)
             ->get();
 
-        $rows = $companies->map(function ($company) {
+        // Thời gian thực tập lấy từ mốc ngày bắt đầu/kết thúc thật của đợt (không hardcode
+        // "8 tuần" — sai cho cả hệ Cao đẳng nghề 14 tuần lẫn Cao đẳng 12 tuần).
+        $periodId = $request->input('periodId') ?? $request->query('periodId');
+        $activePeriod = $periodId
+            ? Dot::find($periodId)
+            : Dot::where('loai_dot', 'TTTN')->where('trang_thai', 'DANG_MO')->first()
+                ?? Dot::where('loai_dot', 'TTTN')->orderBy('dot_id', 'desc')->first();
+        $duration = $activePeriod ? $activePeriod->moTaThoiGianThucTap() : '8 tuần';
+
+        $rows = $companies->map(function ($company) use ($duration) {
             $fields = DB::table('congtylinhvuc')
                 ->where('cong_ty_id', $company->cong_ty_id)
                 ->pluck('ten_linh_vuc')
@@ -37,7 +99,7 @@ class ThucTapController extends Controller
                 'mentor' => $company->nguoi_lien_he ?? 'Chưa cập nhật',
                 'phone' => $company->so_dien_thoai_lh ?? 'Chưa cập nhật',
                 'email' => $company->email_lien_he ?? 'Chưa cập nhật',
-                'duration' => '8 tuần',
+                'duration' => $duration,
             ];
         });
 
@@ -66,7 +128,7 @@ class ThucTapController extends Controller
             'companyName' => 'required|string|max:255',
             'taxId' => 'required|string|max:255',
             'field' => 'nullable|string|max:255',
-            'position' => 'nullable|string|max:255',
+            'position' => 'required|string|max:255',
             'address' => 'nullable|string|max:255',
             'mentor' => 'nullable|string|max:255',
             'phone' => 'nullable|string|max:255',
@@ -80,7 +142,8 @@ class ThucTapController extends Controller
         }
 
         $request->validate($rules, [
-            'taxId.required' => 'Mã số thuế công ty không được để trống.'
+            'taxId.required' => 'Mã số thuế công ty không được để trống.',
+            'position.required' => 'Vị trí thực tập không được để trống.'
         ]);
 
         $companyName = $request->input('companyName');
@@ -136,6 +199,10 @@ class ThucTapController extends Controller
             ], 400);
         }
 
+        if ($resp = $this->chanNeuSinhVienKhongDuocSua($activePeriod)) {
+            return $resp;
+        }
+
         // Chặn khai báo sai đợt: lớp của sinh viên phải được gắn vào đợt này,
         // hoặc sinh viên được thêm thủ công vào đợt (ví dụ rớt đợt trước)
         if (!$activePeriod->hasStudent($sinhVien->sinh_vien_id)) {
@@ -182,7 +249,7 @@ class ThucTapController extends Controller
             'sdt_huong_dan' => $request->input('phone') ?? '',
             'vi_tri_thuc_tap' => $request->input('field') ?? '',
             'vi_tri_cong_viec' => $request->input('position') ?? '',
-            'thoi_gian_thuc_tap' => $request->input('duration') ?? '8 tuần',
+            'thoi_gian_thuc_tap' => $request->input('duration') ?: $activePeriod->moTaThoiGianThucTap(),
             'dia_chi_thuc_tap' => $internshipAddress,
             'trang_thai' => $trangThaiReg,
             'ngay_dang_ky' => now()

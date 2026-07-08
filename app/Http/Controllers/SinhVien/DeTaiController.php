@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\SinhVien;
 
+use App\Http\Controllers\Concerns\KiemTraTrangThaiDot;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\DeTai;
@@ -13,6 +14,43 @@ use Illuminate\Support\Facades\DB;
 
 class DeTaiController extends Controller
 {
+    use KiemTraTrangThaiDot;
+
+    /**
+     * Xác định đợt ĐATN hiện tại của sinh viên: ưu tiên đợt của nhóm mà sinh viên
+     * THỰC SỰ đang tham gia (không suy luận qua lớp), vì một lớp có thể được gắn
+     * vào nhiều đợt ĐATN cùng lúc — suy luận qua lớp sẽ luôn chọn nhầm đợt có
+     * dot_id lớn nhất thay vì đợt thực chứa nhóm của sinh viên.
+     * Chỉ suy luận qua lớp khi sinh viên CHƯA có nhóm nào (trường hợp tạo nhóm
+     * mới), và khi đó ưu tiên đợt đang mở để tránh rơi vào đợt cũ đã đóng.
+     */
+    private function xacDinhDotDatnHienTai(SinhVien $sinhVien): ?Dot
+    {
+        $nhom = Nhom::whereHas('members', function ($q) use ($sinhVien) {
+            $q->where('sinhvien.sinh_vien_id', $sinhVien->sinh_vien_id);
+        })->orderBy('dot_id', 'desc')->first();
+
+        if ($nhom) {
+            return Dot::find($nhom->dot_id);
+        }
+
+        $lopId = $sinhVien->lop_id;
+
+        return Dot::where('loai_dot', 'DATN')
+            ->whereHas('lops', function ($q) use ($lopId) {
+                $q->where('lop.lop_id', $lopId);
+            })
+            ->where('trang_thai', 'DANG_MO')
+            ->orderBy('dot_id', 'desc')
+            ->first()
+            ?? Dot::where('loai_dot', 'DATN')
+                ->whereHas('lops', function ($q) use ($lopId) {
+                    $q->where('lop.lop_id', $lopId);
+                })
+                ->orderBy('dot_id', 'desc')
+                ->first();
+    }
+
     /**
      * Xem hồ sơ đăng ký đề tài/nhóm ĐATN của sinh viên
      */
@@ -104,6 +142,10 @@ class DeTaiController extends Controller
         }
 
         $dotId = $deTai->dot_id;
+
+        if ($resp = $this->chanNeuSinhVienKhongDuocSua(Dot::find($dotId))) {
+            return $resp;
+        }
 
         // Tìm nhóm mà sinh viên đang tham gia trong đợt này
         $nhom = Nhom::where('dot_id', $dotId)
@@ -215,17 +257,17 @@ class DeTaiController extends Controller
             ], 401);
         }
 
-        $lopId = $sinhVien->lop_id;
-        $activePeriod = Dot::where('loai_dot', 'DATN')
-            ->whereHas('lops', function($q) use ($lopId) {
-                $q->where('lop.lop_id', $lopId);
-            })->orderBy('dot_id', 'desc')->first();
+        $activePeriod = $this->xacDinhDotDatnHienTai($sinhVien);
 
         if (!$activePeriod) {
             return response()->json([
                 'success' => false,
                 'message' => 'Không tìm thấy đợt ĐATN hiện tại.'
             ], 400);
+        }
+
+        if ($resp = $this->chanNeuSinhVienKhongDuocSua($activePeriod)) {
+            return $resp;
         }
 
         // Tìm nhóm
@@ -303,11 +345,7 @@ class DeTaiController extends Controller
         }
 
         // Lấy đợt ĐATN đang diễn ra của sinh viên
-        $lopId = $sinhVien->lop_id;
-        $activePeriod = Dot::where('loai_dot', 'DATN')
-            ->whereHas('lops', function($q) use ($lopId) {
-                $q->where('lop.lop_id', $lopId);
-            })->orderBy('dot_id', 'desc')->first();
+        $activePeriod = $this->xacDinhDotDatnHienTai($sinhVien);
 
         if (!$activePeriod) {
             return response()->json([
@@ -387,14 +425,14 @@ class DeTaiController extends Controller
         }
 
         // Tìm đợt ĐATN đang diễn ra của sinh viên
-        $lopId = $sinhVien->lop_id;
-        $activePeriod = Dot::where('loai_dot', 'DATN')
-            ->whereHas('lops', function($q) use ($lopId) {
-                $q->where('lop.lop_id', $lopId);
-            })->orderBy('dot_id', 'desc')->first();
+        $activePeriod = $this->xacDinhDotDatnHienTai($sinhVien);
 
         if (!$activePeriod) {
             return response()->json(['success' => false, 'message' => 'Không tìm thấy đợt ĐATN hiện tại.'], 400);
+        }
+
+        if ($resp = $this->chanNeuSinhVienKhongDuocSua($activePeriod)) {
+            return $resp;
         }
 
         // Tìm nhóm của sinh viên hiện tại trong đợt này
@@ -536,11 +574,7 @@ class DeTaiController extends Controller
         }
 
         // Lấy đợt ĐATN đang diễn ra của sinh viên
-        $lopId = $sinhVien->lop_id;
-        $activePeriod = Dot::where('loai_dot', 'DATN')
-            ->whereHas('lops', function($q) use ($lopId) {
-                $q->where('lop.lop_id', $lopId);
-            })->orderBy('dot_id', 'desc')->first();
+        $activePeriod = $this->xacDinhDotDatnHienTai($sinhVien);
 
         if (!$activePeriod) {
             return response()->json([
@@ -617,6 +651,10 @@ class DeTaiController extends Controller
         $nhom = Nhom::find($loiMoi->nhom_id);
         if (!$nhom) {
             return response()->json(['success' => false, 'message' => 'Nhóm gửi lời mời không còn tồn tại.'], 400);
+        }
+
+        if ($resp = $this->chanNeuSinhVienKhongDuocSua(Dot::find($nhom->dot_id))) {
+            return $resp;
         }
 
         if ($nhom->trang_thai_duyet === 'DA_DUYET') {
@@ -705,6 +743,11 @@ class DeTaiController extends Controller
             return response()->json(['success' => false, 'message' => 'Lời mời này đã được xử lý trước đó.'], 400);
         }
 
+        $nhom = Nhom::find($loiMoi->nhom_id);
+        if ($resp = $this->chanNeuSinhVienKhongDuocSua($nhom ? Dot::find($nhom->dot_id) : null)) {
+            return $resp;
+        }
+
         try {
             $loiMoi->update(['trang_thai_xac_nhan' => 'TU_CHOI']);
 
@@ -739,6 +782,10 @@ class DeTaiController extends Controller
         $nhom = Nhom::find($loiMoi->nhom_id);
         if (!$nhom) {
             return response()->json(['success' => false, 'message' => 'Nhóm không tồn tại.'], 400);
+        }
+
+        if ($resp = $this->chanNeuSinhVienKhongDuocSua(Dot::find($nhom->dot_id))) {
+            return $resp;
         }
 
         $pivot = DB::table('thanhviennhom')
@@ -787,17 +834,17 @@ class DeTaiController extends Controller
             ], 401);
         }
 
-        $lopId = $sinhVien->lop_id;
-        $activePeriod = Dot::where('loai_dot', 'DATN')
-            ->whereHas('lops', function($q) use ($lopId) {
-                $q->where('lop.lop_id', $lopId);
-            })->orderBy('dot_id', 'desc')->first();
+        $activePeriod = $this->xacDinhDotDatnHienTai($sinhVien);
 
         if (!$activePeriod) {
             return response()->json([
                 'success' => false,
                 'message' => 'Không tìm thấy đợt ĐATN hiện tại.'
             ], 400);
+        }
+
+        if ($resp = $this->chanNeuSinhVienKhongDuocSua($activePeriod)) {
+            return $resp;
         }
 
         // Tìm nhóm

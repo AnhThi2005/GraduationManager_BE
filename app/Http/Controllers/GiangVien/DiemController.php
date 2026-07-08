@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\GiangVien;
 
+use App\Exceptions\GradingValidationException;
+use App\Http\Controllers\Concerns\KiemTraTrangThaiDot;
 use App\Http\Controllers\Controller;
 use App\Models\Dot;
 use App\Models\HoiDong;
@@ -14,6 +16,8 @@ use Illuminate\Support\Facades\DB;
 
 class DiemController extends Controller
 {
+    use KiemTraTrangThaiDot;
+
     /**
      * GET /private/v1/teacher/grading
      */
@@ -131,6 +135,7 @@ class DiemController extends Controller
                 foreach ($g->members as $m) {
                     $myScore = DB::table('diemhoidongbaove')
                         ->where('sinh_vien_id', $m->sinh_vien_id)
+                        ->where('nhom_id', $g->nhom_id)
                         ->where('giang_vien_id', $teacherId)
                         ->first();
 
@@ -152,6 +157,7 @@ class DiemController extends Controller
                 foreach ($g->members as $m) {
                     $exists = DB::table('diemhoidongbaove')
                         ->where('sinh_vien_id', $m->sinh_vien_id)
+                        ->where('nhom_id', $g->nhom_id)
                         ->where('giang_vien_id', $teacherId)
                         ->exists();
                     if (! $exists) {
@@ -238,6 +244,16 @@ class DiemController extends Controller
             $gvpbId = $thanhVienPb ? $thanhVienPb->giang_vien_id : null;
         }
 
+        // Chỉ GVHD, GVPB, hoặc thành viên hội đồng của nhóm mới được xem chi tiết chấm điểm của nhóm này
+        $isCouncilMember = $group->hoi_dong_id ? DB::table('thanhvienhoidong')
+            ->where('hoi_dong_id', $group->hoi_dong_id)
+            ->where('giang_vien_id', $teacherId)
+            ->exists() : false;
+
+        if ($teacherId != $gvhdId && $teacherId != $gvpbId && ! $isCouncilMember) {
+            return response()->json(['success' => false, 'message' => 'Bạn không có quyền xem điểm của nhóm này.'], 403);
+        }
+
         // Fetch council members list
         $councilMembers = [];
         if ($group->hoi_dong_id) {
@@ -261,6 +277,7 @@ class DiemController extends Controller
             // Load this lecturer's defense scores
             $hdbv = DB::table('diemhoidongbaove')
                 ->where('sinh_vien_id', $m->sinh_vien_id)
+                ->where('nhom_id', $groupId)
                 ->where('giang_vien_id', $teacherId)
                 ->first();
 
@@ -270,7 +287,7 @@ class DiemController extends Controller
             $diemBaoVe = $hdbv ? ($hdbv->diem_bao_ve !== null ? floatval($hdbv->diem_bao_ve) : null) : null;
 
             // Load report score based on role
-            $dbc = DB::table('diembaocao')->where('sinh_vien_id', $m->sinh_vien_id)->first();
+            $dbc = DB::table('diembaocao')->where('sinh_vien_id', $m->sinh_vien_id)->where('nhom_id', $groupId)->first();
             $report = null;
 
             if ($teacherId == $gvhdId) {
@@ -283,7 +300,7 @@ class DiemController extends Controller
 
             // Fallback to diemtongketdatn if diembaocao is not created yet
             if ($report === null) {
-                $scoreRecord = DB::table('diemtongketdatn')->where('sinh_vien_id', $m->sinh_vien_id)->first();
+                $scoreRecord = DB::table('diemtongketdatn')->where('sinh_vien_id', $m->sinh_vien_id)->where('nhom_id', $groupId)->first();
                 if ($scoreRecord && $scoreRecord->diem_bao_cao_chung !== null) {
                     $report = floatval($scoreRecord->diem_bao_cao_chung);
                 }
@@ -306,7 +323,7 @@ class DiemController extends Controller
             $diemGvpb = $dbc ? ($dbc->diem_gvpb !== null ? floatval($dbc->diem_gvpb) : null) : null;
 
             // 3. Get defense average and final total score from diemtongketdatn
-            $summary = DB::table('diemtongketdatn')->where('sinh_vien_id', $m->sinh_vien_id)->first();
+            $summary = DB::table('diemtongketdatn')->where('sinh_vien_id', $m->sinh_vien_id)->where('nhom_id', $groupId)->first();
             $diemTbBaoVe = $summary ? ($summary->diem_bao_ve_rieng !== null ? floatval($summary->diem_bao_ve_rieng) : null) : null;
             $diemTongKet = $summary ? ($summary->diem_tong_ket !== null ? floatval($summary->diem_tong_ket) : null) : null;
 
@@ -315,6 +332,7 @@ class DiemController extends Controller
             if ($group->hoi_dong_id) {
                 $allHdbv = DB::table('diemhoidongbaove')
                     ->where('sinh_vien_id', $m->sinh_vien_id)
+                    ->where('nhom_id', $group->nhom_id)
                     ->get();
                 foreach ($allHdbv as $sc) {
                     $lecturerScores[(string) $sc->giang_vien_id] = $sc->diem_bao_ve !== null ? floatval($sc->diem_bao_ve) : 0;
@@ -372,6 +390,10 @@ class DiemController extends Controller
         }
         $hoiDongId = $nhom->hoi_dong_id;
 
+        if ($resp = $this->chanNeuKhongDuocSuaDiem(Dot::find($nhom->dot_id))) {
+            return $resp;
+        }
+
         $deTai = $nhom->de_tai_id ? DB::table('detai')->where('de_tai_id', $nhom->de_tai_id)->first() : null;
         $gvhdId = $deTai ? $deTai->giang_vien_id : null;
 
@@ -383,79 +405,100 @@ class DiemController extends Controller
             $reviewerId = $decoded['reviewer_id'] ?? null;
         }
 
-        foreach ($rows as $row) {
-            $studentCode = $row['id'] ?? '';
-            $sv = SinhVien::where('ma_so_sinh_vien', $studentCode)->first();
-            if (! $sv) {
-                continue;
-            }
+        // Chỉ GVHD, GVPB được phân công, hoặc thành viên hội đồng của nhóm mới được phép chấm điểm nhóm này
+        $isCouncilMember = $hoiDongId ? DB::table('thanhvienhoidong')
+            ->where('hoi_dong_id', $hoiDongId)
+            ->where('giang_vien_id', $teacherId)
+            ->exists() : false;
 
-            $presentation = isset($row['presentation']) ? floatval($row['presentation']) : 0;
-            $demo = isset($row['demo']) ? floatval($row['demo']) : 0;
-            $qna = isset($row['qna']) ? floatval($row['qna']) : 0;
-            $report = (isset($row['report']) && $row['report'] !== null && $row['report'] !== '') ? floatval($row['report']) : null;
+        if ($teacherId != $gvhdId && $teacherId != $reviewerId && ! $isCouncilMember) {
+            return response()->json(['success' => false, 'message' => 'Bạn không có quyền chấm điểm cho nhóm này.'], 403);
+        }
 
-            if ($presentation < 0 || $presentation > 3 || $demo < 0 || $demo > 5 || $qna < 0 || $qna > 2 || ($report !== null && ($report < 0 || $report > 10))) {
-                return response()->json(['success' => false, 'message' => 'Điểm thành phần không hợp lệ.'], 400);
-            }
+        try {
+            DB::transaction(function () use ($rows, $groupId, $gvhdId, $reviewerId, $teacherId, $isCouncilMember) {
+                foreach ($rows as $row) {
+                    $studentCode = $row['id'] ?? '';
+                    $sv = SinhVien::where('ma_so_sinh_vien', $studentCode)->first();
+                    if (! $sv) {
+                        continue;
+                    }
 
-            // A. Điểm Báo cáo (20%):
-            $existingDbc = DB::table('diembaocao')->where('sinh_vien_id', $sv->sinh_vien_id)->first();
-            $diemGvhd = $existingDbc ? $existingDbc->diem_gvhd : null;
-            $diemGvpb = $existingDbc ? $existingDbc->diem_gvpb : null;
+                    $presentation = isset($row['presentation']) ? floatval($row['presentation']) : 0;
+                    $demo = isset($row['demo']) ? floatval($row['demo']) : 0;
+                    $qna = isset($row['qna']) ? floatval($row['qna']) : 0;
+                    $report = (isset($row['report']) && $row['report'] !== null && $row['report'] !== '') ? floatval($row['report']) : null;
 
-            if ($teacherId == $gvhdId) {
-                $diemGvhd = $report;
-            } elseif ($teacherId == $reviewerId) {
-                $diemGvpb = $report;
-            } else {
-                // Đối với giảng viên khác, nếu điểm báo cáo gửi lên khác với điểm trung bình hiện có tức là họ đang cố tình sửa điểm báo cáo
-                $originalAvg = $existingDbc ? ($existingDbc->diem_trung_binh !== null ? floatval($existingDbc->diem_trung_binh) : null) : null;
-                if ($report !== null && ($originalAvg === null || abs($originalAvg - $report) > 0.0001)) {
-                    return response()->json(['success' => false, 'message' => 'Bạn không có quyền thay đổi điểm báo cáo (chỉ GVHD hoặc GVPB được phân công cho nhóm mới được phép).'], 403);
+                    if ($presentation < 0 || $presentation > 3 || $demo < 0 || $demo > 5 || $qna < 0 || $qna > 2 || ($report !== null && ($report < 0 || $report > 10))) {
+                        throw new GradingValidationException('Điểm thành phần không hợp lệ.', 400);
+                    }
+
+                    // A. Điểm Báo cáo (20%):
+                    $existingDbc = DB::table('diembaocao')->where('sinh_vien_id', $sv->sinh_vien_id)->where('nhom_id', $groupId)->first();
+                    $diemGvhd = $existingDbc ? $existingDbc->diem_gvhd : null;
+                    $diemGvpb = $existingDbc ? $existingDbc->diem_gvpb : null;
+
+                    if ($teacherId == $gvhdId) {
+                        $diemGvhd = $report;
+                    } elseif ($teacherId == $reviewerId) {
+                        $diemGvpb = $report;
+                    } else {
+                        // Đối với giảng viên khác, nếu điểm báo cáo gửi lên khác với điểm trung bình hiện có tức là họ đang cố tình sửa điểm báo cáo
+                        $originalAvg = $existingDbc ? ($existingDbc->diem_trung_binh !== null ? floatval($existingDbc->diem_trung_binh) : null) : null;
+                        if ($report !== null && ($originalAvg === null || abs($originalAvg - $report) > 0.0001)) {
+                            throw new GradingValidationException('Bạn không có quyền thay đổi điểm báo cáo (chỉ GVHD hoặc GVPB được phân công cho nhóm mới được phép).', 403);
+                        }
+                    }
+
+                    $diemBaoCaoTrungBinh = null;
+                    if ($diemGvhd !== null || $diemGvpb !== null) {
+                        $diemBaoCaoTrungBinh = round((floatval($diemGvhd ?? 0) + floatval($diemGvpb ?? 0)) / 2, 2);
+                    }
+
+                    DB::table('diembaocao')->updateOrInsert(
+                        [
+                            'sinh_vien_id' => $sv->sinh_vien_id,
+                            'nhom_id' => $groupId,
+                        ],
+                        [
+                            'giang_vien_hd_id' => $gvhdId,
+                            'giang_vien_pb_id' => $reviewerId,
+                            'diem_gvhd' => $diemGvhd,
+                            'diem_gvpb' => $diemGvpb,
+                            'diem_trung_binh' => $diemBaoCaoTrungBinh,
+                            'ngay_cap_nhat' => now(),
+                        ]
+                    );
+
+                    // B. Điểm Bảo vệ (80%) — chỉ ghi khi người chấm thực sự là thành viên hội đồng,
+                    // tránh GVHD/GVPB không thuộc hội đồng vô tình ghi đè bằng điểm 0.
+                    if ($isCouncilMember) {
+                        // 1. Tính điểm bảo vệ của từng giảng viên: diem_bao_ve = diem_thuyet_trinh + diem_demo + diem_van_dap
+                        $diemBaoVeGv = round($presentation + $demo + $qna, 2);
+
+                        DB::table('diemhoidongbaove')->updateOrInsert(
+                            [
+                                'sinh_vien_id' => $sv->sinh_vien_id,
+                                'nhom_id' => $groupId,
+                                'giang_vien_id' => $teacherId,
+                            ],
+                            [
+                                'diem_thuyet_trinh' => $presentation,
+                                'diem_demo' => $demo,
+                                'diem_van_dap' => $qna,
+                                'diem_bao_ve' => $diemBaoVeGv,
+                                'ngay_cham' => now(),
+                            ]
+                        );
+                    }
+
+                    // Tự động tính toán lại điểm trung bình bảo vệ, báo cáo và điểm tổng kết
+                    $diemSinhVienService = app(DiemSinhVienService::class);
+                    $diemSinhVienService->recalculateScores($sv->sinh_vien_id, $groupId);
                 }
-            }
-
-            $diemBaoCaoTrungBinh = null;
-            if ($diemGvhd !== null || $diemGvpb !== null) {
-                $diemBaoCaoTrungBinh = round((floatval($diemGvhd ?? 0) + floatval($diemGvpb ?? 0)) / 2, 2);
-            }
-
-            DB::table('diembaocao')->updateOrInsert(
-                ['sinh_vien_id' => $sv->sinh_vien_id],
-                [
-                    'nhom_id' => $groupId,
-                    'giang_vien_hd_id' => $gvhdId,
-                    'giang_vien_pb_id' => $reviewerId,
-                    'diem_gvhd' => $diemGvhd,
-                    'diem_gvpb' => $diemGvpb,
-                    'diem_trung_binh' => $diemBaoCaoTrungBinh,
-                    'ngay_cap_nhat' => now(),
-                ]
-            );
-
-            // B. Điểm Bảo vệ (80%):
-            // 1. Tính điểm bảo vệ của từng giảng viên: diem_bao_ve = diem_thuyet_trinh + diem_demo + diem_van_dap
-            $diemBaoVeGv = round($presentation + $demo + $qna, 2);
-
-            DB::table('diemhoidongbaove')->updateOrInsert(
-                [
-                    'sinh_vien_id' => $sv->sinh_vien_id,
-                    'nhom_id' => $groupId,
-                    'giang_vien_id' => $teacherId,
-                ],
-                [
-                    'diem_thuyet_trinh' => $presentation,
-                    'diem_demo' => $demo,
-                    'diem_van_dap' => $qna,
-                    'diem_bao_ve' => $diemBaoVeGv,
-                    'ngay_cham' => now(),
-                ]
-            );
-
-            // Tự động tính toán lại điểm trung bình bảo vệ, báo cáo và điểm tổng kết
-            $diemSinhVienService = app(DiemSinhVienService::class);
-            $diemSinhVienService->recalculateScores($sv->sinh_vien_id, $groupId);
+            });
+        } catch (GradingValidationException $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], $e->getStatusCode());
         }
 
         RealtimeService::broadcast('score_updated', [
@@ -523,11 +566,19 @@ class DiemController extends Controller
             $dotId = $latestPeriod ? $latestPeriod->dot_id : 1;
         }
 
+        if ($resp = $this->chanNeuKhongDuocSuaDiem(Dot::find($dotId))) {
+            return $resp;
+        }
+
         $scores = $request->input('scores', []);
 
         foreach ($scores as $s) {
             $studentCode = $s['id'] ?? '';
             $scoreVal = $s['score'] !== '' && $s['score'] !== null ? round(floatval($s['score']), 1) : null;
+
+            if ($scoreVal !== null && ($scoreVal < 0 || $scoreVal > 10)) {
+                return response()->json(['success' => false, 'message' => 'Điểm thực tập phải trong khoảng từ 0 đến 10.'], 400);
+            }
 
             $sv = SinhVien::where('ma_so_sinh_vien', $studentCode)->first();
             if (! $sv) {

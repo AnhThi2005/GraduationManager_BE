@@ -3,7 +3,9 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Concerns\KiemTraTrangThaiDot;
 use Illuminate\Http\Request;
+use App\Models\Dot;
 use App\Models\Nhom;
 use App\Models\SinhVien;
 use Illuminate\Support\Facades\DB;
@@ -11,6 +13,8 @@ use Illuminate\Support\Facades\Log;
 
 class NhomController extends Controller
 {
+    use KiemTraTrangThaiDot;
+
     public function layDanhSach(Request $request)
     {
         $groups = Nhom::with(['deTai.giangVien', 'members.lop', 'dot'])
@@ -60,6 +64,10 @@ class NhomController extends Controller
             ], 404);
         }
 
+        if ($resp = $this->chanNeuDotDaDong($g->dot)) {
+            return $resp;
+        }
+
         $oldGroup = $this->transformGroup($g);
         $body = $request->all();
 
@@ -84,8 +92,8 @@ class NhomController extends Controller
                 $dbStatus = 'TU_CHOI';
                 $g->de_tai_id = null;
             } elseif ($status === 'PENDING') {
-                $g->trang_thai_duyet = 'CHO_DUYET';
-                $dbStatus = 'CHO_DUYET';
+                $g->trang_thai_duyet = $g->de_tai_id ? 'CHO_DUYET' : 'CHUA_DANG_KY';
+                $dbStatus = $g->de_tai_id ? 'CHO_DUYET' : 'CHUA_DANG_KY';
             }
             $g->save();
             DB::table('dangkydetai')->where('nhom_id', $id)->update(['trang_thai_duyet' => $dbStatus]);
@@ -94,13 +102,32 @@ class NhomController extends Controller
         // 3. Cập nhật đề tài nếu có truyền lên (gán đề tài)
         if (isset($body['de_tai_id'])) {
             $g->de_tai_id = $body['de_tai_id'];
+            
+            $topicStatus = null;
+            if ($g->de_tai_id) {
+                $dt = DB::table('detai')->where('de_tai_id', $g->de_tai_id)->first();
+                $topicStatus = $dt ? $dt->trang_thai : 'CHO_DUYET';
+            }
+
+            if ($g->de_tai_id) {
+                if ($topicStatus === 'DA_DUYET') {
+                    $g->trang_thai_duyet = 'DA_DUYET';
+                } elseif ($topicStatus === 'TU_CHOI') {
+                    $g->trang_thai_duyet = 'TU_CHOI';
+                } else {
+                    $g->trang_thai_duyet = 'CHO_DUYET';
+                }
+            } else {
+                $g->trang_thai_duyet = 'CHUA_DANG_KY';
+            }
+            
             $g->save();
 
             DB::table('dangkydetai')->updateOrInsert(
                 ['nhom_id' => $id],
                 [
                     'de_tai_id' => $body['de_tai_id'],
-                    'trang_thai_duyet' => 'DA_DUYET',
+                    'trang_thai_duyet' => $g->trang_thai_duyet,
                     'ngay_dang_ky' => date('Y-m-d H:i:s')
                 ]
             );
@@ -161,14 +188,36 @@ class NhomController extends Controller
     public function themMoi(Request $request)
     {
         $body = $request->all();
-        
+
         $activePeriod = \App\Models\Dot::orderBy('dot_id', 'desc')->first();
         $dotId = $body['dot_id'] ?? ($activePeriod ? $activePeriod->dot_id : 1);
-        
+
+        if ($resp = $this->chanNeuDotDaDong(Dot::find($dotId))) {
+            return $resp;
+        }
+
         $g = new Nhom();
         $g->dot_id = $dotId;
         $g->de_tai_id = $body['de_tai_id'] ?? null;
-        $g->trang_thai_duyet = $g->de_tai_id ? 'DA_DUYET' : 'CHO_DUYET';
+        
+        $topicStatus = null;
+        if ($g->de_tai_id) {
+            $dt = DB::table('detai')->where('de_tai_id', $g->de_tai_id)->first();
+            $topicStatus = $dt ? $dt->trang_thai : 'CHO_DUYET';
+        }
+
+        if ($g->de_tai_id) {
+            if ($topicStatus === 'DA_DUYET') {
+                $g->trang_thai_duyet = 'DA_DUYET';
+            } elseif ($topicStatus === 'TU_CHOI') {
+                $g->trang_thai_duyet = 'TU_CHOI';
+            } else {
+                $g->trang_thai_duyet = 'CHO_DUYET';
+            }
+        } else {
+            $g->trang_thai_duyet = 'CHUA_DANG_KY';
+        }
+
         $g->trang_thai_nhom = 'DU_THANH_VIEN';
         $g->ngay_dang_ky = now();
         $g->save();
@@ -177,7 +226,7 @@ class NhomController extends Controller
             DB::table('dangkydetai')->insert([
                 'nhom_id' => $g->nhom_id,
                 'de_tai_id' => $g->de_tai_id,
-                'trang_thai_duyet' => 'DA_DUYET',
+                'trang_thai_duyet' => $g->trang_thai_duyet,
                 'ngay_dang_ky' => date('Y-m-d H:i:s'),
                 'ly_do_tu_choi' => null
             ]);
@@ -227,6 +276,10 @@ class NhomController extends Controller
             ], 404);
         }
 
+        if ($resp = $this->chanNeuDotDaDong($g->dot)) {
+            return $resp;
+        }
+
         $groupData = $this->transformGroup($g);
 
         // Lưu vết trước khi xóa nhóm (Audit Log)
@@ -263,6 +316,10 @@ class NhomController extends Controller
                 'success' => false,
                 'message' => 'Không tìm thấy nhóm!'
             ], 404);
+        }
+
+        if ($resp = $this->chanNeuDotDaDong($g->dot)) {
+            return $resp;
         }
 
         $memberCount = DB::table('thanhviennhom')->where('nhom_id', $id)->count();
@@ -302,6 +359,10 @@ class NhomController extends Controller
                 'success' => false,
                 'message' => 'Không tìm thấy nhóm!'
             ], 404);
+        }
+
+        if ($resp = $this->chanNeuDotDaDong($g->dot)) {
+            return $resp;
         }
 
         $g->trang_thai_duyet = 'TU_CHOI';

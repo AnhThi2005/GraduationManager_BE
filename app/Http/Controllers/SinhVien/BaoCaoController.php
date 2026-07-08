@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\SinhVien;
 
+use App\Http\Controllers\Concerns\KiemTraTrangThaiDot;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\BaoCaoTienDo;
@@ -11,6 +12,8 @@ use Carbon\Carbon;
 
 class BaoCaoController extends Controller
 {
+    use KiemTraTrangThaiDot;
+
     /**
      * Lấy danh sách báo cáo tiến độ TTTN của sinh viên
      */
@@ -38,6 +41,14 @@ class BaoCaoController extends Controller
             ]);
         }
 
+        // Kiểm tra xem sinh viên đã khai báo thực tập và được duyệt chưa
+        $registration = DB::table('dangkythuctap')
+            ->where('sinh_vien_id', $sinhVien->sinh_vien_id)
+            ->where('dot_id', $activePeriod->dot_id)
+            ->first();
+
+        $isInternshipApproved = $registration && $registration->trang_thai === 'DA_DUYET';
+
         // Kiểm tra xem sinh viên đã được phân công Giảng viên hướng dẫn (GVHD) chưa
         $coGvhd = DB::table('phanconghdtt')
             ->where('sinh_vien_id', $sinhVien->sinh_vien_id)
@@ -51,13 +62,13 @@ class BaoCaoController extends Controller
                 'code' => 200,
                 'results' => [
                     'objects' => [],
-                    'hasGvhd' => false
+                    'hasGvhd' => false,
+                    'isInternshipApproved' => $isInternshipApproved
                 ]
             ]);
         }
 
         $start = Carbon::parse($activePeriod->ngay_bat_dau, 'Asia/Ho_Chi_Minh');
-        $end = Carbon::parse($activePeriod->ngay_ket_thuc, 'Asia/Ho_Chi_Minh');
         $now = Carbon::now();
 
         $reports = BaoCaoTienDo::where('sinh_vien_id', $sinhVien->sinh_vien_id)
@@ -75,22 +86,15 @@ class BaoCaoController extends Controller
             ->keyBy('tuan');
 
         $formatted = [];
-        $w = 1;
+        $totalWeeks = $activePeriod->tinhSoTuan();
+        $batchDeadline = $activePeriod->han_nop_bao_cao 
+            ? Carbon::parse($activePeriod->han_nop_bao_cao)->endOfDay() 
+            : Carbon::parse($activePeriod->ngay_ket_thuc)->endOfDay();
 
-        while (true) {
-            $startOfWeek = $start->copy()->addWeeks($w - 1);
-            if ($startOfWeek->gt($end)) {
-                break;
-            }
-
+        for ($w = 1; $w <= $totalWeeks; $w++) {
             $r = $reports->get($w);
-            if ($startOfWeek->gt($now) && !$r) {
-                break;
-            }
-
             $extension = $extensions->get($w);
-            $standardDeadline = $start->copy()->addWeeks($w)->endOfDay();
-            $appliedDeadline = $extension ? Carbon::parse($extension->han_nop_moi) : $standardDeadline;
+            $appliedDeadline = $extension ? Carbon::parse($extension->han_nop_moi)->endOfDay() : $batchDeadline;
 
             if ($r) {
                 // Tách title và note từ cột noi_dung
@@ -105,14 +109,7 @@ class BaoCaoController extends Controller
                 // Lấy nhận xét từ GV
                 $comment = DB::table('nhanxetbaocao')->where('bao_cao_id', $r->bao_cao_id)->first();
 
-                $fileUrl = null;
-                if ($r->duong_dan_file && $r->duong_dan_file !== '—') {
-                    if (str_starts_with($r->duong_dan_file, 'http')) {
-                        $fileUrl = $r->duong_dan_file;
-                    } else {
-                        $fileUrl = asset('storage/' . $r->duong_dan_file);
-                    }
-                }
+                $fileUrl = $this->resolveFileUrl($r->duong_dan_file);
 
                 $formatted[] = [
                     'week' => $w,
@@ -139,19 +136,19 @@ class BaoCaoController extends Controller
                     'updated' => '—'
                 ];
             }
-            $w++;
         }
 
-        // Sắp xếp các tuần theo thứ tự giảm dần
+        // Sắp xếp các tuần theo thứ tự tăng dần
         usort($formatted, function($a, $b) {
-            return $b['week'] <=> $a['week'];
+            return $a['week'] <=> $b['week'];
         });
 
         return response()->json([
             'code' => 200,
             'results' => [
                 'objects' => $formatted,
-                'hasGvhd' => true
+                'hasGvhd' => true,
+                'isInternshipApproved' => $isInternshipApproved
             ]
         ]);
     }
@@ -191,6 +188,23 @@ class BaoCaoController extends Controller
             return response()->json(['success' => false, 'message' => 'Không tìm thấy đợt thực tập tốt nghiệp hiện tại.'], 400);
         }
 
+        if ($resp = $this->chanNeuSinhVienKhongDuocSua($activePeriod)) {
+            return $resp;
+        }
+
+        // Kiểm tra xem sinh viên đã khai báo thực tập và được duyệt chưa
+        $registration = DB::table('dangkythuctap')
+            ->where('sinh_vien_id', $sinhVien->sinh_vien_id)
+            ->where('dot_id', $activePeriod->dot_id)
+            ->first();
+
+        if (!$registration || $registration->trang_thai !== 'DA_DUYET') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Thông tin đăng ký thực tập tốt nghiệp của bạn chưa được duyệt hoặc chưa khai báo. Bạn không thể thực hiện nộp báo cáo!'
+            ], 403);
+        }
+
         // Kiểm tra xem sinh viên đã được phân công Giảng viên hướng dẫn (GVHD) chưa
         $coGvhd = DB::table('phanconghdtt')
             ->where('sinh_vien_id', $sinhVien->sinh_vien_id)
@@ -204,6 +218,15 @@ class BaoCaoController extends Controller
                 'success' => false,
                 'message' => 'Bạn chưa được phân công Giảng viên hướng dẫn cho đợt này. Bạn không thể thực hiện nộp báo cáo!'
             ], 403);
+        }
+
+        // Chặn nộp tuần vượt quá số tuần quy định
+        $totalWeeks = $activePeriod->tinhSoTuan();
+        if ($week > $totalWeeks) {
+            return response()->json([
+                'success' => false,
+                'message' => "Tuần {$week} vượt quá số tuần của đợt thực tập này (Tối đa {$totalWeeks} tuần)."
+            ], 400);
         }
 
         // Chặn nộp trước các tuần ở tương lai
@@ -224,13 +247,15 @@ class BaoCaoController extends Controller
                 'tuan' => $week
             ])->first();
 
-        $standardDeadline = Carbon::parse($activePeriod->ngay_bat_dau, 'Asia/Ho_Chi_Minh')->addWeeks($week)->endOfDay();
-        $appliedDeadline = $extension ? Carbon::parse($extension->han_nop_moi) : $standardDeadline;
+        $batchDeadline = $activePeriod->han_nop_bao_cao 
+            ? Carbon::parse($activePeriod->han_nop_bao_cao)->endOfDay() 
+            : Carbon::parse($activePeriod->ngay_ket_thuc)->endOfDay();
+        $appliedDeadline = $extension ? Carbon::parse($extension->han_nop_moi)->endOfDay() : $batchDeadline;
 
         if (Carbon::now()->gt($appliedDeadline)) {
             return response()->json([
                 'success' => false,
-                'message' => "Đã hết hạn nộp hoặc cập nhật báo cáo tuần {$week} (Hạn nộp: " . $appliedDeadline->copy()->setTimezone('Asia/Ho_Chi_Minh')->format('d/m/Y H:i') . ")."
+                'message' => "Đã hết hạn nộp hoặc cập nhật báo cáo tuần {$week} (Hạn nộp đợt: " . $appliedDeadline->copy()->setTimezone('Asia/Ho_Chi_Minh')->format('d/m/Y H:i') . ")."
             ], 400);
         }
 
@@ -261,14 +286,7 @@ class BaoCaoController extends Controller
             'thoi_gian_nop' => Carbon::now()->toDateTimeString()
         ]);
 
-        $fileUrl = null;
-        if ($report->duong_dan_file) {
-            if (str_starts_with($report->duong_dan_file, 'http')) {
-                $fileUrl = $report->duong_dan_file;
-            } else {
-                $fileUrl = asset('storage/' . $report->duong_dan_file);
-            }
-        }
+        $fileUrl = $this->resolveFileUrl($report->duong_dan_file);
 
         return response()->json([
             'code' => 200,
@@ -298,11 +316,12 @@ class BaoCaoController extends Controller
             return response()->json(['success' => false, 'message' => 'Bạn chưa đăng nhập.'], 401);
         }
 
-        // Tìm nhóm ĐATN đã được duyệt của sinh viên
+        // Tìm nhóm ĐATN đã được duyệt và có đề tài của sinh viên
         $nhom = DB::table('nhomsvda')
             ->join('thanhviennhom', 'nhomsvda.nhom_id', '=', 'thanhviennhom.nhom_id')
             ->where('thanhviennhom.sinh_vien_id', $sinhVien->sinh_vien_id)
             ->where('nhomsvda.trang_thai_duyet', 'DA_DUYET')
+            ->whereNotNull('nhomsvda.de_tai_id')
             ->orderBy('nhomsvda.dot_id', 'desc')
             ->select('nhomsvda.*')
             ->first();
@@ -311,7 +330,8 @@ class BaoCaoController extends Controller
             return response()->json([
                 'code' => 200,
                 'results' => [
-                    'objects' => []
+                    'objects' => [],
+                    'isTopicApproved' => false
                 ]
             ]);
         }
@@ -327,7 +347,6 @@ class BaoCaoController extends Controller
         }
 
         $start = Carbon::parse($activePeriod->ngay_bat_dau, 'Asia/Ho_Chi_Minh');
-        $end = Carbon::parse($activePeriod->ngay_ket_thuc, 'Asia/Ho_Chi_Minh');
         $now = Carbon::now();
 
         // Lấy danh sách ID của tất cả thành viên trong nhóm
@@ -351,22 +370,15 @@ class BaoCaoController extends Controller
             ->keyBy('tuan');
 
         $formatted = [];
-        $w = 1;
+        $totalWeeks = $activePeriod->tinhSoTuan();
+        $batchDeadline = $activePeriod->han_nop_bao_cao 
+            ? Carbon::parse($activePeriod->han_nop_bao_cao)->endOfDay() 
+            : Carbon::parse($activePeriod->ngay_ket_thuc)->endOfDay();
 
-        while (true) {
-            $startOfWeek = $start->copy()->addWeeks($w - 1);
-            if ($startOfWeek->gt($end)) {
-                break;
-            }
-
+        for ($w = 1; $w <= $totalWeeks; $w++) {
             $r = $reports->get($w);
-            if ($startOfWeek->gt($now) && !$r) {
-                break;
-            }
-
             $extension = $extensions->get($w);
-            $standardDeadline = $start->copy()->addWeeks($w)->endOfDay();
-            $appliedDeadline = $extension ? Carbon::parse($extension->han_nop_moi) : $standardDeadline;
+            $appliedDeadline = $extension ? Carbon::parse($extension->han_nop_moi)->endOfDay() : $batchDeadline;
 
             if ($r) {
                 // Tách name, note từ cột noi_dung
@@ -381,14 +393,7 @@ class BaoCaoController extends Controller
                 // Lấy nhận xét từ GV
                 $comment = DB::table('nhanxetbaocao')->where('bao_cao_id', $r->bao_cao_id)->first();
 
-                $fileUrl = null;
-                if ($r->duong_dan_file && $r->duong_dan_file !== '—') {
-                    if (str_starts_with($r->duong_dan_file, 'http')) {
-                        $fileUrl = $r->duong_dan_file;
-                    } else {
-                        $fileUrl = asset('storage/' . $r->duong_dan_file);
-                    }
-                }
+                $fileUrl = $this->resolveFileUrl($r->duong_dan_file);
 
                 $formatted[] = [
                     'week' => $w,
@@ -415,18 +420,18 @@ class BaoCaoController extends Controller
                     'updated' => '—'
                 ];
             }
-            $w++;
         }
 
-        // Sắp xếp các tuần theo thứ tự giảm dần
+        // Sắp xếp các tuần theo thứ tự tăng dần
         usort($formatted, function($a, $b) {
-            return $b['week'] <=> $a['week'];
+            return $a['week'] <=> $b['week'];
         });
 
         return response()->json([
             'code' => 200,
             'results' => [
-                'objects' => $formatted
+                'objects' => $formatted,
+                'isTopicApproved' => true
             ]
         ]);
     }
@@ -455,11 +460,12 @@ class BaoCaoController extends Controller
         $file = $request->input('file');
         $fileOriginalName = $request->input('fileName') ?: null;
 
-        // Tìm nhóm ĐATN đã được duyệt của sinh viên
+        // Tìm nhóm ĐATN đã được duyệt và có đề tài của sinh viên
         $nhom = DB::table('nhomsvda')
             ->join('thanhviennhom', 'nhomsvda.nhom_id', '=', 'thanhviennhom.nhom_id')
             ->where('thanhviennhom.sinh_vien_id', $sinhVien->sinh_vien_id)
             ->where('nhomsvda.trang_thai_duyet', 'DA_DUYET')
+            ->whereNotNull('nhomsvda.de_tai_id')
             ->orderBy('nhomsvda.dot_id', 'desc')
             ->select('nhomsvda.*')
             ->first();
@@ -474,6 +480,19 @@ class BaoCaoController extends Controller
         $activePeriod = Dot::find($nhom->dot_id);
         if (!$activePeriod) {
             return response()->json(['success' => false, 'message' => 'Không tìm thấy đợt tốt nghiệp tương ứng.'], 400);
+        }
+
+        if ($resp = $this->chanNeuSinhVienKhongDuocSua($activePeriod)) {
+            return $resp;
+        }
+
+        // Chặn nộp tuần vượt quá số tuần quy định
+        $totalWeeks = $activePeriod->tinhSoTuan();
+        if ($week > $totalWeeks) {
+            return response()->json([
+                'success' => false,
+                'message' => "Tuần {$week} vượt quá số tuần của đợt đồ án tốt nghiệp này (Tối đa {$totalWeeks} tuần)."
+            ], 400);
         }
 
         // Chặn nộp trước các tuần ở tương lai
@@ -499,13 +518,15 @@ class BaoCaoController extends Controller
             ->where('tuan', $week)
             ->first();
 
-        $standardDeadline = Carbon::parse($activePeriod->ngay_bat_dau, 'Asia/Ho_Chi_Minh')->addWeeks($week)->endOfDay();
-        $appliedDeadline = $extension ? Carbon::parse($extension->han_nop_moi) : $standardDeadline;
+        $batchDeadline = $activePeriod->han_nop_bao_cao 
+            ? Carbon::parse($activePeriod->han_nop_bao_cao)->endOfDay() 
+            : Carbon::parse($activePeriod->ngay_ket_thuc)->endOfDay();
+        $appliedDeadline = $extension ? Carbon::parse($extension->han_nop_moi)->endOfDay() : $batchDeadline;
 
         if (Carbon::now()->gt($appliedDeadline)) {
             return response()->json([
                 'success' => false,
-                'message' => "Đã hết hạn nộp hoặc cập nhật báo cáo bản thảo tuần {$week} (Hạn nộp: " . $appliedDeadline->copy()->setTimezone('Asia/Ho_Chi_Minh')->format('d/m/Y H:i') . ")."
+                'message' => "Đã hết hạn nộp hoặc cập nhật báo cáo bản thảo tuần {$week} (Hạn nộp đợt: " . $appliedDeadline->copy()->setTimezone('Asia/Ho_Chi_Minh')->format('d/m/Y H:i') . ")."
             ], 400);
         }
 
@@ -541,14 +562,7 @@ class BaoCaoController extends Controller
             ]);
         }
 
-        $fileUrl = null;
-        if ($report->duong_dan_file) {
-            if (str_starts_with($report->duong_dan_file, 'http')) {
-                $fileUrl = $report->duong_dan_file;
-            } else {
-                $fileUrl = asset('storage/' . $report->duong_dan_file);
-            }
-        }
+        $fileUrl = $this->resolveFileUrl($report->duong_dan_file);
 
         return response()->json([
             'code' => 200,
@@ -566,5 +580,17 @@ class BaoCaoController extends Controller
                 ]
             ]
         ]);
+    }
+
+    private function resolveFileUrl($path)
+    {
+        if (!$path || $path === '—') {
+            return null;
+        }
+        if (str_starts_with($path, 'http')) {
+            $parsedPath = parse_url($path, PHP_URL_PATH);
+            return rtrim(request()->schemeAndHttpHost(), '/') . $parsedPath;
+        }
+        return rtrim(request()->schemeAndHttpHost(), '/') . '/storage/' . $path;
     }
 }

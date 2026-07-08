@@ -3,7 +3,10 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Concerns\KiemTraTrangThaiDot;
 use Illuminate\Http\Request;
+use App\Models\Dot;
+use App\Models\DangKyThucTap;
 use App\Services\CongTyService;
 use App\Services\NguoiDungService;
 use App\Http\Requests\Admin\QuanLySinhVienThucTap\ThemDoanhNghiepRequest;
@@ -11,6 +14,8 @@ use App\Http\Requests\Admin\QuanLySinhVienThucTap\ThemMoiXacNhanRequest;
 
 class CongTyController extends Controller
 {
+    use KiemTraTrangThaiDot;
+
     protected $congTyService;
     protected $nguoiDungService;
 
@@ -188,6 +193,13 @@ class CongTyController extends Controller
 
         $periodId = $request->query('periodId');
 
+        $dot = $periodId
+            ? Dot::find($periodId)
+            : Dot::where('loai_dot', 'TTTN')->orderBy('dot_id', 'desc')->first();
+        if ($resp = $this->chanNeuDotDaDong($dot)) {
+            return $resp;
+        }
+
         try {
             $reg = $this->congTyService->createConfirmationRequest($request->all(), $periodId);
         } catch (\InvalidArgumentException $e) {
@@ -221,6 +233,11 @@ class CongTyController extends Controller
 
     public function capNhatXacNhan(Request $request, $id)
     {
+        $existing = DangKyThucTap::find($id);
+        if ($resp = $this->chanNeuDotDaDong($existing?->dot)) {
+            return $resp;
+        }
+
         $reg = $this->congTyService->updateConfirmationRequest($id, $request->all());
         if (!$reg) {
             return response()->json([
@@ -246,6 +263,11 @@ class CongTyController extends Controller
 
     public function xoaXacNhan(Request $request, $id)
     {
+        $existing = DangKyThucTap::find($id);
+        if ($resp = $this->chanNeuDotDaDong($existing?->dot)) {
+            return $resp;
+        }
+
         $success = $this->congTyService->deleteConfirmationRequest($id);
         if (!$success) {
             return response()->json([
@@ -307,6 +329,10 @@ class CongTyController extends Controller
         $status = $request->input('status'); // 'not_registered' | 'searching' | 'has_company'
         $periodId = $request->query('periodId') ?? $request->input('periodId');
 
+        if ($periodId && ($resp = $this->chanNeuDotDaDong(Dot::find($periodId)))) {
+            return $resp;
+        }
+
         $res = $this->congTyService->updateNoCompanyStudentStatus($id, $status, $periodId);
         if (!$res) {
             return response()->json([
@@ -342,5 +368,47 @@ class CongTyController extends Controller
             'success' => true,
             'message' => 'Khóa tài khoản sinh viên thành công!'
         ], 200);
+    }
+
+    public function traCuuMaSoThue(Request $request)
+    {
+        $taxId = trim((string) $request->query('taxId'));
+
+        if (!preg_match('/^[0-9]{10}([0-9]{3})?$/', $taxId)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Mã số thuế phải gồm 10 hoặc 13 chữ số.'
+            ], 422);
+        }
+
+        try {
+            $response = \Illuminate\Support\Facades\Http::timeout(6)->get("https://api.vietqr.io/v2/business/{$taxId}");
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Dịch vụ tra cứu mã số thuế tạm thời không khả dụng, vui lòng nhập thủ công.'
+            ], 503);
+        }
+
+        $body = $response->json();
+
+        if (!$response->successful() || empty($body['data'])) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Không tìm thấy doanh nghiệp với mã số thuế này.'
+            ], 404);
+        }
+
+        $data = $body['data'];
+
+        return response()->json([
+            'code' => 200,
+            'results' => [
+                'object' => [
+                    'name' => $data['name'] ?? '',
+                    'address' => $data['address'] ?? '',
+                ]
+            ]
+        ]);
     }
 }

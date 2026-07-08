@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\GiangVien;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Concerns\KiemTraTrangThaiDot;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use App\Models\Dot;
@@ -10,6 +11,8 @@ use App\Models\Nhom;
 
 class NhomController extends Controller
 {
+    use KiemTraTrangThaiDot;
+
     /**
      * GET /private/v1/teacher/students
      */
@@ -456,6 +459,10 @@ class NhomController extends Controller
             return response()->json(['success' => false, 'message' => 'Không tìm thấy nhóm này!'], 404);
         }
 
+        if ($resp = $this->chanNeuDotDaDong(Dot::find($g->dot_id))) {
+            return $resp;
+        }
+
         $segment = 'Nhóm phản biện';
         if ($g->deTai && $g->deTai->giang_vien_id == $teacherId) {
             $g->ket_qua_huong_dan = $eval;
@@ -522,6 +529,10 @@ class NhomController extends Controller
         if (empty($dotId)) {
             $latestPeriod = \App\Models\Dot::orderBy('dot_id', 'desc')->first();
             $dotId = $latestPeriod ? $latestPeriod->dot_id : 1;
+        }
+
+        if ($resp = $this->chanNeuDotDaDong(Dot::find($dotId))) {
+            return $resp;
         }
 
         $loaiBaoCao = $loai === 'TTTN' ? 'THUC_TAP' : 'DO_AN';
@@ -607,6 +618,10 @@ class NhomController extends Controller
         if (empty($dotId)) {
             $latestPeriod = Dot::orderBy('dot_id', 'desc')->first();
             $dotId = $latestPeriod ? $latestPeriod->dot_id : 1;
+        }
+
+        if ($resp = $this->chanNeuDotDaDong(Dot::find($dotId))) {
+            return $resp;
         }
 
         $loaiBaoCao = $loai === 'TTTN' ? 'THUC_TAP' : 'DO_AN';

@@ -76,8 +76,14 @@ class DotController extends Controller
      */
     public function themMoi(ThemDotRequest $request)
     {
-
-        $period = $this->dotService->createPeriod($request->all());
+        try {
+            $period = $this->dotService->createPeriod($request->all());
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage()
+            ], 422);
+        }
 
         return response()->json([
             'code' => 200,
@@ -92,7 +98,15 @@ class DotController extends Controller
      */
     public function capNhat(Request $request, $id)
     {
-        $period = $this->dotService->updatePeriod($id, $request->all());
+        try {
+            $period = $this->dotService->updatePeriod($id, $request->all());
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage()
+            ], 422);
+        }
+
         if (!$period) {
             return response()->json([
                 'success' => false,

@@ -3,13 +3,17 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Concerns\KiemTraTrangThaiDot;
 use Illuminate\Http\Request;
+use App\Models\Dot;
 use App\Services\DeTaiService;
 use App\Http\Requests\Admin\QuanLyDeTai\ThemDeTaiRequest;
 use App\Http\Requests\Admin\QuanLyDeTai\CapNhatDeTaiRequest;
 
 class DeTaiController extends Controller
 {
+    use KiemTraTrangThaiDot;
+
     protected $deTaiService;
 
     public function __construct(DeTaiService $deTaiService)
@@ -84,7 +88,13 @@ class DeTaiController extends Controller
     public function themMoi(ThemDeTaiRequest $request)
     {
 
-        $periodId = $request->query('periodId');
+        $periodId = $request->query('periodId') ?? $request->input('periodId');
+        $dot = $periodId
+            ? Dot::find($periodId)
+            : Dot::where('loai_dot', 'DATN')->orderBy('dot_id', 'desc')->first();
+        if ($resp = $this->chanNeuDotDaDong($dot)) {
+            return $resp;
+        }
 
         $topic = $this->deTaiService->createTopic($request->all(), $periodId);
 
@@ -108,6 +118,11 @@ class DeTaiController extends Controller
      */
     public function capNhat(CapNhatDeTaiRequest $request, $id)
     {
+
+        $existing = \App\Models\DeTai::find($id);
+        if ($resp = $this->chanNeuDotDaDong($existing?->dot)) {
+            return $resp;
+        }
 
         $topic = $this->deTaiService->updateTopic($id, $request->all());
         if (!$topic) {
@@ -137,8 +152,8 @@ class DeTaiController extends Controller
     public function xoa(Request $request, $id)
     {
         $user = $request->user();
+        $deTai = \App\Models\DeTai::find($id);
         if ($user->tokenCan('GIANG_VIEN')) {
-            $deTai = \App\Models\DeTai::find($id);
             if ($deTai && $deTai->giang_vien_id !== $user->giang_vien_id) {
                 return response()->json([
                     'success' => false,
@@ -150,6 +165,10 @@ class DeTaiController extends Controller
                 'success' => false,
                 'message' => 'Bạn không có quyền thực hiện thao tác này!'
             ], 403);
+        }
+
+        if ($resp = $this->chanNeuDotDaDong($deTai?->dot)) {
+            return $resp;
         }
 
         $success = $this->deTaiService->deleteTopic($id);

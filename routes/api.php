@@ -47,6 +47,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::middleware('quyen:SINH_VIEN')->group(function () {
         Route::get('/private/v1/student/dashboard', [\App\Http\Controllers\SinhVien\TrangChuController::class, 'layThongTinTrangChu']);
         Route::get('/private/v1/student/companies', [\App\Http\Controllers\SinhVien\ThucTapController::class, 'layDanhSachCongTy']);
+        Route::get('/private/v1/student/companies/lookup-tax', [\App\Http\Controllers\SinhVien\ThucTapController::class, 'traCuuMaSoThue']);
         Route::post('/private/v1/student/internships/declare', [\App\Http\Controllers\SinhVien\ThucTapController::class, 'khaiBaoThucTap']);
         Route::get('/private/v1/student/internships/my-request', [\App\Http\Controllers\SinhVien\ThucTapController::class, 'xemYeuCauCuaToi']);
         Route::get('/private/v1/student/thesis/my-registration', [\App\Http\Controllers\SinhVien\DeTaiController::class, 'xemDangKyCuaToi']);
@@ -171,6 +172,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('/private/v1/classes/{id}', [LopController::class, 'xoa']);
 
         // 6. Chức năng quản lý doanh nghiệp & thực tập (Companies & Internships)
+        Route::get('/private/v1/companies/lookup-tax', [CongTyController::class, 'traCuuMaSoThue']);
         Route::get('/private/v1/companies', [CongTyController::class, 'layDanhSach']);
         Route::get('/private/v1/companies/{id}', [CongTyController::class, 'xemChiTiet']);
         Route::post('/private/v1/companies', [CongTyController::class, 'themMoi']);

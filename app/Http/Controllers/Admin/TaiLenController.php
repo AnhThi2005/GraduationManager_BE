@@ -25,7 +25,7 @@ class TaiLenController extends Controller
         // Lưu file vào thư mục public/uploads
         $file->move(public_path('uploads'), $filename);
         
-        $fileUrl = asset('uploads/' . $filename);
+        $fileUrl = rtrim(request()->schemeAndHttpHost(), '/') . '/uploads/' . $filename;
 
         return response()->json([
             'cloudFrontUrl' => $fileUrl,

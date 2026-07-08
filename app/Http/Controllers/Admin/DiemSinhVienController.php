@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Exceptions\GradingValidationException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\QuanLyDiem\CapNhatDiemSinhVienRequest;
 use App\Services\DiemSinhVienService;
@@ -72,7 +73,14 @@ class DiemSinhVienController extends Controller
     public function capNhat(CapNhatDiemSinhVienRequest $request, $id)
     {
 
-        $score = $this->diemSinhVienService->updateScore($id, $request->all());
+        try {
+            $score = $this->diemSinhVienService->updateScore($id, $request->all());
+        } catch (GradingValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], $e->getStatusCode());
+        }
 
         if (! $score) {
             return response()->json([
