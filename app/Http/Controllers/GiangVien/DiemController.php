@@ -139,6 +139,17 @@ class DiemController extends Controller
                         ->where('giang_vien_id', $teacherId)
                         ->first();
 
+                    $dbc = DB::table('diembaocao')->where('sinh_vien_id', $m->sinh_vien_id)->where('nhom_id', $g->nhom_id)->first();
+                    $report = null;
+                    $isAdvisor = ($g->deTai && $g->deTai->giang_vien_id == $teacherId);
+                    $isReviewer = ($reviewerId == $teacherId);
+
+                    if ($isAdvisor) {
+                        $report = $dbc ? ($dbc->diem_gvhd !== null ? floatval($dbc->diem_gvhd) : null) : null;
+                    } elseif ($isReviewer) {
+                        $report = $dbc ? ($dbc->diem_gvpb !== null ? floatval($dbc->diem_gvpb) : null) : null;
+                    }
+
                     $scoreRows[] = [
                         'id' => (string) $m->ma_so_sinh_vien,
                         'name' => $m->ho_ten,
@@ -147,20 +158,50 @@ class DiemController extends Controller
                         'member' => $myScore ? (string) $myScore->diem_bao_ve : '',
                         'advisor' => $myScore ? (string) $myScore->diem_bao_ve : '',
                         'reviewer' => $myScore ? (string) $myScore->diem_bao_ve : '',
+                        'isAdvisor' => $isAdvisor,
+                        'isReviewer' => $isReviewer,
+                        'hasReport' => $report !== null,
+                        'hasDefense' => $myScore !== null,
                     ];
                 }
             }
 
             $done = 0;
             foreach ($hd->nhoms as $g) {
+                $lich = DB::table('lichbaove')->where('nhom_id', $g->nhom_id)->first();
+                $reviewerId = null;
+                if ($lich && $lich->ghi_chu) {
+                    $decoded = json_decode($lich->ghi_chu, true);
+                    $reviewerId = $decoded['reviewer_id'] ?? null;
+                }
+                $isAdvisor = ($g->deTai && $g->deTai->giang_vien_id == $teacherId);
+                $isReviewer = ($reviewerId == $teacherId);
+
                 $hasAllScores = true;
                 foreach ($g->members as $m) {
-                    $exists = DB::table('diemhoidongbaove')
+                    $defenseExists = DB::table('diemhoidongbaove')
                         ->where('sinh_vien_id', $m->sinh_vien_id)
                         ->where('nhom_id', $g->nhom_id)
                         ->where('giang_vien_id', $teacherId)
                         ->exists();
-                    if (! $exists) {
+
+                    if ($isAdvisor) {
+                        $reportExists = DB::table('diembaocao')
+                            ->where('sinh_vien_id', $m->sinh_vien_id)
+                            ->where('nhom_id', $g->nhom_id)
+                            ->whereNotNull('diem_gvhd')
+                            ->exists();
+                    } elseif ($isReviewer) {
+                        $reportExists = DB::table('diembaocao')
+                            ->where('sinh_vien_id', $m->sinh_vien_id)
+                            ->where('nhom_id', $g->nhom_id)
+                            ->whereNotNull('diem_gvpb')
+                            ->exists();
+                    } else {
+                        $reportExists = true;
+                    }
+
+                    if (!$defenseExists || !$reportExists) {
                         $hasAllScores = false;
                         break;
                     }
@@ -236,7 +277,12 @@ class DiemController extends Controller
         $gvhdId = $deTai ? $deTai->giang_vien_id : null;
 
         $gvpbId = null;
-        if ($nhom && $nhom->hoi_dong_id) {
+        $lich = DB::table('lichbaove')->where('nhom_id', $groupId)->first();
+        if ($lich && $lich->ghi_chu) {
+            $decoded = json_decode($lich->ghi_chu, true);
+            $gvpbId = $decoded['reviewer_id'] ?? null;
+        }
+        if (!$gvpbId && $nhom && $nhom->hoi_dong_id) {
             $thanhVienPb = DB::table('thanhvienhoidong')
                 ->where('hoi_dong_id', $nhom->hoi_dong_id)
                 ->where('vai_tro', 'PHAN_BIEN')
@@ -355,6 +401,11 @@ class DiemController extends Controller
                 'diemTongKet' => $diemTongKet,
                 'diemBaoVe' => $diemBaoVe,
                 'lecturerScores' => $lecturerScores,
+                'isAdvisor' => ($teacherId == $gvhdId),
+                'isReviewer' => ($teacherId == $gvpbId),
+                'hasReport' => ($teacherId == $gvhdId ? $diemGvhd !== null : ($teacherId == $gvpbId ? $diemGvpb !== null : false)),
+                'hasDefense' => ($hdbv !== null),
+                'member' => $hdbv ? (string) $hdbv->diem_bao_ve : '',
             ];
         }
 
