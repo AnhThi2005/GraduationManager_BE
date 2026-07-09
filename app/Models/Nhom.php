@@ -10,7 +10,9 @@ class Nhom extends Model
     use SoftDeletes;
 
     protected $table = 'nhomsvda';
+
     protected $primaryKey = 'nhom_id';
+
     public $timestamps = false;
 
     protected $fillable = [
@@ -22,7 +24,7 @@ class Nhom extends Model
         'ngay_dang_ky',
         'ket_qua_huong_dan',
         'nhan_xet_phan_bien',
-        'ket_qua_phan_bien'
+        'ket_qua_phan_bien',
     ];
 
     public function deTai()

@@ -2,12 +2,13 @@
 
 namespace App\Http\Controllers\Admin;
 
-use App\Http\Controllers\Controller;
 use App\Http\Controllers\Concerns\KiemTraTrangThaiDot;
-use Illuminate\Http\Request;
+use App\Http\Controllers\Controller;
 use App\Models\Dot;
 use App\Models\Nhom;
 use App\Models\SinhVien;
+use App\Services\RealtimeService;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -30,37 +31,37 @@ class NhomController extends Controller
             'results' => [
                 'objects' => [
                     'rows' => $rows,
-                    'total' => count($rows)
-                ]
-            ]
+                    'total' => count($rows),
+                ],
+            ],
         ], 200);
     }
 
     public function xemChiTiet(Request $request, $id)
     {
         $g = Nhom::with(['deTai.giangVien', 'members.lop', 'dot'])->find($id);
-        if (!$g) {
+        if (! $g) {
             return response()->json([
                 'success' => false,
-                'message' => 'Không tìm thấy nhóm này!'
+                'message' => 'Không tìm thấy nhóm này!',
             ], 404);
         }
 
         return response()->json([
             'code' => 200,
             'results' => [
-                'object' => $this->transformGroup($g)
-            ]
+                'object' => $this->transformGroup($g),
+            ],
         ], 200);
     }
 
     public function capNhat(Request $request, $id)
     {
         $g = Nhom::with(['deTai.giangVien', 'members.lop', 'dot'])->find($id);
-        if (!$g) {
+        if (! $g) {
             return response()->json([
                 'success' => false,
-                'message' => 'Không tìm thấy nhóm!'
+                'message' => 'Không tìm thấy nhóm!',
             ], 404);
         }
 
@@ -82,7 +83,7 @@ class NhomController extends Controller
                 }
                 $g->trang_thai_duyet = 'DA_DUYET';
                 $dbStatus = 'DA_DUYET';
-                
+
                 $dangkydetai = DB::table('dangkydetai')->where('nhom_id', $id)->first();
                 if ($dangkydetai) {
                     $g->de_tai_id = $dangkydetai->de_tai_id;
@@ -102,7 +103,7 @@ class NhomController extends Controller
         // 3. Cập nhật đề tài nếu có truyền lên (gán đề tài)
         if (isset($body['de_tai_id'])) {
             $g->de_tai_id = $body['de_tai_id'];
-            
+
             $topicStatus = null;
             if ($g->de_tai_id) {
                 $dt = DB::table('detai')->where('de_tai_id', $g->de_tai_id)->first();
@@ -120,7 +121,7 @@ class NhomController extends Controller
             } else {
                 $g->trang_thai_duyet = 'CHUA_DANG_KY';
             }
-            
+
             $g->save();
 
             DB::table('dangkydetai')->updateOrInsert(
@@ -128,7 +129,7 @@ class NhomController extends Controller
                 [
                     'de_tai_id' => $body['de_tai_id'],
                     'trang_thai_duyet' => $g->trang_thai_duyet,
-                    'ngay_dang_ky' => date('Y-m-d H:i:s')
+                    'ngay_dang_ky' => date('Y-m-d H:i:s'),
                 ]
             );
         }
@@ -151,7 +152,7 @@ class NhomController extends Controller
                         'nhom_id' => $id,
                         'sinh_vien_id' => $student->sinh_vien_id,
                         'la_truong_nhom' => $idx === 0 ? 1 : 0,
-                        'dieu_kien_lam_do_an' => 'DAT'
+                        'dieu_kien_lam_do_an' => 'DAT',
                     ]);
                 }
             }
@@ -162,26 +163,26 @@ class NhomController extends Controller
 
         // Lưu vết quá trình cập nhật nhóm (Audit Log)
         Log::info(sprintf(
-            "AUDIT LOG: [UPDATE GROUP] Group ID: %s, Old Status: %s, New Status: %s, Old Members: %s, New Members: %s, IP: %s",
+            'AUDIT LOG: [UPDATE GROUP] Group ID: %s, Old Status: %s, New Status: %s, Old Members: %s, New Members: %s, IP: %s',
             $id,
             $oldGroup['status'],
             $newGroup['status'],
-            json_encode(collect($oldGroup['members'])->map(fn($m) => "{$m['code']}-{$m['name']}")->all(), JSON_UNESCAPED_UNICODE),
-            json_encode(collect($newGroup['members'])->map(fn($m) => "{$m['code']}-{$m['name']}")->all(), JSON_UNESCAPED_UNICODE),
+            json_encode(collect($oldGroup['members'])->map(fn ($m) => "{$m['code']}-{$m['name']}")->all(), JSON_UNESCAPED_UNICODE),
+            json_encode(collect($newGroup['members'])->map(fn ($m) => "{$m['code']}-{$m['name']}")->all(), JSON_UNESCAPED_UNICODE),
             $request->ip()
         ));
 
-        \App\Services\RealtimeService::broadcast('slot_updated', [
+        RealtimeService::broadcast('slot_updated', [
             'type' => 'group_updated',
             'groupId' => $id,
-            'payload' => $newGroup
+            'payload' => $newGroup,
         ]);
 
         return response()->json([
             'code' => 200,
             'results' => [
-                'object' => $newGroup
-            ]
+                'object' => $newGroup,
+            ],
         ], 200);
     }
 
@@ -189,17 +190,17 @@ class NhomController extends Controller
     {
         $body = $request->all();
 
-        $activePeriod = \App\Models\Dot::orderBy('dot_id', 'desc')->first();
+        $activePeriod = Dot::orderBy('dot_id', 'desc')->first();
         $dotId = $body['dot_id'] ?? ($activePeriod ? $activePeriod->dot_id : 1);
 
         if ($resp = $this->chanNeuDotDaDong(Dot::find($dotId))) {
             return $resp;
         }
 
-        $g = new Nhom();
+        $g = new Nhom;
         $g->dot_id = $dotId;
         $g->de_tai_id = $body['de_tai_id'] ?? null;
-        
+
         $topicStatus = null;
         if ($g->de_tai_id) {
             $dt = DB::table('detai')->where('de_tai_id', $g->de_tai_id)->first();
@@ -228,51 +229,51 @@ class NhomController extends Controller
                 'de_tai_id' => $g->de_tai_id,
                 'trang_thai_duyet' => $g->trang_thai_duyet,
                 'ngay_dang_ky' => date('Y-m-d H:i:s'),
-                'ly_do_tu_choi' => null
+                'ly_do_tu_choi' => null,
             ]);
         }
-        
+
         if (isset($body['members']) && is_array($body['members'])) {
             foreach ($body['members'] as $idx => $m) {
                 $studentId = $m['id'] ?? $m;
                 $student = SinhVien::where('sinh_vien_id', $studentId)
                     ->orWhere('ma_so_sinh_vien', $studentId)
                     ->first();
-                    
+
                 if ($student) {
                     DB::table('thanhviennhom')->insert([
                         'nhom_id' => $g->nhom_id,
                         'sinh_vien_id' => $student->sinh_vien_id,
                         'la_truong_nhom' => $idx === 0 ? 1 : 0,
-                        'dieu_kien_lam_do_an' => 'DAT'
+                        'dieu_kien_lam_do_an' => 'DAT',
                     ]);
                 }
             }
         }
-        
+
         $newGroup = Nhom::with(['deTai.giangVien', 'members.lop', 'dot'])->find($g->nhom_id);
-        
-        \App\Services\RealtimeService::broadcast('slot_updated', [
+
+        RealtimeService::broadcast('slot_updated', [
             'type' => 'group_created',
             'groupId' => $g->nhom_id,
-            'payload' => $this->transformGroup($newGroup)
+            'payload' => $this->transformGroup($newGroup),
         ]);
-        
+
         return response()->json([
             'code' => 200,
             'results' => [
-                'object' => $this->transformGroup($newGroup)
-            ]
+                'object' => $this->transformGroup($newGroup),
+            ],
         ], 200);
     }
 
     public function xoa(Request $request, $id)
     {
         $g = Nhom::with(['deTai.giangVien', 'members.lop', 'dot'])->find($id);
-        if (!$g) {
+        if (! $g) {
             return response()->json([
                 'success' => false,
-                'message' => 'Không tìm thấy nhóm!'
+                'message' => 'Không tìm thấy nhóm!',
             ], 404);
         }
 
@@ -289,7 +290,7 @@ class NhomController extends Controller
             $groupData['code'],
             $groupData['title'],
             $groupData['supervisor'],
-            json_encode(collect($groupData['members'])->map(fn($m) => "{$m['code']}-{$m['name']}")->all(), JSON_UNESCAPED_UNICODE),
+            json_encode(collect($groupData['members'])->map(fn ($m) => "{$m['code']}-{$m['name']}")->all(), JSON_UNESCAPED_UNICODE),
             $request->ip()
         ));
 
@@ -297,24 +298,24 @@ class NhomController extends Controller
         DB::table('dangkydetai')->where('nhom_id', $id)->delete();
         $g->delete();
 
-        \App\Services\RealtimeService::broadcast('slot_updated', [
+        RealtimeService::broadcast('slot_updated', [
             'type' => 'group_deleted',
-            'groupId' => $id
+            'groupId' => $id,
         ]);
 
         return response()->json([
             'success' => true,
-            'message' => 'Xóa nhóm thành công!'
+            'message' => 'Xóa nhóm thành công!',
         ], 200);
     }
 
     public function approveGroup(Request $request, $id)
     {
         $g = Nhom::find($id);
-        if (!$g) {
+        if (! $g) {
             return response()->json([
                 'success' => false,
-                'message' => 'Không tìm thấy nhóm!'
+                'message' => 'Không tìm thấy nhóm!',
             ], 404);
         }
 
@@ -337,27 +338,27 @@ class NhomController extends Controller
 
         $updated = Nhom::with(['deTai.giangVien', 'members.lop', 'dot'])->find($id);
 
-        \App\Services\RealtimeService::broadcast('slot_updated', [
+        RealtimeService::broadcast('slot_updated', [
             'type' => 'group_approved',
             'groupId' => $id,
-            'payload' => $this->transformGroup($updated)
+            'payload' => $this->transformGroup($updated),
         ]);
 
         return response()->json([
             'code' => 200,
             'results' => [
-                'object' => $this->transformGroup($updated)
-            ]
+                'object' => $this->transformGroup($updated),
+            ],
         ], 200);
     }
 
     public function rejectGroup(Request $request, $id)
     {
         $g = Nhom::find($id);
-        if (!$g) {
+        if (! $g) {
             return response()->json([
                 'success' => false,
-                'message' => 'Không tìm thấy nhóm!'
+                'message' => 'Không tìm thấy nhóm!',
             ], 404);
         }
 
@@ -371,17 +372,17 @@ class NhomController extends Controller
 
         $updated = Nhom::with(['deTai.giangVien', 'members.lop', 'dot'])->find($id);
 
-        \App\Services\RealtimeService::broadcast('slot_updated', [
+        RealtimeService::broadcast('slot_updated', [
             'type' => 'group_rejected',
             'groupId' => $id,
-            'payload' => $this->transformGroup($updated)
+            'payload' => $this->transformGroup($updated),
         ]);
 
         return response()->json([
             'code' => 200,
             'results' => [
-                'object' => $this->transformGroup($updated)
-            ]
+                'object' => $this->transformGroup($updated),
+            ],
         ], 200);
     }
 
@@ -390,16 +391,17 @@ class NhomController extends Controller
         $hasIneligible = false;
         $members = $g->members->map(function ($m) use (&$hasIneligible) {
             $eligible = ($m->pivot->dieu_kien_lam_do_an ?? 'DAT') === 'DAT';
-            if (!$eligible) {
+            if (! $eligible) {
                 $hasIneligible = true;
             }
+
             return [
                 'id' => (string) $m->sinh_vien_id,
                 'name' => $m->ho_ten,
                 'code' => $m->ma_so_sinh_vien,
                 'class' => $m->lop ? $m->lop->ten_lop : '',
                 'eligible' => $eligible,
-                'reason' => $eligible ? '' : 'Chưa đủ điều kiện làm đồ án'
+                'reason' => $eligible ? '' : 'Chưa đủ điều kiện làm đồ án',
             ];
         })->all();
 
@@ -418,7 +420,7 @@ class NhomController extends Controller
 
         return [
             'id' => (string) $g->nhom_id,
-            'code' => 'NH' . str_pad($g->nhom_id, 2, '0', STR_PAD_LEFT),
+            'code' => 'NH'.str_pad($g->nhom_id, 2, '0', STR_PAD_LEFT),
             'title' => $g->deTai ? $g->deTai->ten_de_tai : '—',
             'topicDirection' => $g->deTai ? $g->deTai->huong_de_tai : null,
             'supervisor' => ($g->deTai && $g->deTai->giangVien) ? $g->deTai->giangVien->ho_ten : '—',

@@ -7,8 +7,9 @@ use Illuminate\Database\Eloquent\Model;
 class BaoCaoTienDo extends Model
 {
     protected $table = 'baocaotiendo';
+
     protected $primaryKey = 'bao_cao_id';
-    
+
     public $timestamps = false;
 
     protected $fillable = [
@@ -21,7 +22,7 @@ class BaoCaoTienDo extends Model
         'trang_thai',
         'loai_bao_cao',
         'thoi_gian_nop',
-        'thoi_gian_huy'
+        'thoi_gian_huy',
     ];
 
     public function sinhVien()

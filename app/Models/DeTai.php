@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class DeTai extends Model
 {
     protected $table = 'detai';
+
     protected $primaryKey = 'de_tai_id';
 
     public $timestamps = false;
@@ -20,7 +21,7 @@ class DeTai extends Model
         'so_luong_sv_toi_da',
         'huong_de_tai',
         'trang_thai',
-        'ly_do_tu_choi'
+        'ly_do_tu_choi',
     ];
 
     public function giangVien()

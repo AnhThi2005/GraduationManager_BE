@@ -3,11 +3,12 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
 use App\Services\XacThucService;
-use Laravel\Sanctum\PersonalAccessToken;
-use Illuminate\Support\Facades\Http;
 use Carbon\Carbon;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Http;
+use Laravel\Sanctum\PersonalAccessToken;
+
 // use OpenApi\Attributes as OA;
 
 class MockAuthController extends Controller
@@ -25,17 +26,17 @@ class MockAuthController extends Controller
 
         $ketQua = $this->xacThucService->xuLyDangNhapBangEmail($request->email);
 
-        if (!$ketQua) {
+        if (! $ketQua) {
             return response()->json([
                 'success' => false,
-                'message' => 'Tài khoản Email không tồn tại trong hệ thống dữ liệu mẫu!'
+                'message' => 'Tài khoản Email không tồn tại trong hệ thống dữ liệu mẫu!',
             ], 404);
         }
 
         return response()->json([
             'success' => true,
             'message' => 'Đăng nhập giả lập hệ thống thành công!',
-            'data' => $ketQua
+            'data' => $ketQua,
         ], 200);
     }
 
@@ -51,45 +52,45 @@ class MockAuthController extends Controller
             'id_token' => $request->input('credential'),
         ]);
 
-        if (!$verifyRes->successful()) {
+        if (! $verifyRes->successful()) {
             return response()->json([
                 'success' => false,
-                'message' => 'Token Google không hợp lệ hoặc đã hết hạn.'
+                'message' => 'Token Google không hợp lệ hoặc đã hết hạn.',
             ], 401);
         }
 
         $payload = $verifyRes->json();
 
         $expectedClientId = config('services.google.client_id');
-        if (!$expectedClientId || ($payload['aud'] ?? null) !== $expectedClientId) {
+        if (! $expectedClientId || ($payload['aud'] ?? null) !== $expectedClientId) {
             return response()->json([
                 'success' => false,
-                'message' => 'Token Google không hợp lệ (sai ứng dụng).'
+                'message' => 'Token Google không hợp lệ (sai ứng dụng).',
             ], 401);
         }
 
         $email = $payload['email'] ?? null;
         $googleId = $payload['sub'] ?? null;
-        if (!$email || !$googleId || ($payload['email_verified'] ?? 'false') !== 'true') {
+        if (! $email || ! $googleId || ($payload['email_verified'] ?? 'false') !== 'true') {
             return response()->json([
                 'success' => false,
-                'message' => 'Tài khoản Google chưa xác minh email.'
+                'message' => 'Tài khoản Google chưa xác minh email.',
             ], 401);
         }
 
         $ketQua = $this->xacThucService->xuLyDangNhapBangGoogle($googleId, $email);
 
-        if (!$ketQua) {
+        if (! $ketQua) {
             return response()->json([
                 'success' => false,
-                'message' => "Tài khoản Google ({$email}) chưa được đăng ký trong hệ thống."
+                'message' => "Tài khoản Google ({$email}) chưa được đăng ký trong hệ thống.",
             ], 404);
         }
 
         return response()->json([
             'success' => true,
             'message' => 'Đăng nhập bằng Google thành công!',
-            'data' => $ketQua
+            'data' => $ketQua,
         ], 200);
     }
 
@@ -101,10 +102,10 @@ class MockAuthController extends Controller
         $tokenModel = PersonalAccessToken::findToken($request->refresh_token);
 
         // Kiểm tra token tồn tại, có quyền 'issue-access-token' và chưa hết hạn
-        if (!$tokenModel || !$tokenModel->can('issue-access-token') || ($tokenModel->expires_at && $tokenModel->expires_at->isPast())) {
+        if (! $tokenModel || ! $tokenModel->can('issue-access-token') || ($tokenModel->expires_at && $tokenModel->expires_at->isPast())) {
             return response()->json([
                 'success' => false,
-                'message' => 'Refresh Token không hợp lệ hoặc đã hết hạn. Vui lòng đăng nhập lại!'
+                'message' => 'Refresh Token không hợp lệ hoặc đã hết hạn. Vui lòng đăng nhập lại!',
             ], 401);
         }
 
@@ -118,31 +119,31 @@ class MockAuthController extends Controller
             'success' => true,
             'message' => 'Làm mới phiên làm việc thành công!',
             'data' => [
-                'access_token' => $newAccessToken->plainTextToken
-            ]
+                'access_token' => $newAccessToken->plainTextToken,
+            ],
         ], 200);
     }
-    
+
     public function dangXuat(Request $request)
     {
         // Kiểm tra xem có user nào ứng với token truyền lên không
-    if (!$request->user()) {
+        if (! $request->user()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Bạn chưa đăng nhập hoặc Token không hợp lệ!',
+            ], 401); // Trả về 401 thay vì để sập lỗi 500
+        }
+
+        $token = $request->user()->currentAccessToken();
+        if ($token && method_exists($token, 'delete')) {
+            $token->delete();
+        } else {
+            $request->user()->tokens()->delete();
+        }
+
         return response()->json([
-            'success' => false,
-            'message' => 'Bạn chưa đăng nhập hoặc Token không hợp lệ!'
-        ], 401); // Trả về 401 thay vì để sập lỗi 500
-    }
-
-    $token = $request->user()->currentAccessToken();
-    if ($token && method_exists($token, 'delete')) {
-        $token->delete();
-    } else {
-        $request->user()->tokens()->delete();
-    }
-
-    return response()->json([
-        'success' => true,
-        'message' => 'Đăng xuất thành công!'
-    ], 200);
+            'success' => true,
+            'message' => 'Đăng xuất thành công!',
+        ], 200);
     }
 }

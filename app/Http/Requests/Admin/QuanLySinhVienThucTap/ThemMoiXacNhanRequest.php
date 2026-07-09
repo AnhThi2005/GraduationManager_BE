@@ -14,18 +14,18 @@ class ThemMoiXacNhanRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'studentId'   => 'required|string',
+            'studentId' => 'required|string',
             'companyName' => 'required|string',
-            'taxId'       => 'required|string',
+            'taxId' => 'required|string',
         ];
     }
 
     public function messages(): array
     {
         return [
-            'studentId.required'   => 'Mã số sinh viên không được để trống.',
+            'studentId.required' => 'Mã số sinh viên không được để trống.',
             'companyName.required' => 'Tên doanh nghiệp không được để trống.',
-            'taxId.required'       => 'Mã số thuế không được để trống.',
+            'taxId.required' => 'Mã số thuế không được để trống.',
         ];
     }
 }

@@ -8,8 +8,11 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 class HoiDong extends Model
 {
     use SoftDeletes;
+
     protected $table = 'hoidong';
+
     protected $primaryKey = 'hoi_dong_id';
+
     public $timestamps = false;
 
     protected $fillable = [
@@ -18,7 +21,7 @@ class HoiDong extends Model
         'ngay_bao_ve',
         'gio_bao_ve',
         'phong_bao_ve',
-        'trang_thai'
+        'trang_thai',
     ];
 
     public function dot()

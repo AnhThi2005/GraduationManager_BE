@@ -2,14 +2,16 @@
 
 namespace App\Http\Controllers\Admin;
 
-use App\Http\Controllers\Controller;
 use App\Http\Controllers\Concerns\KiemTraTrangThaiDot;
-use Illuminate\Http\Request;
-use App\Models\SinhVien;
-use App\Models\GiangVien;
-use App\Models\PhanCongHdtt;
+use App\Http\Controllers\Controller;
 use App\Models\Dot;
+use App\Models\GiangVien;
 use App\Models\Nhom;
+use App\Models\PhanCongHdtt;
+use App\Models\SinhVien;
+use App\Services\RealtimeService;
+use Carbon\Carbon;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class PhanCongHdttController extends Controller
@@ -50,6 +52,7 @@ class PhanCongHdttController extends Controller
             // Sắp xếp: sinh viên vừa được phân công gần đây nhất lên đầu danh sách
             $students = $students->sortByDesc(function ($sv) use ($assignments) {
                 $assign = $assignments->get($sv->sinh_vien_id);
+
                 return $assign && $assign->ngay_phan_cong ? $assign->ngay_phan_cong->timestamp : 0;
             })->values();
 
@@ -67,7 +70,7 @@ class PhanCongHdttController extends Controller
 
                 $topic = '—';
                 if ($internshipRegs->has($sv->sinh_vien_id)) {
-                    $topic = 'Thực tập tại ' . $internshipRegs->get($sv->sinh_vien_id)->ten_cong_ty;
+                    $topic = 'Thực tập tại '.$internshipRegs->get($sv->sinh_vien_id)->ten_cong_ty;
                 }
 
                 return [
@@ -79,7 +82,7 @@ class PhanCongHdttController extends Controller
                     'supervisor' => $assign ? $assign->giangVien->ho_ten : null,
                     'assignedAt' => $assign && $assign->ngay_phan_cong ? $assign->ngay_phan_cong->format('d/m/Y H:i') : null,
                     'published' => $assign ? (bool) $assign->da_cong_bo : false,
-                    'status' => $assign ? 'assigned' : 'unassigned'
+                    'status' => $assign ? 'assigned' : 'unassigned',
                 ];
             })->all();
 
@@ -108,11 +111,11 @@ class PhanCongHdttController extends Controller
             $query = SinhVien::query()->with('lop');
 
             if ($lopIdsInPeriod->isNotEmpty() || $studentIds->isNotEmpty()) {
-                $query->where(function($q) use ($lopIdsInPeriod, $studentIds, $studentIdsInOtherPeriods) {
+                $query->where(function ($q) use ($lopIdsInPeriod, $studentIds, $studentIdsInOtherPeriods) {
                     $q->whereIn('sinh_vien_id', $studentIds);
-                    
+
                     if ($lopIdsInPeriod->isNotEmpty()) {
-                        $q->orWhere(function($subQ) use ($lopIdsInPeriod, $studentIdsInOtherPeriods) {
+                        $q->orWhere(function ($subQ) use ($lopIdsInPeriod, $studentIdsInOtherPeriods) {
                             $subQ->whereIn('lop_id', $lopIdsInPeriod);
                             if ($studentIdsInOtherPeriods->isNotEmpty()) {
                                 $subQ->whereNotIn('sinh_vien_id', $studentIdsInOtherPeriods);
@@ -144,7 +147,7 @@ class PhanCongHdttController extends Controller
                 ->get()
                 ->groupBy('nhom_id');
 
-             $rows = $students->map(function ($sv) use ($studentGroupMap, $groupRegistrations) {
+            $rows = $students->map(function ($sv) use ($studentGroupMap, $groupRegistrations) {
                 $groupId = null;
                 $groupCode = null;
                 $groupStatus = 'no_group';
@@ -158,12 +161,12 @@ class PhanCongHdttController extends Controller
                 if (isset($studentGroupMap[$sv->sinh_vien_id])) {
                     $group = $studentGroupMap[$sv->sinh_vien_id];
                     $groupId = (string) $group->nhom_id;
-                    $groupCode = 'NH' . str_pad($group->nhom_id, 2, '0', STR_PAD_LEFT);
+                    $groupCode = 'NH'.str_pad($group->nhom_id, 2, '0', STR_PAD_LEFT);
 
                     // Check eligibility of members
                     foreach ($group->members as $m) {
                         $eligible = ($m->pivot->dieu_kien_lam_do_an ?? 'DAT') === 'DAT';
-                        if (!$eligible) {
+                        if (! $eligible) {
                             $hasIneligibleMember = true;
                         }
                     }
@@ -172,7 +175,7 @@ class PhanCongHdttController extends Controller
                     if ($group->de_tai_id) {
                         $hasTopic = true;
                         $topicStatus = 'approved';
-                        $topic = $group->deTai ? $group->deTai->ten_de_tai : 'Nhóm đề tài #' . $group->nhom_id;
+                        $topic = $group->deTai ? $group->deTai->ten_de_tai : 'Nhóm đề tài #'.$group->nhom_id;
                         if ($group->deTai && $group->deTai->giangVien) {
                             $supervisor = $group->deTai->giangVien->ho_ten;
 
@@ -181,8 +184,8 @@ class PhanCongHdttController extends Controller
                             $approvedReg = $regs->first(function ($r) use ($group) {
                                 return $r->de_tai_id == $group->de_tai_id && $r->trang_thai_duyet === 'DA_DUYET';
                             });
-                            if ($approvedReg && !empty($approvedReg->ngay_dang_ky)) {
-                                $assignedAtDate = \Carbon\Carbon::parse($approvedReg->ngay_dang_ky)->format('d/m/Y H:i');
+                            if ($approvedReg && ! empty($approvedReg->ngay_dang_ky)) {
+                                $assignedAtDate = Carbon::parse($approvedReg->ngay_dang_ky)->format('d/m/Y H:i');
                             }
                         }
                     } else {
@@ -201,7 +204,7 @@ class PhanCongHdttController extends Controller
                                     $hasPending = true;
                                 }
                             }
-                            
+
                             if ($allRejected) {
                                 $topicStatus = 'all_rejected';
                                 $topic = 'Đăng ký đề tài bị từ chối';
@@ -217,7 +220,7 @@ class PhanCongHdttController extends Controller
                     // Determine groupStatus
                     if ($hasIneligibleMember) {
                         $groupStatus = 'ineligible_member';
-                    } elseif (!$hasTopic) {
+                    } elseif (! $hasTopic) {
                         if ($topicStatus === 'all_rejected') {
                             $groupStatus = 'topic_rejected';
                         } elseif ($topicStatus === 'pending_registration') {
@@ -239,7 +242,7 @@ class PhanCongHdttController extends Controller
                     'supervisor' => $supervisor,
                     'assignedAt' => $assignedAtDate,
                     'status' => $supervisor ? 'assigned' : 'unassigned',
-                    
+
                     // Group details
                     'groupId' => $groupId,
                     'groupCode' => $groupCode,
@@ -256,9 +259,9 @@ class PhanCongHdttController extends Controller
             'results' => [
                 'objects' => [
                     'rows' => $rows,
-                    'total' => count($rows)
-                ]
-            ]
+                    'total' => count($rows),
+                ],
+            ],
         ], 200);
     }
 
@@ -269,10 +272,10 @@ class PhanCongHdttController extends Controller
             ->orWhere('sinh_vien_id', $id)
             ->first();
 
-        if (!$sv) {
+        if (! $sv) {
             return response()->json([
                 'success' => false,
-                'message' => 'Không tìm thấy sinh viên!'
+                'message' => 'Không tìm thấy sinh viên!',
             ], 404);
         }
 
@@ -287,7 +290,7 @@ class PhanCongHdttController extends Controller
         if ($dot && $dot->loai_dot !== 'TTTN') {
             return response()->json([
                 'success' => false,
-                'message' => 'Thao tác phân công hướng dẫn chỉ áp dụng cho đợt Thực tập tốt nghiệp (TTTN)!'
+                'message' => 'Thao tác phân công hướng dẫn chỉ áp dụng cho đợt Thực tập tốt nghiệp (TTTN)!',
             ], 400);
         }
 
@@ -308,9 +311,9 @@ class PhanCongHdttController extends Controller
                     'supervisor' => $assign ? $assign->giangVien->ho_ten : null,
                     'assignedAt' => $assign && $assign->ngay_phan_cong ? $assign->ngay_phan_cong->format('d/m/Y H:i') : null,
                     'published' => $assign ? (bool) $assign->da_cong_bo : false,
-                    'status' => $assign ? 'assigned' : 'unassigned'
-                ]
-            ]
+                    'status' => $assign ? 'assigned' : 'unassigned',
+                ],
+            ],
         ], 200);
     }
 
@@ -326,10 +329,10 @@ class PhanCongHdttController extends Controller
             ->orWhere('sinh_vien_id', $id)
             ->first();
 
-        if (!$sv) {
+        if (! $sv) {
             return response()->json([
                 'success' => false,
-                'message' => 'Không tìm thấy sinh viên để phân công!'
+                'message' => 'Không tìm thấy sinh viên để phân công!',
             ], 404);
         }
 
@@ -345,7 +348,7 @@ class PhanCongHdttController extends Controller
         if ($dot && $dot->loai_dot !== 'TTTN') {
             return response()->json([
                 'success' => false,
-                'message' => 'Thao tác phân công hướng dẫn chỉ áp dụng cho đợt Thực tập tốt nghiệp (TTTN)!'
+                'message' => 'Thao tác phân công hướng dẫn chỉ áp dụng cho đợt Thực tập tốt nghiệp (TTTN)!',
             ], 400);
         }
 
@@ -362,10 +365,10 @@ class PhanCongHdttController extends Controller
                 ->delete();
         } else {
             $gv = GiangVien::where('ho_ten', $supervisorName)->first();
-            if (!$gv) {
+            if (! $gv) {
                 return response()->json([
                     'success' => false,
-                    'message' => "Không tìm thấy giảng viên tên {$supervisorName}!"
+                    'message' => "Không tìm thấy giảng viên tên {$supervisorName}!",
                 ], 400);
             }
 
@@ -379,7 +382,7 @@ class PhanCongHdttController extends Controller
             if ($currentCount >= self::MAX_STUDENTS_PER_TEACHER) {
                 return response()->json([
                     'success' => false,
-                    'message' => "Giảng viên {$supervisorName} đã đủ " . self::MAX_STUDENTS_PER_TEACHER . " sinh viên hướng dẫn trong đợt này, vui lòng chọn giảng viên khác!"
+                    'message' => "Giảng viên {$supervisorName} đã đủ ".self::MAX_STUDENTS_PER_TEACHER.' sinh viên hướng dẫn trong đợt này, vui lòng chọn giảng viên khác!',
                 ], 400);
             }
 
@@ -427,9 +430,9 @@ class PhanCongHdttController extends Controller
                     'supervisor' => $assign ? $assign->giangVien->ho_ten : null,
                     'assignedAt' => $assign && $assign->ngay_phan_cong ? $assign->ngay_phan_cong->format('d/m/Y H:i') : null,
                     'published' => $assign ? (bool) $assign->da_cong_bo : false,
-                    'status' => $assign ? 'assigned' : 'unassigned'
-                ]
-            ]
+                    'status' => $assign ? 'assigned' : 'unassigned',
+                ],
+            ],
         ], 200);
     }
 
@@ -442,10 +445,10 @@ class PhanCongHdttController extends Controller
             ->orWhere('sinh_vien_id', $id)
             ->first();
 
-        if (!$sv) {
+        if (! $sv) {
             return response()->json([
                 'success' => false,
-                'message' => 'Không tìm thấy sinh viên!'
+                'message' => 'Không tìm thấy sinh viên!',
             ], 404);
         }
 
@@ -463,16 +466,16 @@ class PhanCongHdttController extends Controller
             ->where('dot_id', $dotId)
             ->delete();
 
-        if (!$deleted) {
+        if (! $deleted) {
             return response()->json([
                 'success' => false,
-                'message' => 'Sinh viên này chưa được phân công giảng viên hướng dẫn!'
+                'message' => 'Sinh viên này chưa được phân công giảng viên hướng dẫn!',
             ], 404);
         }
 
         return response()->json([
             'success' => true,
-            'message' => 'Đã xóa phân công hướng dẫn!'
+            'message' => 'Đã xóa phân công hướng dẫn!',
         ], 200);
     }
 
@@ -497,7 +500,7 @@ class PhanCongHdttController extends Controller
             ->update(['da_cong_bo' => true]);
 
         if ($publishedCount > 0) {
-            \App\Services\RealtimeService::broadcast('notification', [
+            RealtimeService::broadcast('notification', [
                 'title' => 'Phân công hướng dẫn TTTN đã được công bố',
                 'message' => "Đã công bố phân công hướng dẫn cho {$publishedCount} sinh viên.",
                 'type' => 'assignment_published',
@@ -511,8 +514,8 @@ class PhanCongHdttController extends Controller
                 ? "Đã công bố phân công hướng dẫn cho {$publishedCount} sinh viên!"
                 : 'Không có phân công mới nào cần công bố.',
             'results' => [
-                'publishedCount' => $publishedCount
-            ]
+                'publishedCount' => $publishedCount,
+            ],
         ], 200);
     }
 
@@ -545,15 +548,15 @@ class PhanCongHdttController extends Controller
                 'major' => $gv->chuyen_mon ?? 'Phần mềm',
                 'status' => $status,
                 'assignedCount' => $count,
-                'maxSlots' => self::MAX_STUDENTS_PER_TEACHER
+                'maxSlots' => self::MAX_STUDENTS_PER_TEACHER,
             ];
         })->all();
 
         return response()->json([
             'code' => 200,
             'results' => [
-                'objects' => $rows
-            ]
+                'objects' => $rows,
+            ],
         ], 200);
     }
 }

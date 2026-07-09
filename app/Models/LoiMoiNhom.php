@@ -7,15 +7,16 @@ use Illuminate\Database\Eloquent\Model;
 class LoiMoiNhom extends Model
 {
     protected $table = 'loimoinhom';
+
     protected $primaryKey = 'loi_moi_id';
-    
+
     public $timestamps = false;
 
     protected $fillable = [
         'nhom_id',
         'sinh_vien_duoc_moi_id',
         'trang_thai_xac_nhan',
-        'ngay_tao'
+        'ngay_tao',
     ];
 
     public function nhom()

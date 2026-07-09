@@ -15,7 +15,7 @@ class ThemHoiDongRequest extends FormRequest
     {
         return [
             'title' => 'required|string',
-            'room'  => 'required|string',
+            'room' => 'required|string',
         ];
     }
 
@@ -23,9 +23,9 @@ class ThemHoiDongRequest extends FormRequest
     {
         return [
             'title.required' => 'Tên hội đồng không được để trống.',
-            'title.string'   => 'Tên hội đồng phải là chuỗi.',
-            'room.required'  => 'Phòng bảo vệ không được để trống.',
-            'room.string'    => 'Phòng bảo vệ phải là chuỗi.',
+            'title.string' => 'Tên hội đồng phải là chuỗi.',
+            'room.required' => 'Phòng bảo vệ không được để trống.',
+            'room.string' => 'Phòng bảo vệ phải là chuỗi.',
         ];
     }
 }

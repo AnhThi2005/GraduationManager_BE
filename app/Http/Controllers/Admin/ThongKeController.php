@@ -3,8 +3,8 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
 use App\Services\ThongKeService;
+use Illuminate\Http\Request;
 
 class ThongKeController extends Controller
 {
@@ -26,13 +26,13 @@ class ThongKeController extends Controller
             return response()->json([
                 'code' => 200,
                 'results' => [
-                    'object' => $data
-                ]
+                    'object' => $data,
+                ],
             ], 200);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Có lỗi xảy ra khi lấy dữ liệu thống kê: ' . $e->getMessage()
+                'message' => 'Có lỗi xảy ra khi lấy dữ liệu thống kê: '.$e->getMessage(),
             ], 500);
         }
     }

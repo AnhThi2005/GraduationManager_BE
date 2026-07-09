@@ -1,10 +1,10 @@
 <?php
 
 namespace App\Services;
-use App\Models\SinhVien;
-use App\Models\GiangVien;
-use Carbon\Carbon;
 
+use App\Models\GiangVien;
+use App\Models\SinhVien;
+use Carbon\Carbon;
 
 class XacThucService
 {
@@ -12,7 +12,7 @@ class XacThucService
     {
         [$user, $quyen] = $this->timTaiKhoanTheoEmail($email);
 
-        if (!$user) {
+        if (! $user) {
             return null;
         }
 
@@ -39,7 +39,7 @@ class XacThucService
         // Chưa từng đăng nhập Google trước đó -> so khớp theo email, rồi liên kết google_id cho lần sau
         [$user, $quyen] = $this->timTaiKhoanTheoEmail($email);
 
-        if (!$user) {
+        if (! $user) {
             return null;
         }
 
@@ -73,7 +73,7 @@ class XacThucService
             'role' => $quyen,
             'access_token' => $accessTokenResult->plainTextToken,
             'refresh_token' => $refreshTokenResult->plainTextToken,
-            'user' => $user
+            'user' => $user,
         ];
     }
 

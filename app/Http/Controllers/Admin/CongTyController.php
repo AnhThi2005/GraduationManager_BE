@@ -2,21 +2,24 @@
 
 namespace App\Http\Controllers\Admin;
 
-use App\Http\Controllers\Controller;
 use App\Http\Controllers\Concerns\KiemTraTrangThaiDot;
-use Illuminate\Http\Request;
-use App\Models\Dot;
-use App\Models\DangKyThucTap;
-use App\Services\CongTyService;
-use App\Services\NguoiDungService;
+use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\QuanLySinhVienThucTap\ThemDoanhNghiepRequest;
 use App\Http\Requests\Admin\QuanLySinhVienThucTap\ThemMoiXacNhanRequest;
+use App\Models\DangKyThucTap;
+use App\Models\Dot;
+use App\Services\CongTyService;
+use App\Services\NguoiDungService;
+use App\Services\RealtimeService;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Http;
 
 class CongTyController extends Controller
 {
     use KiemTraTrangThaiDot;
 
     protected $congTyService;
+
     protected $nguoiDungService;
 
     public function __construct(CongTyService $congTyService, NguoiDungService $nguoiDungService)
@@ -38,27 +41,27 @@ class CongTyController extends Controller
             'results' => [
                 'objects' => [
                     'rows' => $res['rows'],
-                    'total' => $res['total']
-                ]
-            ]
+                    'total' => $res['total'],
+                ],
+            ],
         ], 200);
     }
 
     public function xemChiTiet(Request $request, $id)
     {
         $company = $this->congTyService->getCompanyDetail($id);
-        if (!$company) {
+        if (! $company) {
             return response()->json([
                 'success' => false,
-                'message' => 'Không tìm thấy doanh nghiệp này!'
+                'message' => 'Không tìm thấy doanh nghiệp này!',
             ], 404);
         }
 
         return response()->json([
             'code' => 200,
             'results' => [
-                'object' => $company
-            ]
+                'object' => $company,
+            ],
         ], 200);
     }
 
@@ -70,42 +73,42 @@ class CongTyController extends Controller
         return response()->json([
             'code' => 200,
             'results' => [
-                'object' => $company
-            ]
+                'object' => $company,
+            ],
         ], 200);
     }
 
     public function capNhat(Request $request, $id)
     {
         $company = $this->congTyService->updateCompany($id, $request->all());
-        if (!$company) {
+        if (! $company) {
             return response()->json([
                 'success' => false,
-                'message' => 'Không tìm thấy doanh nghiệp này để cập nhật!'
+                'message' => 'Không tìm thấy doanh nghiệp này để cập nhật!',
             ], 404);
         }
 
         return response()->json([
             'code' => 200,
             'results' => [
-                'object' => $company
-            ]
+                'object' => $company,
+            ],
         ], 200);
     }
 
     public function xoa(Request $request, $id)
     {
         $success = $this->congTyService->deleteCompany($id);
-        if (!$success) {
+        if (! $success) {
             return response()->json([
                 'success' => false,
-                'message' => 'Không tìm thấy doanh nghiệp này để xóa!'
+                'message' => 'Không tìm thấy doanh nghiệp này để xóa!',
             ], 404);
         }
 
         return response()->json([
             'success' => true,
-            'message' => 'Xóa doanh nghiệp thành công!'
+            'message' => 'Xóa doanh nghiệp thành công!',
         ], 200);
     }
 
@@ -123,8 +126,8 @@ class CongTyController extends Controller
                 ? "Đã công bố thêm {$publishedCount} doanh nghiệp mới!"
                 : 'Không có doanh nghiệp mới nào cần công bố.',
             'results' => [
-                'publishedCount' => $publishedCount
-            ]
+                'publishedCount' => $publishedCount,
+            ],
         ], 200);
     }
 
@@ -135,7 +138,7 @@ class CongTyController extends Controller
     public function layDanhSachXacNhan(Request $request)
     {
         $filters = [
-            'periodId' => $request->query('periodId')
+            'periodId' => $request->query('periodId'),
         ];
 
         $res = $this->congTyService->getListConfirmationRequest($filters);
@@ -145,16 +148,16 @@ class CongTyController extends Controller
             'results' => [
                 'objects' => [
                     'rows' => $res['rows'],
-                    'total' => $res['total']
-                ]
-            ]
+                    'total' => $res['total'],
+                ],
+            ],
         ], 200);
     }
 
     public function layDanhSachKhaiBao(Request $request)
     {
         $filters = [
-            'periodId' => $request->query('periodId')
+            'periodId' => $request->query('periodId'),
         ];
 
         $res = $this->congTyService->getListDeclarations($filters);
@@ -164,27 +167,27 @@ class CongTyController extends Controller
             'results' => [
                 'objects' => [
                     'rows' => $res['rows'],
-                    'total' => $res['total']
-                ]
-            ]
+                    'total' => $res['total'],
+                ],
+            ],
         ], 200);
     }
 
     public function xemChiTietXacNhan(Request $request, $id)
     {
         $reg = $this->congTyService->getConfirmationRequestDetail($id);
-        if (!$reg) {
+        if (! $reg) {
             return response()->json([
                 'success' => false,
-                'message' => 'Không tìm thấy hồ sơ khai báo này!'
+                'message' => 'Không tìm thấy hồ sơ khai báo này!',
             ], 404);
         }
 
         return response()->json([
             'code' => 200,
             'results' => [
-                'object' => $reg
-            ]
+                'object' => $reg,
+            ],
         ], 200);
     }
 
@@ -205,29 +208,29 @@ class CongTyController extends Controller
         } catch (\InvalidArgumentException $e) {
             return response()->json([
                 'success' => false,
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ], 422);
         }
 
-        if (!$reg) {
+        if (! $reg) {
             return response()->json([
                 'success' => false,
-                'message' => 'Không tìm thấy sinh viên có MSSV này để khai báo!'
+                'message' => 'Không tìm thấy sinh viên có MSSV này để khai báo!',
             ], 400);
         }
 
-        \App\Services\RealtimeService::broadcast('notification', [
+        RealtimeService::broadcast('notification', [
             'title' => 'Đăng ký thực tập mới',
-            'message' => 'Sinh viên ' . ($reg['studentName'] ?? 'SV') . ' vừa khai báo thực tập tại ' . ($reg['companyName'] ?? 'công ty'),
+            'message' => 'Sinh viên '.($reg['studentName'] ?? 'SV').' vừa khai báo thực tập tại '.($reg['companyName'] ?? 'công ty'),
             'type' => 'internship_declared',
-            'payload' => $reg
+            'payload' => $reg,
         ]);
 
         return response()->json([
             'code' => 200,
             'results' => [
-                'object' => $reg
-            ]
+                'object' => $reg,
+            ],
         ], 200);
     }
 
@@ -239,25 +242,25 @@ class CongTyController extends Controller
         }
 
         $reg = $this->congTyService->updateConfirmationRequest($id, $request->all());
-        if (!$reg) {
+        if (! $reg) {
             return response()->json([
                 'success' => false,
-                'message' => 'Không tìm thấy hồ sơ khai báo này để cập nhật!'
+                'message' => 'Không tìm thấy hồ sơ khai báo này để cập nhật!',
             ], 404);
         }
 
-        \App\Services\RealtimeService::broadcast('notification', [
+        RealtimeService::broadcast('notification', [
             'title' => 'Cập nhật yêu cầu thực tập',
-            'message' => 'Hồ sơ thực tập của sinh viên ' . ($reg['studentName'] ?? '') . ' đã được cập nhật',
+            'message' => 'Hồ sơ thực tập của sinh viên '.($reg['studentName'] ?? '').' đã được cập nhật',
             'type' => 'internship_updated',
-            'payload' => $reg
+            'payload' => $reg,
         ]);
 
         return response()->json([
             'code' => 200,
             'results' => [
-                'object' => $reg
-            ]
+                'object' => $reg,
+            ],
         ], 200);
     }
 
@@ -269,16 +272,16 @@ class CongTyController extends Controller
         }
 
         $success = $this->congTyService->deleteConfirmationRequest($id);
-        if (!$success) {
+        if (! $success) {
             return response()->json([
                 'success' => false,
-                'message' => 'Không tìm thấy hồ sơ khai báo này để xóa!'
+                'message' => 'Không tìm thấy hồ sơ khai báo này để xóa!',
             ], 404);
         }
 
         return response()->json([
             'success' => true,
-            'message' => 'Xóa yêu cầu khai báo thực tập thành công!'
+            'message' => 'Xóa yêu cầu khai báo thực tập thành công!',
         ], 200);
     }
 
@@ -289,7 +292,7 @@ class CongTyController extends Controller
     public function layDanhSachChuaThucTap(Request $request)
     {
         $filters = [
-            'periodId' => $request->query('periodId')
+            'periodId' => $request->query('periodId'),
         ];
 
         $res = $this->congTyService->getListNoCompanyStudent($filters);
@@ -299,9 +302,9 @@ class CongTyController extends Controller
             'results' => [
                 'objects' => [
                     'rows' => $res['rows'],
-                    'total' => $res['total']
-                ]
-            ]
+                    'total' => $res['total'],
+                ],
+            ],
         ], 200);
     }
 
@@ -309,18 +312,18 @@ class CongTyController extends Controller
     {
         $periodId = $request->query('periodId') ?? $request->input('periodId');
         $sv = $this->congTyService->getNoCompanyStudentDetail($id, $periodId);
-        if (!$sv) {
+        if (! $sv) {
             return response()->json([
                 'success' => false,
-                'message' => 'Không tìm thấy sinh viên này!'
+                'message' => 'Không tìm thấy sinh viên này!',
             ], 404);
         }
 
         return response()->json([
             'code' => 200,
             'results' => [
-                'object' => $sv
-            ]
+                'object' => $sv,
+            ],
         ], 200);
     }
 
@@ -334,18 +337,18 @@ class CongTyController extends Controller
         }
 
         $res = $this->congTyService->updateNoCompanyStudentStatus($id, $status, $periodId);
-        if (!$res) {
+        if (! $res) {
             return response()->json([
                 'success' => false,
-                'message' => 'Không tìm thấy thông tin sinh viên!'
+                'message' => 'Không tìm thấy thông tin sinh viên!',
             ], 404);
         }
 
         return response()->json([
             'code' => 200,
             'results' => [
-                'object' => $res
-            ]
+                'object' => $res,
+            ],
         ], 200);
     }
 
@@ -357,16 +360,16 @@ class CongTyController extends Controller
     public function xoaChuaThucTap(Request $request, $id)
     {
         $sv = $this->nguoiDungService->doiTrangThaiSinhVien($id, 0);
-        if (!$sv) {
+        if (! $sv) {
             return response()->json([
                 'success' => false,
-                'message' => 'Không tìm thấy sinh viên này!'
+                'message' => 'Không tìm thấy sinh viên này!',
             ], 404);
         }
 
         return response()->json([
             'success' => true,
-            'message' => 'Khóa tài khoản sinh viên thành công!'
+            'message' => 'Khóa tài khoản sinh viên thành công!',
         ], 200);
     }
 
@@ -374,28 +377,28 @@ class CongTyController extends Controller
     {
         $taxId = trim((string) $request->query('taxId'));
 
-        if (!preg_match('/^[0-9]{10}([0-9]{3})?$/', $taxId)) {
+        if (! preg_match('/^[0-9]{10}([0-9]{3})?$/', $taxId)) {
             return response()->json([
                 'success' => false,
-                'message' => 'Mã số thuế phải gồm 10 hoặc 13 chữ số.'
+                'message' => 'Mã số thuế phải gồm 10 hoặc 13 chữ số.',
             ], 422);
         }
 
         try {
-            $response = \Illuminate\Support\Facades\Http::timeout(6)->get("https://api.vietqr.io/v2/business/{$taxId}");
+            $response = Http::timeout(6)->get("https://api.vietqr.io/v2/business/{$taxId}");
         } catch (\Throwable $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Dịch vụ tra cứu mã số thuế tạm thời không khả dụng, vui lòng nhập thủ công.'
+                'message' => 'Dịch vụ tra cứu mã số thuế tạm thời không khả dụng, vui lòng nhập thủ công.',
             ], 503);
         }
 
         $body = $response->json();
 
-        if (!$response->successful() || empty($body['data'])) {
+        if (! $response->successful() || empty($body['data'])) {
             return response()->json([
                 'success' => false,
-                'message' => 'Không tìm thấy doanh nghiệp với mã số thuế này.'
+                'message' => 'Không tìm thấy doanh nghiệp với mã số thuế này.',
             ], 404);
         }
 
@@ -407,8 +410,8 @@ class CongTyController extends Controller
                 'object' => [
                     'name' => $data['name'] ?? '',
                     'address' => $data['address'] ?? '',
-                ]
-            ]
+                ],
+            ],
         ]);
     }
 }

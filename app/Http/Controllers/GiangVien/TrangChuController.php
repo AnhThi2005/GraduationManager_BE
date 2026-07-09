@@ -3,12 +3,12 @@
 namespace App\Http\Controllers\GiangVien;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use App\Models\DeTai;
 use App\Models\Dot;
 use App\Models\HoiDong;
 use App\Models\Nhom;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class TrangChuController extends Controller
 {
@@ -71,12 +71,12 @@ class TrangChuController extends Controller
                 }
 
                 return [
-                    'code' => 'DA' . str_pad($t->de_tai_id, 3, '0', STR_PAD_LEFT),
+                    'code' => 'DA'.str_pad($t->de_tai_id, 3, '0', STR_PAD_LEFT),
                     'name' => $t->ten_de_tai,
-                    'slot' => $occupied . '/' . ($t->so_luong_sv_toi_da ?? 4),
+                    'slot' => $occupied.'/'.($t->so_luong_sv_toi_da ?? 4),
                     'status' => $statusVal,
                     'students' => $occupied,
-                    'note' => $t->ly_do_tu_choi ?? ($statusVal === 'Chờ duyệt' ? 'Chờ phê duyệt' : '')
+                    'note' => $t->ly_do_tu_choi ?? ($statusVal === 'Chờ duyệt' ? 'Chờ phê duyệt' : ''),
                 ];
             })
             ->all();
@@ -87,9 +87,9 @@ class TrangChuController extends Controller
                 'topics' => $topicsCount,
                 'tttn' => $tttnCount,
                 'datn' => $reviewedGroupsCount,
-                'councils' => $councilsCount
+                'councils' => $councilsCount,
             ],
-            'topics' => $topics
+            'topics' => $topics,
         ]);
     }
 
@@ -99,6 +99,7 @@ class TrangChuController extends Controller
     public function getProfile(Request $request)
     {
         $teacher = $request->user();
+
         return response()->json([
             'success' => true,
             'teacher' => [
@@ -107,8 +108,8 @@ class TrangChuController extends Controller
                 'email' => $teacher->email,
                 'phone' => $teacher->so_dien_thoai ?? '—',
                 'degree' => $teacher->hoc_vi ?? 'ThS',
-                'specialty' => $teacher->chuyen_mon ?? 'Khoa Công nghệ thông tin'
-            ]
+                'specialty' => $teacher->chuyen_mon ?? 'Khoa Công nghệ thông tin',
+            ],
         ]);
     }
 }

@@ -4,9 +4,9 @@ namespace App\Services;
 
 use App\Models\Lop;
 use App\Models\SinhVien;
-use PhpOffice\PhpSpreadsheet\IOFactory;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use PhpOffice\PhpSpreadsheet\IOFactory;
 
 class LopService
 {
@@ -17,7 +17,7 @@ class LopService
     {
         $query = Lop::query();
 
-        if (!empty($periodId) && $periodId !== 'all') {
+        if (! empty($periodId) && $periodId !== 'all') {
             $query->whereHas('dots', function ($q) use ($periodId) {
                 $q->where('dot.dot_id', $periodId);
             });
@@ -31,7 +31,7 @@ class LopService
 
         return [
             'rows' => $rows,
-            'total' => count($rows)
+            'total' => count($rows),
         ];
     }
 
@@ -41,7 +41,7 @@ class LopService
     public function getClassDetail($id)
     {
         $lop = Lop::with('sinhViens')->find($id);
-        if (!$lop) {
+        if (! $lop) {
             return null;
         }
 
@@ -68,12 +68,12 @@ class LopService
         $lopId = $lop->lop_id;
 
         // 1. Nhập sinh viên từ file Excel/CSV nếu có
-        if (!empty($data['studentListUrl'])) {
+        if (! empty($data['studentListUrl'])) {
             $this->importStudentsFromUrl($lopId, $data['studentListUrl']);
         }
 
         // 2. Nhập sinh viên từ danh sách thủ công gửi kèm
-        if (!empty($data['members']) && is_array($data['members'])) {
+        if (! empty($data['members']) && is_array($data['members'])) {
             $this->importManualMembers($lopId, $data['members']);
         }
 
@@ -86,24 +86,37 @@ class LopService
     public function updateClass($id, array $data)
     {
         $lop = Lop::find($id);
-        if (!$lop) {
+        if (! $lop) {
             return null;
         }
 
         $updateData = [];
-        if (isset($data['name'])) $updateData['ten_lop'] = $data['name'];
-        elseif (isset($data['code'])) $updateData['ten_lop'] = $data['code'];
+        if (isset($data['name'])) {
+            $updateData['ten_lop'] = $data['name'];
+        } elseif (isset($data['code'])) {
+            $updateData['ten_lop'] = $data['code'];
+        }
 
-        if (isset($data['level'])) $updateData['bac_dao_tao'] = $this->mapFrontendLevelToBackend($data['level']);
-        if (isset($data['course'])) $updateData['khoa_hoc'] = $data['course'];
-        if (isset($data['major'])) $updateData['chuyen_nganh'] = $data['major'];
-        if (isset($data['studentListUrl'])) $updateData['student_list_url'] = $data['studentListUrl'];
-        if (isset($data['studentListFileName'])) $updateData['student_list_filename'] = $data['studentListFileName'];
+        if (isset($data['level'])) {
+            $updateData['bac_dao_tao'] = $this->mapFrontendLevelToBackend($data['level']);
+        }
+        if (isset($data['course'])) {
+            $updateData['khoa_hoc'] = $data['course'];
+        }
+        if (isset($data['major'])) {
+            $updateData['chuyen_nganh'] = $data['major'];
+        }
+        if (isset($data['studentListUrl'])) {
+            $updateData['student_list_url'] = $data['studentListUrl'];
+        }
+        if (isset($data['studentListFileName'])) {
+            $updateData['student_list_filename'] = $data['studentListFileName'];
+        }
 
         $lop->update($updateData);
 
         // 1. Nhập sinh viên từ file Excel/CSV nếu được cập nhật mới
-        if (!empty($data['studentListUrl'])) {
+        if (! empty($data['studentListUrl'])) {
             $this->importStudentsFromUrl($id, $data['studentListUrl']);
         }
 
@@ -121,7 +134,7 @@ class LopService
     public function deleteClass($id)
     {
         $lop = Lop::find($id);
-        if (!$lop) {
+        if (! $lop) {
             return false;
         }
 
@@ -129,6 +142,7 @@ class LopService
         SinhVien::where('lop_id', $id)->update(['lop_id' => null]);
 
         $lop->delete();
+
         return true;
     }
 
@@ -143,14 +157,14 @@ class LopService
     {
         $members = $lop->sinhViens->map(function ($sv) {
             return [
-                'id' => (string)$sv->sinh_vien_id,
+                'id' => (string) $sv->sinh_vien_id,
                 'name' => $sv->ho_ten,
-                'code' => $sv->ma_so_sinh_vien
+                'code' => $sv->ma_so_sinh_vien,
             ];
         })->all();
 
         return [
-            'id' => (string)$lop->lop_id,
+            'id' => (string) $lop->lop_id,
             'code' => $lop->ten_lop,
             'name' => $lop->ten_lop,
             'level' => $this->mapBackendLevelToFrontend($lop->bac_dao_tao),
@@ -161,7 +175,7 @@ class LopService
             'maxStudents' => count($members) + 10,
             'status' => 'ACTIVE',
             'studentListUrl' => $lop->student_list_url,
-            'studentListFileName' => $lop->student_list_filename
+            'studentListFileName' => $lop->student_list_filename,
         ];
     }
 
@@ -174,6 +188,7 @@ class LopService
         if (str_contains($levelUpper, 'NGHỀ')) {
             return 'CAO_DANG_NGHE';
         }
+
         return 'CAO_DANG';
     }
 
@@ -185,6 +200,7 @@ class LopService
         if ($level === 'CAO_DANG_NGHE') {
             return 'Cao đẳng nghề';
         }
+
         return 'Cao đẳng';
     }
 
@@ -201,7 +217,7 @@ class LopService
                 continue;
             }
 
-            $email = strtolower($mssv) . '@caothang.edu.vn';
+            $email = strtolower($mssv).'@caothang.edu.vn';
 
             SinhVien::updateOrCreate(
                 ['ma_so_sinh_vien' => $mssv],
@@ -209,7 +225,7 @@ class LopService
                     'ho_ten' => $name,
                     'email' => $email,
                     'lop_id' => $lopId,
-                    'dang_hoat_dong' => 1
+                    'dang_hoat_dong' => 1,
                 ]
             );
         }
@@ -225,15 +241,16 @@ class LopService
             $localPath = null;
             $parsedUrl = parse_url($fileUrl);
             $path = $parsedUrl['path'] ?? '';
-            
+
             // Nếu file upload nằm ở thư mục uploads cục bộ
             if (str_contains($path, '/uploads/')) {
                 $filename = basename($path);
-                $localPath = public_path('uploads/' . $filename);
+                $localPath = public_path('uploads/'.$filename);
             }
 
-            if (!$localPath || !file_exists($localPath)) {
-                Log::warning("Class Import: local file path not found for URL: " . $fileUrl);
+            if (! $localPath || ! file_exists($localPath)) {
+                Log::warning('Class Import: local file path not found for URL: '.$fileUrl);
+
                 return;
             }
 
@@ -287,11 +304,11 @@ class LopService
                     continue;
                 }
 
-                $email = ($emailCol >= 0 && !empty($row[$emailCol])) ? trim($row[$emailCol]) : (strtolower($mssv) . '@caothang.edu.vn');
-                $phone = ($phoneCol >= 0 && !empty($row[$phoneCol])) ? trim($row[$phoneCol]) : null;
-                
+                $email = ($emailCol >= 0 && ! empty($row[$emailCol])) ? trim($row[$emailCol]) : (strtolower($mssv).'@caothang.edu.vn');
+                $phone = ($phoneCol >= 0 && ! empty($row[$phoneCol])) ? trim($row[$phoneCol]) : null;
+
                 $gender = 'Nam';
-                if ($genderCol >= 0 && !empty($row[$genderCol])) {
+                if ($genderCol >= 0 && ! empty($row[$genderCol])) {
                     $genderVal = mb_strtolower(trim($row[$genderCol]));
                     if (str_contains($genderVal, 'nữ') || str_contains($genderVal, 'female')) {
                         $gender = 'Nữ';
@@ -306,12 +323,12 @@ class LopService
                         'so_dien_thoai' => $phone,
                         'gioi_tinh' => $gender,
                         'lop_id' => $lopId,
-                        'dang_hoat_dong' => 1
+                        'dang_hoat_dong' => 1,
                     ]
                 );
             }
         } catch (\Exception $e) {
-            Log::error("Class Import Error: " . $e->getMessage());
+            Log::error('Class Import Error: '.$e->getMessage());
         }
     }
 }

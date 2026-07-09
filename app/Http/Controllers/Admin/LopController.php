@@ -3,9 +3,9 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
-use App\Services\LopService;
 use App\Http\Requests\Admin\QuanLyLop\ThemLopRequest;
+use App\Services\LopService;
+use Illuminate\Http\Request;
 
 class LopController extends Controller
 {
@@ -29,9 +29,9 @@ class LopController extends Controller
             'results' => [
                 'objects' => [
                     'rows' => $res['rows'],
-                    'total' => $res['total']
-                ]
-            ]
+                    'total' => $res['total'],
+                ],
+            ],
         ], 200);
     }
 
@@ -41,18 +41,18 @@ class LopController extends Controller
     public function xemChiTiet(Request $request, $id)
     {
         $class = $this->lopService->getClassDetail($id);
-        if (!$class) {
+        if (! $class) {
             return response()->json([
                 'success' => false,
-                'message' => 'Không tìm thấy lớp học này!'
+                'message' => 'Không tìm thấy lớp học này!',
             ], 404);
         }
 
         return response()->json([
             'code' => 200,
             'results' => [
-                'object' => $class
-            ]
+                'object' => $class,
+            ],
         ], 200);
     }
 
@@ -66,8 +66,8 @@ class LopController extends Controller
         return response()->json([
             'code' => 200,
             'results' => [
-                'object' => $class
-            ]
+                'object' => $class,
+            ],
         ], 200);
     }
 
@@ -77,18 +77,18 @@ class LopController extends Controller
     public function capNhat(Request $request, $id)
     {
         $class = $this->lopService->updateClass($id, $request->all());
-        if (!$class) {
+        if (! $class) {
             return response()->json([
                 'success' => false,
-                'message' => 'Không tìm thấy lớp học này để cập nhật!'
+                'message' => 'Không tìm thấy lớp học này để cập nhật!',
             ], 404);
         }
 
         return response()->json([
             'code' => 200,
             'results' => [
-                'object' => $class
-            ]
+                'object' => $class,
+            ],
         ], 200);
     }
 
@@ -98,16 +98,16 @@ class LopController extends Controller
     public function xoa(Request $request, $id)
     {
         $success = $this->lopService->deleteClass($id);
-        if (!$success) {
+        if (! $success) {
             return response()->json([
                 'success' => false,
-                'message' => 'Không tìm thấy lớp học này để xóa!'
+                'message' => 'Không tìm thấy lớp học này để xóa!',
             ], 404);
         }
 
         return response()->json([
             'success' => true,
-            'message' => 'Xóa lớp học thành công!'
+            'message' => 'Xóa lớp học thành công!',
         ], 200);
     }
 }

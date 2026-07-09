@@ -9,8 +9,8 @@ class Lop extends Model
     protected $table = 'lop';
 
     protected $primaryKey = 'lop_id';
-    
-    public $timestamps = false; 
+
+    public $timestamps = false;
 
     protected $fillable = [
         'ten_lop',
@@ -18,7 +18,7 @@ class Lop extends Model
         'bac_dao_tao',
         'chuyen_nganh',
         'student_list_url',
-        'student_list_filename'
+        'student_list_filename',
     ];
 
     // Định nghĩa mối quan hệ 1-n với SinhVien

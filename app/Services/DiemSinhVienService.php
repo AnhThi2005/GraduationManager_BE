@@ -65,9 +65,9 @@ class DiemSinhVienService
                 ->leftJoin('lop', 'sinhvien.lop_id', '=', 'lop.lop_id')
                 ->leftJoin('detai', 'nhomsvda.de_tai_id', '=', 'detai.de_tai_id')
                 ->leftJoin('giangvien', 'detai.giang_vien_id', '=', 'giangvien.giang_vien_id')
-                ->leftJoin('diemtongketdatn', function($join) {
+                ->leftJoin('diemtongketdatn', function ($join) {
                     $join->on('sinhvien.sinh_vien_id', '=', 'diemtongketdatn.sinh_vien_id')
-                         ->on('nhomsvda.nhom_id', '=', 'diemtongketdatn.nhom_id');
+                        ->on('nhomsvda.nhom_id', '=', 'diemtongketdatn.nhom_id');
                 })
                 ->select([
                     'sinhvien.sinh_vien_id',
@@ -236,9 +236,9 @@ class DiemSinhVienService
                 ->leftJoin('nhomsvda', 'thanhviennhom.nhom_id', '=', 'nhomsvda.nhom_id')
                 ->leftJoin('detai', 'nhomsvda.de_tai_id', '=', 'detai.de_tai_id')
                 ->leftJoin('giangvien', 'detai.giang_vien_id', '=', 'giangvien.giang_vien_id')
-                ->leftJoin('diemtongketdatn', function($join) {
+                ->leftJoin('diemtongketdatn', function ($join) {
                     $join->on('sinhvien.sinh_vien_id', '=', 'diemtongketdatn.sinh_vien_id')
-                         ->on('nhomsvda.nhom_id', '=', 'diemtongketdatn.nhom_id');
+                        ->on('nhomsvda.nhom_id', '=', 'diemtongketdatn.nhom_id');
                 })
                 ->select([
                     'sinhvien.sinh_vien_id',

@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class CongTy extends Model
 {
     protected $table = 'congty';
+
     protected $primaryKey = 'cong_ty_id';
 
     public $timestamps = false;
@@ -19,6 +20,6 @@ class CongTy extends Model
         'email_lien_he',
         'so_dien_thoai_lh',
         'trang_thai',
-        'da_cong_bo'
+        'da_cong_bo',
     ];
 }

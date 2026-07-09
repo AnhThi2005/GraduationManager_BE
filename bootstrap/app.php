@@ -1,9 +1,13 @@
 <?php
 
+use App\Http\Middleware\KiemTraQuyen;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
-use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;//Sử dụng để loại trừ các tuyến đường API khỏi việc kiểm tra CSRF
+use Spatie\Permission\Middlewares\PermissionMiddleware;
+use Spatie\Permission\Middlewares\RoleMiddleware;
+
+// Sử dụng để loại trừ các tuyến đường API khỏi việc kiểm tra CSRF
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -14,12 +18,12 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware) {
         $middleware->alias([
-            'role' => \Spatie\Permission\Middlewares\RoleMiddleware::class,
-            'permission' => \Spatie\Permission\Middlewares\PermissionMiddleware::class,
+            'role' => RoleMiddleware::class,
+            'permission' => PermissionMiddleware::class,
         ]);
 
         $middleware->alias([
-            'quyen' => \App\Http\Middleware\KiemTraQuyen::class,
+            'quyen' => KiemTraQuyen::class,
         ]);
 
         $middleware->validateCsrfTokens(except: [

@@ -3,9 +3,9 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
-use App\Services\DotService;
 use App\Http\Requests\Admin\QuanLyDot\ThemDotRequest;
+use App\Services\DotService;
+use Illuminate\Http\Request;
 
 class DotController extends Controller
 {
@@ -25,7 +25,7 @@ class DotController extends Controller
         $filters = [
             'keyword' => $request->input('keyword'),
             'type' => $request->input('type'),
-            'status' => $request->input('status')
+            'status' => $request->input('status'),
         ];
 
         $res = $this->dotService->getListPeriod($filters, $limit);
@@ -35,18 +35,18 @@ class DotController extends Controller
             'results' => [
                 'objects' => [
                     'rows' => $res['rows'],
-                    'total' => $res['total']
-                ]
+                    'total' => $res['total'],
+                ],
             ],
             'pagination' => [
                 'total' => $res['total'],
                 'totalPages' => $res['lastPage'],
                 'limit' => $res['perPage'],
                 'first' => $res['onFirstPage'],
-                'last' => !$res['hasMorePages'],
+                'last' => ! $res['hasMorePages'],
                 'hasNext' => $res['hasMorePages'],
-                'hasPrevious' => !$res['onFirstPage']
-            ]
+                'hasPrevious' => ! $res['onFirstPage'],
+            ],
         ], 200);
     }
 
@@ -56,18 +56,18 @@ class DotController extends Controller
     public function xemChiTiet(Request $request, $id)
     {
         $period = $this->dotService->getPeriodDetail($id);
-        if (!$period) {
+        if (! $period) {
             return response()->json([
                 'success' => false,
-                'message' => 'Không tìm thấy đợt đăng ký này!'
+                'message' => 'Không tìm thấy đợt đăng ký này!',
             ], 404);
         }
 
         return response()->json([
             'code' => 200,
             'results' => [
-                'object' => $period
-            ]
+                'object' => $period,
+            ],
         ], 200);
     }
 
@@ -81,15 +81,15 @@ class DotController extends Controller
         } catch (\InvalidArgumentException $e) {
             return response()->json([
                 'success' => false,
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ], 422);
         }
 
         return response()->json([
             'code' => 200,
             'results' => [
-                'object' => $period
-            ]
+                'object' => $period,
+            ],
         ], 200);
     }
 
@@ -103,22 +103,22 @@ class DotController extends Controller
         } catch (\InvalidArgumentException $e) {
             return response()->json([
                 'success' => false,
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ], 422);
         }
 
-        if (!$period) {
+        if (! $period) {
             return response()->json([
                 'success' => false,
-                'message' => 'Không tìm thấy đợt đăng ký này để cập nhật!'
+                'message' => 'Không tìm thấy đợt đăng ký này để cập nhật!',
             ], 404);
         }
 
         return response()->json([
             'code' => 200,
             'results' => [
-                'object' => $period
-            ]
+                'object' => $period,
+            ],
         ], 200);
     }
 
@@ -128,16 +128,16 @@ class DotController extends Controller
     public function xoa(Request $request, $id)
     {
         $success = $this->dotService->deletePeriod($id);
-        if (!$success) {
+        if (! $success) {
             return response()->json([
                 'success' => false,
-                'message' => 'Không tìm thấy đợt đăng ký này để xóa!'
+                'message' => 'Không tìm thấy đợt đăng ký này để xóa!',
             ], 404);
         }
 
         return response()->json([
             'success' => true,
-            'message' => 'Xóa đợt đăng ký tốt nghiệp thành công!'
+            'message' => 'Xóa đợt đăng ký tốt nghiệp thành công!',
         ], 200);
     }
 
@@ -150,7 +150,7 @@ class DotController extends Controller
             'studentId' => 'required',
             'periodIds' => 'required|array',
             'periodIds.*' => 'required',
-            'reason' => 'nullable|string'
+            'reason' => 'nullable|string',
         ]);
 
         $studentId = $request->input('studentId');
@@ -159,16 +159,16 @@ class DotController extends Controller
 
         $res = $this->dotService->addStudentToPeriods($studentId, $periodIds, $reason);
 
-        if (!$res) {
+        if (! $res) {
             return response()->json([
                 'success' => false,
-                'message' => 'Không tìm thấy sinh viên hoặc đợt hợp lệ!'
+                'message' => 'Không tìm thấy sinh viên hoặc đợt hợp lệ!',
             ], 400);
         }
 
         return response()->json([
             'success' => true,
-            'message' => 'Thêm sinh viên vào các đợt thành công!'
+            'message' => 'Thêm sinh viên vào các đợt thành công!',
         ], 200);
     }
 }

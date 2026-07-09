@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class DangKyThucTap extends Model
 {
     protected $table = 'dangkythuctap';
+
     protected $primaryKey = 'dang_ky_id';
 
     public $timestamps = false;
@@ -22,7 +23,7 @@ class DangKyThucTap extends Model
         'thoi_gian_thuc_tap',
         'dia_chi_thuc_tap',
         'trang_thai',
-        'ngay_dang_ky'
+        'ngay_dang_ky',
     ];
 
     protected $casts = [

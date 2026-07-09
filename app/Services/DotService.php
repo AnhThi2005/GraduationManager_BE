@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Dot;
+use App\Models\SinhVien;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -16,22 +17,22 @@ class DotService
         $query = Dot::query();
 
         // 1. Lọc theo keyword (tìm kiếm trong tên đợt, học kỳ, năm học)
-        if (!empty($filters['keyword'])) {
+        if (! empty($filters['keyword'])) {
             $keyword = trim($filters['keyword']);
             $query->where(function ($q) use ($keyword) {
-                $q->where('ten_dot', 'like', '%' . $keyword . '%')
-                  ->orWhere('hoc_ky', 'like', '%' . $keyword . '%')
-                  ->orWhere('nam_hoc', 'like', '%' . $keyword . '%');
+                $q->where('ten_dot', 'like', '%'.$keyword.'%')
+                    ->orWhere('hoc_ky', 'like', '%'.$keyword.'%')
+                    ->orWhere('nam_hoc', 'like', '%'.$keyword.'%');
             });
         }
 
         // 2. Lọc theo loại đợt (tttn / datn)
-        if (!empty($filters['type']) && $filters['type'] !== 'all') {
+        if (! empty($filters['type']) && $filters['type'] !== 'all') {
             $query->where('loai_dot', strtoupper($filters['type']));
         }
 
         // 3. Lọc theo trạng thái
-        if (!empty($filters['status']) && $filters['status'] !== 'all') {
+        if (! empty($filters['status']) && $filters['status'] !== 'all') {
             $backendStatus = $this->mapFrontendStatusToBackend($filters['status']);
             $query->where('trang_thai', $backendStatus);
         }
@@ -52,7 +53,7 @@ class DotService
             'perPage' => $paginator->perPage(),
             'currentPage' => $paginator->currentPage(),
             'onFirstPage' => $paginator->onFirstPage(),
-            'hasMorePages' => $paginator->hasMorePages()
+            'hasMorePages' => $paginator->hasMorePages(),
         ];
     }
 
@@ -62,7 +63,7 @@ class DotService
     public function getPeriodDetail($id)
     {
         $dot = Dot::find($id);
-        if (!$dot) {
+        if (! $dot) {
             return null;
         }
 
@@ -75,7 +76,7 @@ class DotService
     public function createPeriod(array $data)
     {
         $loaiDot = isset($data['type']) ? strtoupper($data['type']) : 'TTTN';
-        $trangThaiMoi = isset($data['status']) ? $this->mapFrontendStatusToBackend($data['status']) : 'CHO_MO';
+        $trangThaiMoi = isset($data['status']) ? $this->mapFrontendStatusToBackend($data['status']) : 'DA_CONG_BO';
         $this->assertKhongTrungDotDangHoatDong($loaiDot, $trangThaiMoi);
 
         $insertData = [
@@ -86,8 +87,8 @@ class DotService
             'ngay_ket_thuc' => $this->parseDate($data['endDate'] ?? null),
             'han_dang_ky' => $this->parseDate($data['regDeadline'] ?? null),
             'hoc_ky' => $data['semester'] ?? 1,
-            'nam_hoc' => $data['schoolYear'] ?? (date('Y') . '-' . (date('Y') + 1)),
-            'giang_vien_id' => $data['teacherId'] ?? 1 // Mặc định gán giảng viên tạo
+            'nam_hoc' => $data['schoolYear'] ?? (date('Y').'-'.(date('Y') + 1)),
+            'giang_vien_id' => $data['teacherId'] ?? 1, // Mặc định gán giảng viên tạo
         ];
 
         // Mốc thời gian phụ: dùng giá trị admin nhập nếu có, nếu không thì tự tính mặc định
@@ -102,12 +103,12 @@ class DotService
 
         $dot = Dot::create($insertData);
 
-        if (!empty($data['classIds']) && is_array($data['classIds'])) {
+        if (! empty($data['classIds']) && is_array($data['classIds'])) {
             $dot->lops()->sync($data['classIds']);
         }
 
         if (isset($data['externalStudentIds']) && is_array($data['externalStudentIds'])) {
-            $studentIds = \App\Models\SinhVien::whereIn('ma_so_sinh_vien', $data['externalStudentIds'])
+            $studentIds = SinhVien::whereIn('ma_so_sinh_vien', $data['externalStudentIds'])
                 ->pluck('sinh_vien_id')
                 ->all();
             $dot->sinhViens()->sync($studentIds);
@@ -122,28 +123,50 @@ class DotService
     public function updatePeriod($id, array $data)
     {
         $dot = Dot::find($id);
-        if (!$dot) {
+        if (! $dot) {
             return null;
         }
 
         $updateData = [];
-        if (isset($data['name'])) $updateData['ten_dot'] = $data['name'];
-        if (isset($data['type'])) $updateData['loai_dot'] = strtoupper($data['type']);
+        if (isset($data['name'])) {
+            $updateData['ten_dot'] = $data['name'];
+        }
+        if (isset($data['type'])) {
+            $updateData['loai_dot'] = strtoupper($data['type']);
+        }
         if (isset($data['status'])) {
             $trangThaiMoi = $this->mapFrontendStatusToBackend($data['status']);
             $loaiDotForCheck = isset($data['type']) ? strtoupper($data['type']) : $dot->loai_dot;
             $this->assertKhongTrungDotDangHoatDong($loaiDotForCheck, $trangThaiMoi, $dot->dot_id);
             $updateData['trang_thai'] = $trangThaiMoi;
         }
-        if (isset($data['startDate'])) $updateData['ngay_bat_dau'] = $this->parseDate($data['startDate']);
-        if (isset($data['endDate'])) $updateData['ngay_ket_thuc'] = $this->parseDate($data['endDate']);
-        if (isset($data['regDeadline'])) $updateData['han_dang_ky'] = $this->parseDate($data['regDeadline']);
-        if (isset($data['regOpenDate'])) $updateData['ngay_bat_dau_dang_ky'] = $this->parseDate($data['regOpenDate']);
-        if (isset($data['reportDeadline'])) $updateData['han_nop_bao_cao'] = $this->parseDate($data['reportDeadline']);
-        if (isset($data['gradingStartDate'])) $updateData['ngay_bat_dau_cham_diem'] = $this->parseDate($data['gradingStartDate']);
-        if (isset($data['gradingEndDate'])) $updateData['ngay_ket_thuc_cham_diem'] = $this->parseDate($data['gradingEndDate']);
-        if (isset($data['semester'])) $updateData['hoc_ky'] = $data['semester'];
-        if (isset($data['schoolYear'])) $updateData['nam_hoc'] = $data['schoolYear'];
+        if (isset($data['startDate'])) {
+            $updateData['ngay_bat_dau'] = $this->parseDate($data['startDate']);
+        }
+        if (isset($data['endDate'])) {
+            $updateData['ngay_ket_thuc'] = $this->parseDate($data['endDate']);
+        }
+        if (isset($data['regDeadline'])) {
+            $updateData['han_dang_ky'] = $this->parseDate($data['regDeadline']);
+        }
+        if (isset($data['regOpenDate'])) {
+            $updateData['ngay_bat_dau_dang_ky'] = $this->parseDate($data['regOpenDate']);
+        }
+        if (isset($data['reportDeadline'])) {
+            $updateData['han_nop_bao_cao'] = $this->parseDate($data['reportDeadline']);
+        }
+        if (isset($data['gradingStartDate'])) {
+            $updateData['ngay_bat_dau_cham_diem'] = $this->parseDate($data['gradingStartDate']);
+        }
+        if (isset($data['gradingEndDate'])) {
+            $updateData['ngay_ket_thuc_cham_diem'] = $this->parseDate($data['gradingEndDate']);
+        }
+        if (isset($data['semester'])) {
+            $updateData['hoc_ky'] = $data['semester'];
+        }
+        if (isset($data['schoolYear'])) {
+            $updateData['nam_hoc'] = $data['schoolYear'];
+        }
 
         $dot->update($updateData);
 
@@ -152,7 +175,7 @@ class DotService
         }
 
         if (isset($data['externalStudentIds']) && is_array($data['externalStudentIds'])) {
-            $studentIds = \App\Models\SinhVien::whereIn('ma_so_sinh_vien', $data['externalStudentIds'])
+            $studentIds = SinhVien::whereIn('ma_so_sinh_vien', $data['externalStudentIds'])
                 ->pluck('sinh_vien_id')
                 ->all();
             $dot->sinhViens()->sync($studentIds);
@@ -167,11 +190,12 @@ class DotService
     public function deletePeriod($id)
     {
         $dot = Dot::find($id);
-        if (!$dot) {
+        if (! $dot) {
             return false;
         }
 
         $dot->delete();
+
         return true;
     }
 
@@ -240,7 +264,7 @@ class DotService
         $numberCouncils = DB::table('hoidong')->where('dot_id', $dotId)->count();
 
         // 4. Lấy danh sách classIds tham gia đợt động (từ bảng liên kết hoặc sinh viên đã đăng ký)
-        $classIds = $dot->lops()->pluck('lop.lop_id')->map(fn($id) => (string)$id)->all();
+        $classIds = $dot->lops()->pluck('lop.lop_id')->map(fn ($id) => (string) $id)->all();
         if (empty($classIds)) {
             if ($type === 'datn') {
                 $classIds = DB::table('thanhviennhom')
@@ -250,7 +274,7 @@ class DotService
                     ->whereNotNull('sinhvien.lop_id')
                     ->distinct()
                     ->pluck('sinhvien.lop_id')
-                    ->map(fn($id) => (string)$id)
+                    ->map(fn ($id) => (string) $id)
                     ->all();
             } else {
                 $classIds = DB::table('dangkythuctap')
@@ -259,7 +283,7 @@ class DotService
                     ->whereNotNull('sinhvien.lop_id')
                     ->distinct()
                     ->pluck('sinhvien.lop_id')
-                    ->map(fn($id) => (string)$id)
+                    ->map(fn ($id) => (string) $id)
                     ->all();
             }
         }
@@ -267,7 +291,7 @@ class DotService
         // Lấy danh sách sinh viên ngoài lớp (sinh viên tự do/rớt)
         $externalStudents = $dot->sinhViens->map(function ($sv) {
             return [
-                'id' => (string)$sv->ma_so_sinh_vien,
+                'id' => (string) $sv->ma_so_sinh_vien,
                 'name' => $sv->ho_ten,
                 'email' => $sv->email,
                 'className' => $sv->lop ? $sv->lop->ten_lop : null,
@@ -276,13 +300,13 @@ class DotService
                 'status' => $sv->dang_hoat_dong == 1 ? 'active' : 'inactive',
                 'gender' => $sv->gioi_tinh,
                 'dateOfBirth' => $sv->ngay_sinh,
-                'reason' => $sv->pivot->ly_do ?? 'Rớt đợt trước'
+                'reason' => $sv->pivot->ly_do ?? 'Rớt đợt trước',
             ];
         })->all();
         $externalStudentIds = collect($externalStudents)->pluck('id')->all();
 
         return [
-            'id' => (string)$dot->dot_id,
+            'id' => (string) $dot->dot_id,
             'name' => $dot->ten_dot,
             'type' => $type,
             'startDate' => $dot->ngay_bat_dau ? Carbon::parse($dot->ngay_bat_dau)->format('d/m/Y') : '',
@@ -294,8 +318,8 @@ class DotService
             'gradingEndDate' => $dot->ngay_ket_thuc_cham_diem ? Carbon::parse($dot->ngay_ket_thuc_cham_diem)->format('d/m/Y') : '',
             'semester' => $dot->hoc_ky,
             'schoolYear' => $dot->nam_hoc,
-            'studentListFileName' => 'danh-sach-sinh-vien-' . strtolower($dot->loai_dot) . '-' . $dot->dot_id . '.xlsx',
-            'studentListUrl' => 'https://example.com/danh-sach-sinh-vien-' . $dot->dot_id . '.xlsx',
+            'studentListFileName' => 'danh-sach-sinh-vien-'.strtolower($dot->loai_dot).'-'.$dot->dot_id.'.xlsx',
+            'studentListUrl' => 'https://example.com/danh-sach-sinh-vien-'.$dot->dot_id.'.xlsx',
             'classIds' => $classIds,
             'externalStudents' => $externalStudents,
             'externalStudentIds' => $externalStudentIds,
@@ -303,7 +327,7 @@ class DotService
             'numberSV' => $numberSV,
             'numberTopics' => $numberTopics,
             'numberCouncils' => $numberCouncils,
-            'status' => $this->mapBackendStatusToFrontend($dot->trang_thai)
+            'status' => $this->mapBackendStatusToFrontend($dot->trang_thai),
         ];
     }
 
@@ -317,7 +341,8 @@ class DotService
             case 'MO':
             case 'OPEN':
                 return 'open';
-            case 'CHO_MO':
+            case 'DA_CONG_BO':
+            case 'CHO_MO': // tên cũ, giữ lại để đọc tương thích dữ liệu/định dạng cũ nếu còn sót
             case 'CONG_BO':
             case 'PUBLISHED':
                 return 'published';
@@ -340,7 +365,7 @@ class DotService
             case 'open':
                 return 'DANG_MO';
             case 'published':
-                return 'CHO_MO';
+                return 'DA_CONG_BO';
             case 'grading':
                 return 'CHAM_DIEM';
             case 'closed':
@@ -375,10 +400,10 @@ class DotService
      */
     public function addStudentToPeriods($studentCode, array $periodIds, $reason = 'Rớt đợt trước')
     {
-        $student = \App\Models\SinhVien::where('ma_so_sinh_vien', $studentCode)
+        $student = SinhVien::where('ma_so_sinh_vien', $studentCode)
             ->orWhere('sinh_vien_id', $studentCode)
             ->first();
-        if (!$student) {
+        if (! $student) {
             return false;
         }
 
@@ -388,7 +413,7 @@ class DotService
             $dot = Dot::find($periodId);
             if ($dot) {
                 $dot->sinhViens()->syncWithoutDetaching([
-                    $studentId => ['ly_do' => $reason]
+                    $studentId => ['ly_do' => $reason],
                 ]);
             }
         }

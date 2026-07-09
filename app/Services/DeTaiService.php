@@ -3,8 +3,8 @@
 namespace App\Services;
 
 use App\Models\DeTai;
-use App\Models\GiangVien;
 use App\Models\Dot;
+use App\Models\GiangVien;
 use Illuminate\Support\Facades\DB;
 
 class DeTaiService
@@ -17,28 +17,28 @@ class DeTaiService
         $query = DeTai::with(['giangVien', 'dot']);
 
         // Lọc theo giảng viên
-        if (!empty($filters['teacherId'])) {
+        if (! empty($filters['teacherId'])) {
             $query->where('giang_vien_id', $filters['teacherId']);
         }
 
         // Lọc theo đợt học
-        if (!empty($filters['periodId'])) {
+        if (! empty($filters['periodId'])) {
             $query->where('dot_id', $filters['periodId']);
         }
 
         // Lọc theo trạng thái duyệt
-        if (!empty($filters['status']) && $filters['status'] !== 'all') {
+        if (! empty($filters['status']) && $filters['status'] !== 'all') {
             $query->where('trang_thai', $this->mapFrontendStatusToBackend($filters['status']));
         }
 
         // Lọc theo từ khóa tìm kiếm (tên đề tài, họ tên giảng viên)
-        if (!empty($filters['keyword'])) {
+        if (! empty($filters['keyword'])) {
             $keyword = trim($filters['keyword']);
             $query->where(function ($q) use ($keyword) {
-                $q->where('ten_de_tai', 'like', '%' . $keyword . '%')
-                  ->orWhereHas('giangVien', function ($sub) use ($keyword) {
-                      $sub->where('ho_ten', 'like', '%' . $keyword . '%');
-                  });
+                $q->where('ten_de_tai', 'like', '%'.$keyword.'%')
+                    ->orWhereHas('giangVien', function ($sub) use ($keyword) {
+                        $sub->where('ho_ten', 'like', '%'.$keyword.'%');
+                    });
             });
         }
 
@@ -57,7 +57,7 @@ class DeTaiService
             'perPage' => $paginator->perPage(),
             'currentPage' => $paginator->currentPage(),
             'onFirstPage' => $paginator->onFirstPage(),
-            'hasMorePages' => $paginator->hasMorePages()
+            'hasMorePages' => $paginator->hasMorePages(),
         ];
     }
 
@@ -67,7 +67,7 @@ class DeTaiService
     public function getTopicDetail($id)
     {
         $deTai = DeTai::with(['giangVien', 'dot'])->find($id);
-        if (!$deTai) {
+        if (! $deTai) {
             return null;
         }
 
@@ -80,7 +80,7 @@ class DeTaiService
     public function createTopic(array $data, $periodId = null)
     {
         $dotId = $periodId ?? $data['periodId'] ?? null;
-        if (!$dotId) {
+        if (! $dotId) {
             // Lấy đợt DATN mới nhất làm mặc định
             $activePeriod = Dot::where('loai_dot', 'DATN')->orderBy('dot_id', 'desc')->first();
             $dotId = $activePeriod ? $activePeriod->dot_id : 1;
@@ -100,7 +100,7 @@ class DeTaiService
             'so_luong_sv_toi_da' => $maxSlots,
             'huong_de_tai' => $this->mapFrontendDirectionToBackend($data['direction'] ?? ''),
             'trang_thai' => $status,
-            'ly_do_tu_choi' => $rejectReason
+            'ly_do_tu_choi' => $rejectReason,
         ]);
 
         return $this->getTopicDetail($deTai->de_tai_id);
@@ -112,21 +112,29 @@ class DeTaiService
     public function updateTopic($id, array $data)
     {
         $deTai = DeTai::find($id);
-        if (!$deTai) {
+        if (! $deTai) {
             return null;
         }
 
         $updateData = [];
-        if (isset($data['name'])) $updateData['ten_de_tai'] = $data['name'];
-        if (isset($data['description'])) $updateData['mo_ta'] = $data['description'];
-        if (isset($data['fileUrl'])) $updateData['file_mo_ta'] = $data['fileUrl'];
-        if (isset($data['direction'])) $updateData['huong_de_tai'] = $this->mapFrontendDirectionToBackend($data['direction']);
-        
+        if (isset($data['name'])) {
+            $updateData['ten_de_tai'] = $data['name'];
+        }
+        if (isset($data['description'])) {
+            $updateData['mo_ta'] = $data['description'];
+        }
+        if (isset($data['fileUrl'])) {
+            $updateData['file_mo_ta'] = $data['fileUrl'];
+        }
+        if (isset($data['direction'])) {
+            $updateData['huong_de_tai'] = $this->mapFrontendDirectionToBackend($data['direction']);
+        }
+
         $newStatus = null;
         if (isset($data['status'])) {
             $newStatus = $this->mapFrontendStatusToBackend($data['status']);
             $updateData['trang_thai'] = $newStatus;
-            
+
             // Clear rejection reason if state changes to approved or pending
             if ($newStatus !== 'TU_CHOI') {
                 $updateData['ly_do_tu_choi'] = null;
@@ -159,11 +167,12 @@ class DeTaiService
     public function deleteTopic($id)
     {
         $deTai = DeTai::find($id);
-        if (!$deTai) {
+        if (! $deTai) {
             return false;
         }
 
         $deTai->delete();
+
         return true;
     }
 
@@ -183,7 +192,7 @@ class DeTaiService
             ->count();
 
         $maxSlots = $deTai->so_luong_sv_toi_da ?? 4;
-        $slotsStr = $occupiedSlots . '/' . $maxSlots;
+        $slotsStr = $occupiedSlots.'/'.$maxSlots;
 
         // Tính số lượng SV đã được duyệt vào đề tài này
         $approvedSlots = DB::table('thanhviennhom')
@@ -196,16 +205,16 @@ class DeTaiService
             $approvedSlots = $maxSlots;
         }
 
-        $approvedStudentsVal = ($deTai->trang_thai !== 'DA_DUYET' || $approvedSlots === 0) ? 'chưa có' : (string)$approvedSlots;
+        $approvedStudentsVal = ($deTai->trang_thai !== 'DA_DUYET' || $approvedSlots === 0) ? 'chưa có' : (string) $approvedSlots;
 
         // Định dạng tên giảng viên kèm học vị
         $teacherName = 'Chưa phân công';
         if ($deTai->giangVien) {
-            $teacherName = ($deTai->giangVien->hoc_vi ? $deTai->giangVien->hoc_vi . '. ' : '') . $deTai->giangVien->ho_ten;
+            $teacherName = ($deTai->giangVien->hoc_vi ? $deTai->giangVien->hoc_vi.'. ' : '').$deTai->giangVien->ho_ten;
         }
 
         return [
-            'id' => (string)$deTai->de_tai_id,
+            'id' => (string) $deTai->de_tai_id,
             'code' => $this->buildTopicCode($deTai),
             'name' => $deTai->ten_de_tai,
             'teacher' => $teacherName,
@@ -215,7 +224,8 @@ class DeTaiService
             'status' => $this->mapBackendStatusToFrontend($deTai->trang_thai),
             'description' => $deTai->mo_ta ?? '',
             'direction' => $deTai->huong_de_tai === 'MANG_MAY_TINH' ? 'Mạng máy tính' : 'Phát triển phần mềm',
-            'fileUrl' => $deTai->file_mo_ta ?? ''
+            'fileUrl' => $deTai->file_mo_ta ?? '',
+            'period' => $deTai->dot ? $deTai->dot->ten_dot : '',
         ];
     }
 
@@ -232,8 +242,8 @@ class DeTaiService
     private function buildTopicCode($deTai)
     {
         $dot = $deTai->dot;
-        if (!$dot || !$dot->nam_hoc || !preg_match('/^(\d{4})-\d{4}$/', $dot->nam_hoc, $m)) {
-            return 'DA' . str_pad($deTai->de_tai_id, 3, '0', STR_PAD_LEFT);
+        if (! $dot || ! $dot->nam_hoc || ! preg_match('/^(\d{4})-\d{4}$/', $dot->nam_hoc, $m)) {
+            return 'DA'.str_pad($deTai->de_tai_id, 3, '0', STR_PAD_LEFT);
         }
 
         $yearPart = substr($m[1], 2, 2);
@@ -245,7 +255,7 @@ class DeTaiService
 
         $maxSlots = $deTai->so_luong_sv_toi_da ?? 4;
 
-        return 'DT' . $yearPart . $semesterPart . '-' . str_pad($rank, 2, '0', STR_PAD_LEFT) . '-' . $maxSlots;
+        return 'DT'.$yearPart.$semesterPart.'-'.str_pad($rank, 2, '0', STR_PAD_LEFT).'-'.$maxSlots;
     }
 
     /**
@@ -259,11 +269,11 @@ class DeTaiService
         }
 
         if (preg_match('/\/(\d+)/', $slotsVal, $matches)) {
-            return (int)$matches[1];
+            return (int) $matches[1];
         }
 
         if (is_numeric($slotsVal)) {
-            return (int)$slotsVal;
+            return (int) $slotsVal;
         }
 
         return 4;
@@ -282,7 +292,7 @@ class DeTaiService
         // Bỏ học hàm học vị ở đầu tên (VD: TS. Nguyễn Văn X -> Nguyễn Văn X)
         $cleanName = preg_replace('/^(TS\.|ThS\.|PGS\.|GS\.|Dr\.)\s+/iu', '', $teacherName);
 
-        $giangVien = GiangVien::where('ho_ten', 'like', '%' . trim($cleanName) . '%')->first();
+        $giangVien = GiangVien::where('ho_ten', 'like', '%'.trim($cleanName).'%')->first();
 
         return $giangVien ? $giangVien->giang_vien_id : 1;
     }
@@ -319,6 +329,7 @@ class DeTaiService
         if (str_contains($directionUpper, 'MẠNG') || str_contains($directionUpper, 'MANG') || str_contains($directionUpper, 'NETWORK')) {
             return 'MANG_MAY_TINH';
         }
+
         return 'PHAN_MEM';
     }
 }

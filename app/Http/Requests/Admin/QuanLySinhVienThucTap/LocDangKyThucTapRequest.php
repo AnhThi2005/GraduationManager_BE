@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Admin\QuanLySinhVienThucTap;
 
+use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 
 class LocDangKyThucTapRequest extends FormRequest
@@ -17,18 +18,18 @@ class LocDangKyThucTapRequest extends FormRequest
     /**
      * Get the validation rules that apply to the request.
      *
-     * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array<mixed>|string>
+     * @return array<string, ValidationRule|array<mixed>|string>
      */
     public function rules(): array
     {
         return [
-            'periodId'    => 'nullable|integer',
-            'dot_id'      => 'nullable|integer',
-            'keyword'     => 'nullable|string',
+            'periodId' => 'nullable|integer',
+            'dot_id' => 'nullable|integer',
+            'keyword' => 'nullable|string',
             'companyName' => 'nullable|string',
-            'status'      => 'nullable|string',
-            'trang_thai'  => 'nullable|string',
-            'per_page'    => 'nullable|integer'
+            'status' => 'nullable|string',
+            'trang_thai' => 'nullable|string',
+            'per_page' => 'nullable|integer',
         ];
     }
 }

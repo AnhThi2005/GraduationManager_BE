@@ -2,19 +2,17 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Seeder;
-use Illuminate\Support\Facades\DB;
-use Carbon\Carbon;
-use App\Models\Dot;
-use App\Models\Lop;
-use App\Models\DeTai;
-use App\Models\Nhom;
-use App\Models\SinhVien;
-use App\Models\GiangVien;
-use App\Models\HoiDong;
 use App\Models\BaoCaoTienDo;
 use App\Models\DangKyThucTap;
+use App\Models\DeTai;
+use App\Models\Dot;
+use App\Models\GiangVien;
+use App\Models\HoiDong;
+use App\Models\Nhom;
 use App\Models\PhanCongHdtt;
+use App\Models\SinhVien;
+use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\DB;
 
 class LecturerDemoSeeder extends Seeder
 {
@@ -32,7 +30,7 @@ class LecturerDemoSeeder extends Seeder
                 'hoc_vi' => 'ThS',
                 'chuyen_mon' => 'Công nghệ phần mềm',
                 'vai_tro' => 'GIANG_VIEN',
-                'dang_hoat_dong' => 1
+                'dang_hoat_dong' => 1,
             ]
         );
 
@@ -47,7 +45,7 @@ class LecturerDemoSeeder extends Seeder
                 'hoc_vi' => 'ThS',
                 'chuyen_mon' => 'Phần mềm',
                 'vai_tro' => 'ADMIN',
-                'dang_hoat_dong' => 1
+                'dang_hoat_dong' => 1,
             ]
         );
 
@@ -62,7 +60,7 @@ class LecturerDemoSeeder extends Seeder
                 'hoc_vi' => 'TS',
                 'chuyen_mon' => 'Hệ thống thông tin',
                 'vai_tro' => 'GIANG_VIEN',
-                'dang_hoat_dong' => 1
+                'dang_hoat_dong' => 1,
             ]
         );
 
@@ -78,7 +76,7 @@ class LecturerDemoSeeder extends Seeder
                 'ngay_bat_dau' => '2025-09-01',
                 'ngay_ket_thuc' => '2025-11-30',
                 'han_dang_ky' => '2025-08-25',
-                'giang_vien_id' => 1
+                'giang_vien_id' => 1,
             ]
         );
 
@@ -93,7 +91,7 @@ class LecturerDemoSeeder extends Seeder
                 'ngay_bat_dau' => '2025-12-01',
                 'ngay_ket_thuc' => '2026-02-28',
                 'han_dang_ky' => '2025-11-20',
-                'giang_vien_id' => 1
+                'giang_vien_id' => 1,
             ]
         );
 
@@ -108,7 +106,7 @@ class LecturerDemoSeeder extends Seeder
                 'ngay_bat_dau' => '2026-03-01',
                 'ngay_ket_thuc' => '2026-06-30',
                 'han_dang_ky' => '2026-02-20',
-                'giang_vien_id' => 1
+                'giang_vien_id' => 1,
             ]
         );
 
@@ -123,7 +121,7 @@ class LecturerDemoSeeder extends Seeder
                 'ngay_bat_dau' => '2026-07-01',
                 'ngay_ket_thuc' => '2026-09-30',
                 'han_dang_ky' => '2026-06-25',
-                'giang_vien_id' => 1
+                'giang_vien_id' => 1,
             ]
         );
 
@@ -142,7 +140,7 @@ class LecturerDemoSeeder extends Seeder
             2 => ['Trần Thị Bảo Châu', '0306231002@caothang.edu.vn', '0306231002'],
             3 => ['Lê Quốc Huy', '0306231003@caothang.edu.vn', '0306231003'],
             4 => ['Phạm Thị Thu Hằng', '0306231004@caothang.edu.vn', '0306231004'],
-            5 => ['Hoàng Văn Tuấn', '0306231005@caothang.edu.vn', '0306231005']
+            5 => ['Hoàng Văn Tuấn', '0306231005@caothang.edu.vn', '0306231005'],
         ];
 
         foreach ($studentNames as $sId => $info) {
@@ -152,11 +150,11 @@ class LecturerDemoSeeder extends Seeder
                     'ho_ten' => $info[0],
                     'email' => $info[1],
                     'ma_so_sinh_vien' => $info[2],
-                    'so_dien_thoai' => '0912' . str_pad($sId, 6, '0', STR_PAD_LEFT),
+                    'so_dien_thoai' => '0912'.str_pad($sId, 6, '0', STR_PAD_LEFT),
                     'gioi_tinh' => ($sId % 2 === 0) ? 'Nữ' : 'Nam',
-                    'ngay_sinh' => '2005-04-1' . $sId,
+                    'ngay_sinh' => '2005-04-1'.$sId,
                     'lop_id' => 1, // CDTH23WEBA
-                    'dang_hoat_dong' => 1
+                    'dang_hoat_dong' => 1,
                 ]
             );
         }
@@ -190,7 +188,7 @@ class LecturerDemoSeeder extends Seeder
             'mo_ta' => 'Xây dựng ứng dụng và mạch IoT thu thập độ ẩm đất, nhiệt độ môi trường và tự động kích hoạt máy bơm nước qua web.',
             'so_luong_sv_toi_da' => 4,
             'huong_de_tai' => 'PHAN_MEM',
-            'trang_thai' => 'DA_DUYET'
+            'trang_thai' => 'DA_DUYET',
         ]);
 
         $topic2 = DeTai::create([
@@ -201,7 +199,7 @@ class LecturerDemoSeeder extends Seeder
             'mo_ta' => 'Sử dụng Smart Contract lưu trữ vòng đời và lịch trình vận chuyển của thực phẩm từ nông trại đến siêu thị.',
             'so_luong_sv_toi_da' => 3,
             'huong_de_tai' => 'PHAN_MEM',
-            'trang_thai' => 'DA_DUYET'
+            'trang_thai' => 'DA_DUYET',
         ]);
 
         $topic3 = DeTai::create([
@@ -212,7 +210,7 @@ class LecturerDemoSeeder extends Seeder
             'mo_ta' => 'Sử dụng mô hình LSTM để phân tích và đưa ra dự đoán ngắn hạn về giá các mã cổ phiếu phổ biến.',
             'so_luong_sv_toi_da' => 4,
             'huong_de_tai' => 'PHAN_MEM',
-            'trang_thai' => 'CHO_DUYET'
+            'trang_thai' => 'CHO_DUYET',
         ]);
 
         // 6. SEED: Groups (Nhom) registered for these topics
@@ -224,7 +222,7 @@ class LecturerDemoSeeder extends Seeder
             'trang_thai_duyet' => 'DA_DUYET',
             'ket_qua_huong_dan' => null,
             'nhan_xet_phan_bien' => null,
-            'ket_qua_phan_bien' => null
+            'ket_qua_phan_bien' => null,
         ]);
 
         $group2 = Nhom::create([
@@ -235,7 +233,7 @@ class LecturerDemoSeeder extends Seeder
             'trang_thai_duyet' => 'CHO_DUYET',
             'ket_qua_huong_dan' => null,
             'nhan_xet_phan_bien' => null,
-            'ket_qua_phan_bien' => null
+            'ket_qua_phan_bien' => null,
         ]);
 
         // 7. SEED: Group members (thanhviennhom)
@@ -244,26 +242,26 @@ class LecturerDemoSeeder extends Seeder
                 'nhom_id' => 101,
                 'sinh_vien_id' => 1, // Nguyễn Minh Khoa
                 'la_truong_nhom' => 1,
-                'dieu_kien_lam_do_an' => 'DAT'
+                'dieu_kien_lam_do_an' => 'DAT',
             ],
             [
                 'nhom_id' => 101,
                 'sinh_vien_id' => 2, // Trần Thị Bảo Châu
                 'la_truong_nhom' => 0,
-                'dieu_kien_lam_do_an' => 'DAT'
+                'dieu_kien_lam_do_an' => 'DAT',
             ],
             [
                 'nhom_id' => 102,
                 'sinh_vien_id' => 3, // Lê Quốc Huy
                 'la_truong_nhom' => 1,
-                'dieu_kien_lam_do_an' => 'DAT'
+                'dieu_kien_lam_do_an' => 'DAT',
             ],
             [
                 'nhom_id' => 102,
                 'sinh_vien_id' => 4, // Phạm Thị Thu Hằng
                 'la_truong_nhom' => 0,
-                'dieu_kien_lam_do_an' => 'DAT'
-            ]
+                'dieu_kien_lam_do_an' => 'DAT',
+            ],
         ]);
 
         // 8. SEED: Progress Reports (BaoCaoTienDo) for DATN
@@ -276,7 +274,7 @@ class LecturerDemoSeeder extends Seeder
             'duong_dan_file' => 'tailen/bao-cao-do-an-t1-sv1.pdf',
             'trang_thai' => 'DA_NOP',
             'loai_bao_cao' => 'DO_AN',
-            'thoi_gian_nop' => '2026-05-15 08:30:00'
+            'thoi_gian_nop' => '2026-05-15 08:30:00',
         ]);
 
         $report2 = BaoCaoTienDo::create([
@@ -288,7 +286,7 @@ class LecturerDemoSeeder extends Seeder
             'duong_dan_file' => 'tailen/bao-cao-do-an-t2-sv1.pdf',
             'trang_thai' => 'DA_NOP',
             'loai_bao_cao' => 'DO_AN',
-            'thoi_gian_nop' => '2026-05-22 08:30:00'
+            'thoi_gian_nop' => '2026-05-22 08:30:00',
         ]);
 
         $report3 = BaoCaoTienDo::create([
@@ -300,7 +298,7 @@ class LecturerDemoSeeder extends Seeder
             'duong_dan_file' => 'tailen/bao-cao-do-an-t3-sv1.pdf',
             'trang_thai' => 'DA_NOP',
             'loai_bao_cao' => 'DO_AN',
-            'thoi_gian_nop' => '2026-05-29 08:30:00'
+            'thoi_gian_nop' => '2026-05-29 08:30:00',
         ]);
 
         // Add feedback for week 3 report
@@ -310,7 +308,7 @@ class LecturerDemoSeeder extends Seeder
             'giang_vien_id' => 2,
             'noi_dung' => 'Bản thiết kế giao diện Dashboard rất trực quan. Các biểu đồ chạy tốt, cần cải tiến thêm bảo mật API.',
             'danh_gia' => 'DAT',
-            'loai_nhan_xet' => 'DO_AN'
+            'loai_nhan_xet' => 'DO_AN',
         ]);
 
         // 9. SEED: Councils (HoiDong) & members
@@ -321,25 +319,25 @@ class LecturerDemoSeeder extends Seeder
             'ngay_bao_ve' => '2026-06-28',
             'gio_bao_ve' => '08:00:00',
             'phong_bao_ve' => 'Phòng A.102',
-            'trang_thai' => 'DA_CONG_BO'
+            'trang_thai' => 'DA_CONG_BO',
         ]);
 
         DB::table('thanhvienhoidong')->insert([
             [
                 'hoi_dong_id' => 101,
                 'giang_vien_id' => 1, // Nguyễn Văn Tài
-                'vai_tro' => 'CHU_TICH'
+                'vai_tro' => 'CHU_TICH',
             ],
             [
                 'hoi_dong_id' => 101,
                 'giang_vien_id' => 2, // Trần Thị Hoa
-                'vai_tro' => 'UY_VIEN'
+                'vai_tro' => 'UY_VIEN',
             ],
             [
                 'hoi_dong_id' => 101,
                 'giang_vien_id' => 3, // Phạm Thị Lan
-                'vai_tro' => 'PHAN_BIEN'
-            ]
+                'vai_tro' => 'PHAN_BIEN',
+            ],
         ]);
 
         // Link Group 101 to Council 101 for defense / grading
@@ -352,7 +350,7 @@ class LecturerDemoSeeder extends Seeder
             'giang_vien_id' => 2,
             'sinh_vien_id' => 1,
             'dot_id' => 4,
-            'da_cong_bo' => 1
+            'da_cong_bo' => 1,
         ]);
 
         PhanCongHdtt::create([
@@ -360,7 +358,7 @@ class LecturerDemoSeeder extends Seeder
             'giang_vien_id' => 2,
             'sinh_vien_id' => 2,
             'dot_id' => 4,
-            'da_cong_bo' => 1
+            'da_cong_bo' => 1,
         ]);
 
         PhanCongHdtt::create([
@@ -368,7 +366,7 @@ class LecturerDemoSeeder extends Seeder
             'giang_vien_id' => 2,
             'sinh_vien_id' => 3,
             'dot_id' => 4,
-            'da_cong_bo' => 1
+            'da_cong_bo' => 1,
         ]);
 
         // Seed internship registrations (dangkythuctap) for guided students in Period 4
@@ -381,7 +379,7 @@ class LecturerDemoSeeder extends Seeder
             'vi_tri_thuc_tap' => 'Lập trình viên ReactJS',
             'thoi_gian_thuc_tap' => '3 tháng',
             'dia_chi_thuc_tap' => 'Lô T2-4 Đường D1, Khu Công Nghệ Cao, Quận 9',
-            'trang_thai' => 'DA_DUYET'
+            'trang_thai' => 'DA_DUYET',
         ]);
 
         DangKyThucTap::create([
@@ -393,7 +391,7 @@ class LecturerDemoSeeder extends Seeder
             'vi_tri_thuc_tap' => 'QA Intern',
             'thoi_gian_thuc_tap' => '3 tháng',
             'dia_chi_thuc_tap' => 'VNG Campus, Đường số 13, Quận 7',
-            'trang_thai' => 'DA_DUYET'
+            'trang_thai' => 'DA_DUYET',
         ]);
 
         // 11. SEED: TTTN progress reports
@@ -406,7 +404,7 @@ class LecturerDemoSeeder extends Seeder
             'duong_dan_file' => 'tailen/nhat-ky-tt-t1-sv1.pdf',
             'trang_thai' => 'DA_NOP',
             'loai_bao_cao' => 'THUC_TAP',
-            'thoi_gian_nop' => '2026-06-15 09:00:00'
+            'thoi_gian_nop' => '2026-06-15 09:00:00',
         ]);
 
         BaoCaoTienDo::create([
@@ -418,7 +416,7 @@ class LecturerDemoSeeder extends Seeder
             'duong_dan_file' => 'tailen/nhat-ky-tt-t2-sv1.pdf',
             'trang_thai' => 'DA_NOP',
             'loai_bao_cao' => 'THUC_TAP',
-            'thoi_gian_nop' => '2026-06-22 09:00:00'
+            'thoi_gian_nop' => '2026-06-22 09:00:00',
         ]);
 
         // Feedback for TTTN Week 2 Report
@@ -428,7 +426,7 @@ class LecturerDemoSeeder extends Seeder
             'giang_vien_id' => 2,
             'noi_dung' => 'Tiến độ thực tập tốt. Đã nắm bắt được nghiệp vụ và công cụ làm việc của công ty.',
             'danh_gia' => 'DAT',
-            'loai_nhan_xet' => 'THUC_TAP'
+            'loai_nhan_xet' => 'THUC_TAP',
         ]);
     }
 }

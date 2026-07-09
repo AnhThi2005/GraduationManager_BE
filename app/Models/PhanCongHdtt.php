@@ -10,7 +10,9 @@ class PhanCongHdtt extends Model
     use SoftDeletes;
 
     protected $table = 'phanconghdtt';
+
     protected $primaryKey = 'phan_cong_hd_id';
+
     public $timestamps = false;
 
     protected $fillable = [
@@ -18,7 +20,7 @@ class PhanCongHdtt extends Model
         'sinh_vien_id',
         'dot_id',
         'da_cong_bo',
-        'ngay_phan_cong'
+        'ngay_phan_cong',
     ];
 
     protected $casts = [

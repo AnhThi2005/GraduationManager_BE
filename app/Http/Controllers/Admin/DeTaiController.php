@@ -2,13 +2,15 @@
 
 namespace App\Http\Controllers\Admin;
 
-use App\Http\Controllers\Controller;
 use App\Http\Controllers\Concerns\KiemTraTrangThaiDot;
-use Illuminate\Http\Request;
+use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\QuanLyDeTai\CapNhatDeTaiRequest;
+use App\Http\Requests\Admin\QuanLyDeTai\ThemDeTaiRequest;
+use App\Models\DeTai;
 use App\Models\Dot;
 use App\Services\DeTaiService;
-use App\Http\Requests\Admin\QuanLyDeTai\ThemDeTaiRequest;
-use App\Http\Requests\Admin\QuanLyDeTai\CapNhatDeTaiRequest;
+use App\Services\RealtimeService;
+use Illuminate\Http\Request;
 
 class DeTaiController extends Controller
 {
@@ -36,7 +38,7 @@ class DeTaiController extends Controller
         $filters = [
             'keyword' => $request->input('keyword'),
             'status' => $status,
-            'periodId' => $request->input('periodId')
+            'periodId' => $request->input('periodId'),
         ];
 
         $res = $this->deTaiService->getListTopic($filters, $limit);
@@ -46,18 +48,18 @@ class DeTaiController extends Controller
             'results' => [
                 'objects' => [
                     'rows' => $res['rows'],
-                    'total' => $res['total']
-                ]
+                    'total' => $res['total'],
+                ],
             ],
             'pagination' => [
                 'total' => $res['total'],
                 'totalPages' => $res['lastPage'],
                 'limit' => $res['perPage'],
                 'first' => $res['onFirstPage'],
-                'last' => !$res['hasMorePages'],
+                'last' => ! $res['hasMorePages'],
                 'hasNext' => $res['hasMorePages'],
-                'hasPrevious' => !$res['onFirstPage']
-            ]
+                'hasPrevious' => ! $res['onFirstPage'],
+            ],
         ], 200);
     }
 
@@ -67,18 +69,18 @@ class DeTaiController extends Controller
     public function xemChiTiet(Request $request, $id)
     {
         $topic = $this->deTaiService->getTopicDetail($id);
-        if (!$topic) {
+        if (! $topic) {
             return response()->json([
                 'success' => false,
-                'message' => 'Không tìm thấy đề tài này!'
+                'message' => 'Không tìm thấy đề tài này!',
             ], 404);
         }
 
         return response()->json([
             'code' => 200,
             'results' => [
-                'object' => $topic
-            ]
+                'object' => $topic,
+            ],
         ], 200);
     }
 
@@ -98,18 +100,18 @@ class DeTaiController extends Controller
 
         $topic = $this->deTaiService->createTopic($request->all(), $periodId);
 
-        \App\Services\RealtimeService::broadcast('notification', [
+        RealtimeService::broadcast('notification', [
             'title' => 'Đề tài mới được đề xuất',
-            'message' => 'Giảng viên ' . ($topic['teacher'] ?? 'GV') . ' vừa đề xuất đề tài: ' . ($topic['name'] ?? ''),
+            'message' => 'Giảng viên '.($topic['teacher'] ?? 'GV').' vừa đề xuất đề tài: '.($topic['name'] ?? ''),
             'type' => 'topic_proposed',
-            'payload' => $topic
+            'payload' => $topic,
         ]);
 
         return response()->json([
             'code' => 200,
             'results' => [
-                'object' => $topic
-            ]
+                'object' => $topic,
+            ],
         ], 200);
     }
 
@@ -119,30 +121,30 @@ class DeTaiController extends Controller
     public function capNhat(CapNhatDeTaiRequest $request, $id)
     {
 
-        $existing = \App\Models\DeTai::find($id);
+        $existing = DeTai::find($id);
         if ($resp = $this->chanNeuDotDaDong($existing?->dot)) {
             return $resp;
         }
 
         $topic = $this->deTaiService->updateTopic($id, $request->all());
-        if (!$topic) {
+        if (! $topic) {
             return response()->json([
                 'success' => false,
-                'message' => 'Không tìm thấy đề tài này để cập nhật!'
+                'message' => 'Không tìm thấy đề tài này để cập nhật!',
             ], 404);
         }
 
-        \App\Services\RealtimeService::broadcast('slot_updated', [
+        RealtimeService::broadcast('slot_updated', [
             'type' => 'topic_updated',
             'topicId' => $id,
-            'payload' => $topic
+            'payload' => $topic,
         ]);
 
         return response()->json([
             'code' => 200,
             'results' => [
-                'object' => $topic
-            ]
+                'object' => $topic,
+            ],
         ], 200);
     }
 
@@ -152,18 +154,18 @@ class DeTaiController extends Controller
     public function xoa(Request $request, $id)
     {
         $user = $request->user();
-        $deTai = \App\Models\DeTai::find($id);
+        $deTai = DeTai::find($id);
         if ($user->tokenCan('GIANG_VIEN')) {
             if ($deTai && $deTai->giang_vien_id !== $user->giang_vien_id) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Bạn không có quyền xóa đề tài của giảng viên khác!'
+                    'message' => 'Bạn không có quyền xóa đề tài của giảng viên khác!',
                 ], 403);
             }
-        } elseif (!$user->tokenCan('ADMIN')) {
+        } elseif (! $user->tokenCan('ADMIN')) {
             return response()->json([
                 'success' => false,
-                'message' => 'Bạn không có quyền thực hiện thao tác này!'
+                'message' => 'Bạn không có quyền thực hiện thao tác này!',
             ], 403);
         }
 
@@ -172,21 +174,21 @@ class DeTaiController extends Controller
         }
 
         $success = $this->deTaiService->deleteTopic($id);
-        if (!$success) {
+        if (! $success) {
             return response()->json([
                 'success' => false,
-                'message' => 'Không tìm thấy đề tài này để xóa!'
+                'message' => 'Không tìm thấy đề tài này để xóa!',
             ], 404);
         }
 
-        \App\Services\RealtimeService::broadcast('slot_updated', [
+        RealtimeService::broadcast('slot_updated', [
             'type' => 'topic_deleted',
-            'topicId' => $id
+            'topicId' => $id,
         ]);
 
         return response()->json([
             'success' => true,
-            'message' => 'Xóa đề tài thành công!'
+            'message' => 'Xóa đề tài thành công!',
         ], 200);
     }
 }

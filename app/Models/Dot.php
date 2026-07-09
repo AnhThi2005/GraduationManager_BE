@@ -2,13 +2,15 @@
 
 namespace App\Models;
 
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 
 class Dot extends Model
 {
     protected $table = 'dot';
+
     protected $primaryKey = 'dot_id';
-    
+
     public $timestamps = false;
 
     protected $fillable = [
@@ -24,7 +26,7 @@ class Dot extends Model
         'han_dang_ky',
         'han_nop_bao_cao',
         'ngay_bat_dau_cham_diem',
-        'ngay_ket_thuc_cham_diem'
+        'ngay_ket_thuc_cham_diem',
     ];
 
     public function lops()
@@ -45,7 +47,7 @@ class Dot extends Model
     public function hasStudent($sinhVienId): bool
     {
         $sinhVien = SinhVien::find($sinhVienId);
-        if (!$sinhVien) {
+        if (! $sinhVien) {
             return false;
         }
 
@@ -64,19 +66,19 @@ class Dot extends Model
      */
     public function tinhSoTuan(): int
     {
-        if (!$this->ngay_bat_dau || !$this->ngay_ket_thuc) {
+        if (! $this->ngay_bat_dau || ! $this->ngay_ket_thuc) {
             return 8;
         }
 
-        $start = \Carbon\Carbon::parse($this->ngay_bat_dau, 'Asia/Ho_Chi_Minh');
-        $end = \Carbon\Carbon::parse($this->ngay_ket_thuc, 'Asia/Ho_Chi_Minh');
+        $start = Carbon::parse($this->ngay_bat_dau, 'Asia/Ho_Chi_Minh');
+        $end = Carbon::parse($this->ngay_ket_thuc, 'Asia/Ho_Chi_Minh');
 
         return max(1, (int) ceil($start->diffInDays($end) / 7));
     }
 
     public function moTaThoiGianThucTap(): string
     {
-        return $this->tinhSoTuan() . ' tuần';
+        return $this->tinhSoTuan().' tuần';
     }
 
     // ==========================================================
@@ -100,7 +102,8 @@ class Dot extends Model
      */
     public function daKhoaThaoTacSinhVien(): bool
     {
-        return in_array($this->trang_thai, ['CHAM_DIEM', 'CHO_MO', 'DA_DONG'], true);
+        // 'CHO_MO' là tên cũ của 'DA_CONG_BO', giữ lại để tương thích nếu còn sót dữ liệu cũ.
+        return in_array($this->trang_thai, ['CHAM_DIEM', 'DA_CONG_BO', 'CHO_MO', 'DA_DONG'], true);
     }
 
     /**
@@ -109,6 +112,7 @@ class Dot extends Model
      */
     public function daKhoaSuaDiem(): bool
     {
-        return in_array($this->trang_thai, ['CHO_MO', 'DA_DONG'], true);
+        // 'CHO_MO' là tên cũ của 'DA_CONG_BO', giữ lại để tương thích nếu còn sót dữ liệu cũ.
+        return in_array($this->trang_thai, ['DA_CONG_BO', 'CHO_MO', 'DA_DONG'], true);
     }
 }

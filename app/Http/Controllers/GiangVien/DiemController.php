@@ -201,7 +201,7 @@ class DiemController extends Controller
                         $reportExists = true;
                     }
 
-                    if (!$defenseExists || !$reportExists) {
+                    if (! $defenseExists || ! $reportExists) {
                         $hasAllScores = false;
                         break;
                     }
@@ -282,7 +282,7 @@ class DiemController extends Controller
             $decoded = json_decode($lich->ghi_chu, true);
             $gvpbId = $decoded['reviewer_id'] ?? null;
         }
-        if (!$gvpbId && $nhom && $nhom->hoi_dong_id) {
+        if (! $gvpbId && $nhom && $nhom->hoi_dong_id) {
             $thanhVienPb = DB::table('thanhvienhoidong')
                 ->where('hoi_dong_id', $nhom->hoi_dong_id)
                 ->where('vai_tro', 'PHAN_BIEN')

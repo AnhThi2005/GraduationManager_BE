@@ -4,14 +4,13 @@ namespace App\Http\Controllers\SinhVien;
 
 use App\Http\Controllers\Concerns\KiemTraTrangThaiDot;
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
 use App\Models\CongTy;
 use App\Models\DangKyThucTap;
-use App\Models\SinhVien;
 use App\Models\Dot;
+use App\Services\RealtimeService;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
-use App\Services\RealtimeService;
 
 class ThucTapController extends Controller
 {
@@ -28,10 +27,10 @@ class ThucTapController extends Controller
     {
         $taxId = trim((string) $request->query('taxId'));
 
-        if (!preg_match('/^[0-9]{10}([0-9]{3})?$/', $taxId)) {
+        if (! preg_match('/^[0-9]{10}([0-9]{3})?$/', $taxId)) {
             return response()->json([
                 'success' => false,
-                'message' => 'Mã số thuế phải gồm 10 hoặc 13 chữ số.'
+                'message' => 'Mã số thuế phải gồm 10 hoặc 13 chữ số.',
             ], 422);
         }
 
@@ -40,16 +39,16 @@ class ThucTapController extends Controller
         } catch (\Throwable $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Dịch vụ tra cứu mã số thuế tạm thời không khả dụng, vui lòng nhập thủ công.'
+                'message' => 'Dịch vụ tra cứu mã số thuế tạm thời không khả dụng, vui lòng nhập thủ công.',
             ], 503);
         }
 
         $body = $response->json();
 
-        if (!$response->successful() || empty($body['data'])) {
+        if (! $response->successful() || empty($body['data'])) {
             return response()->json([
                 'success' => false,
-                'message' => 'Không tìm thấy doanh nghiệp với mã số thuế này.'
+                'message' => 'Không tìm thấy doanh nghiệp với mã số thuế này.',
             ], 404);
         }
 
@@ -61,8 +60,8 @@ class ThucTapController extends Controller
                 'object' => [
                     'name' => $data['name'] ?? '',
                     'address' => $data['address'] ?? '',
-                ]
-            ]
+                ],
+            ],
         ]);
     }
 
@@ -91,7 +90,7 @@ class ThucTapController extends Controller
                 ->all();
 
             return [
-                'code' => (string)$company->cong_ty_id,
+                'code' => (string) $company->cong_ty_id,
                 'name' => $company->ten_cong_ty,
                 'taxId' => $company->ma_so_thue ?? '',
                 'field' => empty($fields) ? 'Phần mềm' : implode(', ', $fields),
@@ -106,8 +105,8 @@ class ThucTapController extends Controller
         return response()->json([
             'code' => 200,
             'results' => [
-                'objects' => $rows
-            ]
+                'objects' => $rows,
+            ],
         ], 200);
     }
 
@@ -117,10 +116,10 @@ class ThucTapController extends Controller
     public function khaiBaoThucTap(Request $request)
     {
         $sinhVien = $request->user();
-        if (!$sinhVien) {
+        if (! $sinhVien) {
             return response()->json([
                 'success' => false,
-                'message' => 'Bạn chưa đăng nhập.'
+                'message' => 'Bạn chưa đăng nhập.',
             ], 401);
         }
 
@@ -134,7 +133,7 @@ class ThucTapController extends Controller
             'phone' => 'nullable|string|max:255',
             'duration' => 'nullable|string|max:255',
             'confirmPaper' => 'nullable|boolean',
-            'internshipAddress' => 'nullable|string|max:255'
+            'internshipAddress' => 'nullable|string|max:255',
         ];
 
         if ($request->filled('email')) {
@@ -143,7 +142,7 @@ class ThucTapController extends Controller
 
         $request->validate($rules, [
             'taxId.required' => 'Mã số thuế công ty không được để trống.',
-            'position.required' => 'Vị trí thực tập không được để trống.'
+            'position.required' => 'Vị trí thực tập không được để trống.',
         ]);
 
         $companyName = $request->input('companyName');
@@ -153,7 +152,7 @@ class ThucTapController extends Controller
         // (giống cách admin khai báo hộ) để tránh tạo trùng công ty do lệch chính tả tên gọi
         $company = CongTy::where('ma_so_thue', $taxId)->first();
 
-        if (!$company) {
+        if (! $company) {
             $company = CongTy::create([
                 'ten_cong_ty' => $companyName,
                 'dia_chi' => $request->input('address') ?? '',
@@ -161,14 +160,14 @@ class ThucTapController extends Controller
                 'nguoi_lien_he' => $request->input('mentor') ?? '',
                 'email_lien_he' => $request->input('email') ?? '',
                 'so_dien_thoai_lh' => $request->input('phone') ?? '',
-                'trang_thai' => 'CHO_DUYET'
+                'trang_thai' => 'CHO_DUYET',
             ]);
 
             // Thêm lĩnh vực hoạt động
             if ($request->filled('field')) {
                 DB::table('congtylinhvuc')->insert([
                     'cong_ty_id' => $company->cong_ty_id,
-                    'ten_linh_vuc' => $request->input('field')
+                    'ten_linh_vuc' => $request->input('field'),
                 ]);
             }
         }
@@ -181,21 +180,21 @@ class ThucTapController extends Controller
             $lopId = $sinhVien->lop_id;
             $activePeriod = Dot::where('loai_dot', 'TTTN')
                 ->where('trang_thai', '!=', 'DA_DONG')
-                ->whereHas('lops', function($q) use ($lopId) {
+                ->whereHas('lops', function ($q) use ($lopId) {
                     $q->where('lop.lop_id', $lopId);
                 })->orderBy('dot_id', 'desc')->first();
 
             // Fallback sang đợt TTTN bất kỳ đang mở hoặc đợt mới nhất
-            if (!$activePeriod) {
+            if (! $activePeriod) {
                 $activePeriod = Dot::where('loai_dot', 'TTTN')->where('trang_thai', 'DANG_MO')->first()
                     ?? Dot::where('loai_dot', 'TTTN')->orderBy('dot_id', 'desc')->first();
             }
         }
 
-        if (!$activePeriod) {
+        if (! $activePeriod) {
             return response()->json([
                 'success' => false,
-                'message' => 'Không tìm thấy đợt thực tập tốt nghiệp nào đang mở để khai báo!'
+                'message' => 'Không tìm thấy đợt thực tập tốt nghiệp nào đang mở để khai báo!',
             ], 400);
         }
 
@@ -205,10 +204,10 @@ class ThucTapController extends Controller
 
         // Chặn khai báo sai đợt: lớp của sinh viên phải được gắn vào đợt này,
         // hoặc sinh viên được thêm thủ công vào đợt (ví dụ rớt đợt trước)
-        if (!$activePeriod->hasStudent($sinhVien->sinh_vien_id)) {
+        if (! $activePeriod->hasStudent($sinhVien->sinh_vien_id)) {
             return response()->json([
                 'success' => false,
-                'message' => "Bạn không thuộc đợt \"{$activePeriod->ten_dot}\" nên không thể khai báo thực tập cho đợt này. Vui lòng liên hệ quản trị viên nếu đây là nhầm lẫn."
+                'message' => "Bạn không thuộc đợt \"{$activePeriod->ten_dot}\" nên không thể khai báo thực tập cho đợt này. Vui lòng liên hệ quản trị viên nếu đây là nhầm lẫn.",
             ], 422);
         }
 
@@ -221,7 +220,7 @@ class ThucTapController extends Controller
         if ($daCoDangKyDuyet) {
             return response()->json([
                 'success' => false,
-                'message' => 'Nơi thực tập của bạn trong đợt này đã được duyệt hoặc đang chờ cấp giấy giới thiệu. Không thể tự ý khai báo lại!'
+                'message' => 'Nơi thực tập của bạn trong đợt này đã được duyệt hoặc đang chờ cấp giấy giới thiệu. Không thể tự ý khai báo lại!',
             ], 400);
         }
 
@@ -231,7 +230,7 @@ class ThucTapController extends Controller
             ->delete();
 
         // Chỉ lưu địa chỉ thực tập nếu sinh viên yêu cầu cấp giấy giới thiệu
-        $confirmPaper = (bool)$request->input('confirmPaper');
+        $confirmPaper = (bool) $request->input('confirmPaper');
         $internshipAddress = $confirmPaper
             ? ($request->input('internshipAddress') ?: ($request->input('address') ?: 'Địa chỉ công ty'))
             : null;
@@ -252,19 +251,19 @@ class ThucTapController extends Controller
             'thoi_gian_thuc_tap' => $request->input('duration') ?: $activePeriod->moTaThoiGianThucTap(),
             'dia_chi_thuc_tap' => $internshipAddress,
             'trang_thai' => $trangThaiReg,
-            'ngay_dang_ky' => now()
+            'ngay_dang_ky' => now(),
         ]);
 
         // Broadcast thông báo realtime cho admin
         RealtimeService::broadcast('notification', [
             'title' => 'Đăng ký thực tập mới',
-            'message' => 'Sinh viên ' . $sinhVien->ho_ten . ' vừa khai báo tự thực tập tại ' . $company->ten_cong_ty,
+            'message' => 'Sinh viên '.$sinhVien->ho_ten.' vừa khai báo tự thực tập tại '.$company->ten_cong_ty,
             'type' => 'internship_declared',
             'payload' => [
                 'id' => $reg->dang_ky_id,
                 'studentName' => $sinhVien->ho_ten,
-                'companyName' => $company->ten_cong_ty
-            ]
+                'companyName' => $company->ten_cong_ty,
+            ],
         ]);
 
         return response()->json([
@@ -272,12 +271,12 @@ class ThucTapController extends Controller
             'message' => 'Khai báo thực tập thành công!',
             'results' => [
                 'object' => [
-                    'id' => (string)$reg->dang_ky_id,
+                    'id' => (string) $reg->dang_ky_id,
                     'companyName' => $company->ten_cong_ty,
                     'status' => 'pending',
-                    'confirmPaper' => $confirmPaper
-                ]
-            ]
+                    'confirmPaper' => $confirmPaper,
+                ],
+            ],
         ], 201);
     }
 
@@ -287,10 +286,10 @@ class ThucTapController extends Controller
     public function xemYeuCauCuaToi(Request $request)
     {
         $sinhVien = $request->user();
-        if (!$sinhVien) {
+        if (! $sinhVien) {
             return response()->json([
                 'success' => false,
-                'message' => 'Bạn chưa đăng nhập.'
+                'message' => 'Bạn chưa đăng nhập.',
             ], 401);
         }
 
@@ -300,17 +299,17 @@ class ThucTapController extends Controller
         } else {
             $lopId = $sinhVien->lop_id;
             $activePeriod = Dot::where('loai_dot', 'TTTN')
-                ->whereHas('lops', function($q) use ($lopId) {
+                ->whereHas('lops', function ($q) use ($lopId) {
                     $q->where('lop.lop_id', $lopId);
                 })->orderBy('dot_id', 'desc')->first();
         }
 
-        if (!$activePeriod) {
+        if (! $activePeriod) {
             return response()->json([
                 'code' => 200,
                 'results' => [
-                    'object' => null
-                ]
+                    'object' => null,
+                ],
             ]);
         }
 
@@ -319,21 +318,21 @@ class ThucTapController extends Controller
             ->where('dot_id', $activePeriod->dot_id)
             ->first();
 
-        if (!$reg) {
+        if (! $reg) {
             return response()->json([
                 'code' => 200,
                 'results' => [
-                    'object' => null
-                ]
+                    'object' => null,
+                ],
             ]);
         }
 
         $status = 'pending';
         if ($reg->trang_thai === 'DA_DUYET') {
             $status = 'approved';
-        } else if ($reg->trang_thai === 'TU_CHOI') {
+        } elseif ($reg->trang_thai === 'TU_CHOI') {
             $status = 'rejected';
-        } else if ($reg->trang_thai === 'CHO_CAP_GIAY') {
+        } elseif ($reg->trang_thai === 'CHO_CAP_GIAY') {
             $status = 'cho_cap_giay';
         }
 
@@ -341,17 +340,17 @@ class ThucTapController extends Controller
             'code' => 200,
             'results' => [
                 'object' => [
-                    'id' => (string)$reg->dang_ky_id,
+                    'id' => (string) $reg->dang_ky_id,
                     'companyName' => $reg->congTy ? $reg->congTy->ten_cong_ty : '',
                     'status' => $status,
-                    'confirmPaper' => !empty($reg->dia_chi_thuc_tap),
+                    'confirmPaper' => ! empty($reg->dia_chi_thuc_tap),
                     'internshipAddress' => $reg->dia_chi_thuc_tap,
                     'mentor' => $reg->nguoi_huong_dan,
                     'phone' => $reg->sdt_huong_dan,
                     'position' => $reg->vi_tri_cong_viec,
-                    'duration' => $reg->thoi_gian_thuc_tap
-                ]
-            ]
+                    'duration' => $reg->thoi_gian_thuc_tap,
+                ],
+            ],
         ]);
     }
 }

@@ -14,21 +14,21 @@ class ThemDeTaiRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'name'         => 'required|string|max:255',
-            'slots'        => 'required|string',
-            'description'  => 'required|string|max:5000',
+            'name' => 'required|string|max:255',
+            'slots' => 'required|string',
+            'description' => 'required|string|max:5000',
         ];
     }
 
     public function messages(): array
     {
         return [
-            'name.required'        => 'Tên đề tài không được để trống.',
-            'name.string'          => 'Tên đề tài phải là chuỗi.',
-            'name.max'             => 'Tên đề tài không được vượt quá 255 ký tự.',
-            'slots.required'       => 'Số lượng thành viên tối đa không được để trống.',
+            'name.required' => 'Tên đề tài không được để trống.',
+            'name.string' => 'Tên đề tài phải là chuỗi.',
+            'name.max' => 'Tên đề tài không được vượt quá 255 ký tự.',
+            'slots.required' => 'Số lượng thành viên tối đa không được để trống.',
             'description.required' => 'Mô tả đề tài không được để trống.',
-            'description.max'      => 'Mô tả đề tài không được vượt quá 5000 ký tự.',
+            'description.max' => 'Mô tả đề tài không được vượt quá 5000 ký tự.',
         ];
     }
 }

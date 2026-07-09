@@ -2,9 +2,9 @@
 
 namespace App\Services;
 
-use App\Models\SinhVien;
 use App\Models\GiangVien;
 use App\Models\Lop;
+use App\Models\SinhVien;
 
 class NguoiDungService
 {
@@ -13,16 +13,16 @@ class NguoiDungService
         $query = SinhVien::query()->with('lop');
 
         // Lọc theo từ khóa (họ tên hoặc mã số sinh viên)
-        if (!empty($filters['ho_ten'])) {
+        if (! empty($filters['ho_ten'])) {
             $keyword = trim($filters['ho_ten']);
             $query->where(function ($q) use ($keyword) {
-                $q->where('ho_ten', 'LIKE', '%' . $keyword . '%')
-                  ->orWhere('ma_so_sinh_vien', 'LIKE', '%' . $keyword . '%');
+                $q->where('ho_ten', 'LIKE', '%'.$keyword.'%')
+                    ->orWhere('ma_so_sinh_vien', 'LIKE', '%'.$keyword.'%');
             });
         }
 
         // Lọc theo tên lớp (className)
-        if (!empty($filters['ten_lop'])) {
+        if (! empty($filters['ten_lop'])) {
             $tenLop = trim($filters['ten_lop']);
             $query->whereHas('lop', function ($subQuery) use ($tenLop) {
                 $subQuery->where('ten_lop', '=', $tenLop);
@@ -42,22 +42,22 @@ class NguoiDungService
         $query = GiangVien::query();
 
         // Lọc theo từ khóa (họ tên hoặc mã giảng viên)
-        if (!empty($filters['ho_ten'])) {
+        if (! empty($filters['ho_ten'])) {
             $keyword = trim($filters['ho_ten']);
             $query->where(function ($q) use ($keyword) {
-                $q->where('ho_ten', 'LIKE', '%' . $keyword . '%')
-                  ->orWhere('giang_vien_id', 'LIKE', '%' . $keyword . '%');
+                $q->where('ho_ten', 'LIKE', '%'.$keyword.'%')
+                    ->orWhere('giang_vien_id', 'LIKE', '%'.$keyword.'%');
             });
         }
 
         // Lọc theo chuyên môn (chuyen_mon)
-        if (!empty($filters['chuyen_mon'])) {
+        if (! empty($filters['chuyen_mon'])) {
             $chuyenMon = trim($filters['chuyen_mon']);
-            $query->where('chuyen_mon', 'LIKE', '%' . $chuyenMon . '%');
+            $query->where('chuyen_mon', 'LIKE', '%'.$chuyenMon.'%');
         }
 
         // Lọc theo vai trò (ADMIN/GIANG_VIEN)
-        if (!empty($filters['vai_tro'])) {
+        if (! empty($filters['vai_tro'])) {
             $query->where('vai_tro', $filters['vai_tro']);
         }
 
@@ -72,7 +72,7 @@ class NguoiDungService
     public function themSinhVien(array $data)
     {
         // Chuyển logic giải quyết lớp học từ Controller sang Service (Vòng 4)
-        if (!empty($data['className'])) {
+        if (! empty($data['className'])) {
             $lop = Lop::firstOrCreate(['ten_lop' => trim($data['className'])]);
             $data['lop_id'] = $lop->lop_id;
         }
@@ -81,7 +81,7 @@ class NguoiDungService
         $sv = SinhVien::create($data);
 
         // Broadcast event realtime
-        \App\Services\RealtimeService::broadcast('slot_updated', [
+        RealtimeService::broadcast('slot_updated', [
             'type' => 'user_created',
             'role' => 'student',
             'payload' => [
@@ -94,7 +94,7 @@ class NguoiDungService
                 'status' => $sv->dang_hoat_dong == 1 ? 'active' : 'inactive',
                 'gender' => $sv->gioi_tinh,
                 'dateOfBirth' => $sv->ngay_sinh,
-            ]
+            ],
         ]);
 
         return $sv;
@@ -107,11 +107,11 @@ class NguoiDungService
             $data['chuyen_mon'] = $data['className'];
             unset($data['className']);
         }
-        
+
         $gv = GiangVien::create($data);
 
         // Broadcast event realtime
-        \App\Services\RealtimeService::broadcast('slot_updated', [
+        RealtimeService::broadcast('slot_updated', [
             'type' => 'user_created',
             'role' => strtolower($gv->vai_tro) === 'admin' ? 'admin' : 'teacher',
             'payload' => [
@@ -124,7 +124,7 @@ class NguoiDungService
                 'status' => $gv->dang_hoat_dong == 1 ? 'active' : 'inactive',
                 'academicDegree' => $gv->hoc_vi,
                 'specialization' => $gv->chuyen_mon,
-            ]
+            ],
         ]);
 
         return $gv;
@@ -133,13 +133,13 @@ class NguoiDungService
     public function capNhatSinhVien($id, array $data)
     {
         $sinhVien = SinhVien::where('sinh_vien_id', $id)->first();
-        if (!$sinhVien) {
+        if (! $sinhVien) {
             return null;
         }
 
         // Chuyển logic giải quyết lớp học từ Controller sang Service (Vòng 4)
         if (array_key_exists('className', $data)) {
-            if (!empty($data['className'])) {
+            if (! empty($data['className'])) {
                 $lop = Lop::firstOrCreate(['ten_lop' => trim($data['className'])]);
                 $data['lop_id'] = $lop->lop_id;
             } else {
@@ -149,13 +149,14 @@ class NguoiDungService
         }
 
         $sinhVien->update($data);
+
         return $sinhVien->fresh();
     }
 
     public function capNhatGiangVien($giang_vien_id, array $data)
     {
         $giangVien = GiangVien::where('giang_vien_id', $giang_vien_id)->first();
-        if (!$giangVien) {
+        if (! $giangVien) {
             return null;
         }
 
@@ -166,13 +167,14 @@ class NguoiDungService
         }
 
         $giangVien->update($data);
+
         return $giangVien->fresh();
     }
 
     public function doiTrangThaiSinhVien($id, $trangThaiMoi)
     {
         $sinhVien = SinhVien::where('sinh_vien_id', $id)->first();
-        if (!$sinhVien) {
+        if (! $sinhVien) {
             return null;
         }
 
@@ -185,7 +187,7 @@ class NguoiDungService
     public function doiTrangThaiGiangVien($id, $trangThaiMoi)
     {
         $giangVien = GiangVien::where('giang_vien_id', $id)->first();
-        if (!$giangVien) {
+        if (! $giangVien) {
             return null;
         }
 

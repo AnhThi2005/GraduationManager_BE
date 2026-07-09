@@ -2,11 +2,10 @@
 
 namespace App\Services;
 
-use App\Models\SinhVien;
 use App\Models\GiangVien;
 use App\Models\Lop;
+use App\Models\SinhVien;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 
 class ThongKeService
 {
@@ -46,7 +45,7 @@ class ThongKeService
             'totalLessons' => 0, // unused placeholder
             'totalQuestions' => $totalQuestions,
             'totalCodes' => $totalCodes,
-            'usedCodes' => $usedCodes
+            'usedCodes' => $usedCodes,
         ];
 
         // 2. Số lượng học viên theo lớp học (studentsPerCourse)
@@ -56,7 +55,7 @@ class ThongKeService
             foreach ($lops as $lop) {
                 $studentsPerCourse[] = [
                     'courseName' => $lop->ten_lop,
-                    'studentCount' => $lop->sinh_viens_count
+                    'studentCount' => $lop->sinh_viens_count,
                 ];
             }
         } else {
@@ -83,19 +82,19 @@ class ThongKeService
             $learningProgress = [
                 [
                     'label' => 'Đã duyệt đề tài',
-                    'value' => (int)$daDuyetPercent,
-                    'color' => '#10B981' // Green
+                    'value' => (int) $daDuyetPercent,
+                    'color' => '#10B981', // Green
                 ],
                 [
                     'label' => 'Chờ duyệt',
-                    'value' => (int)$choDuyetPercent,
-                    'color' => '#3B82F6' // Blue
+                    'value' => (int) $choDuyetPercent,
+                    'color' => '#3B82F6', // Blue
                 ],
                 [
                     'label' => 'Bị từ chối',
-                    'value' => (int)$tuChoiPercent,
-                    'color' => '#EF4444' // Red
-                ]
+                    'value' => (int) $tuChoiPercent,
+                    'color' => '#EF4444', // Red
+                ],
             ];
         } else {
             // Fallback nếu chưa có đăng ký đề tài nào thì hiển thị tỉ lệ thực tập
@@ -107,14 +106,14 @@ class ThongKeService
             $learningProgress = [
                 [
                     'label' => 'Đã duyệt thực tập',
-                    'value' => (int)$ttPercent,
-                    'color' => '#10B981'
+                    'value' => (int) $ttPercent,
+                    'color' => '#10B981',
                 ],
                 [
                     'label' => 'Chưa đăng ký',
-                    'value' => (int)$chuaTTPercent,
-                    'color' => '#6B7280'
-                ]
+                    'value' => (int) $chuaTTPercent,
+                    'color' => '#6B7280',
+                ],
             ];
         }
 
@@ -141,12 +140,12 @@ class ThongKeService
                 }
 
                 $recentActivities[] = [
-                    'id' => (string)$ri->dang_ky_id,
+                    'id' => (string) $ri->dang_ky_id,
                     'userName' => $ri->ho_ten,
                     'courseName' => $ri->ten_cong_ty,
                     'date' => $ri->ngay_dang_ky ?? now()->subHours($ri->dang_ky_id % 24)->format('Y-m-d H:i:s'),
                     'status' => $statusText,
-                    'statusColor' => $statusColor
+                    'statusColor' => $statusColor,
                 ];
             }
         } else {
@@ -157,8 +156,8 @@ class ThongKeService
                     'courseName' => 'Công ty FPT Software',
                     'date' => now()->subHours(2)->format('Y-m-d H:i:s'),
                     'status' => 'Đã duyệt',
-                    'statusColor' => 'green'
-                ]
+                    'statusColor' => 'green',
+                ],
             ];
         }
 
@@ -166,7 +165,7 @@ class ThongKeService
             'stats' => $stats,
             'studentsPerCourse' => $studentsPerCourse,
             'learningProgress' => $learningProgress,
-            'recentActivities' => $recentActivities
+            'recentActivities' => $recentActivities,
         ];
     }
 }

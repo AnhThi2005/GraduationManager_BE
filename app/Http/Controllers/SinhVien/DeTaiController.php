@@ -4,12 +4,13 @@ namespace App\Http\Controllers\SinhVien;
 
 use App\Http\Controllers\Concerns\KiemTraTrangThaiDot;
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
 use App\Models\DeTai;
-use App\Models\Nhom;
-use App\Models\SinhVien;
 use App\Models\Dot;
 use App\Models\LoiMoiNhom;
+use App\Models\Nhom;
+use App\Models\SinhVien;
+use App\Services\RealtimeService;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class DeTaiController extends Controller
@@ -57,35 +58,35 @@ class DeTaiController extends Controller
     public function xemDangKyCuaToi(Request $request)
     {
         $sinhVien = $request->user();
-        if (!$sinhVien) {
+        if (! $sinhVien) {
             return response()->json([
                 'success' => false,
-                'message' => 'Bạn chưa đăng nhập.'
+                'message' => 'Bạn chưa đăng nhập.',
             ], 401);
         }
 
         // Tìm nhóm ĐATN mà sinh viên là thành viên (ưu tiên nhóm thực tế thay vì suy luận đợt qua lớp,
         // vì một lớp có thể liên kết nhiều đợt ĐATN cùng lúc)
         $nhom = Nhom::with(['deTai.giangVien', 'dot', 'members'])
-            ->whereHas('members', function($q) use ($sinhVien) {
+            ->whereHas('members', function ($q) use ($sinhVien) {
                 $q->where('sinhvien.sinh_vien_id', $sinhVien->sinh_vien_id);
             })
             ->orderBy('dot_id', 'desc')
             ->first();
 
-        if (!$nhom) {
+        if (! $nhom) {
             return response()->json([
                 'code' => 200,
                 'results' => [
-                    'object' => null
-                ]
+                    'object' => null,
+                ],
             ]);
         }
 
         $status = 'pending';
         if ($nhom->trang_thai_duyet === 'DA_DUYET') {
             $status = 'accepted';
-        } else if ($nhom->trang_thai_duyet === 'TU_CHOI') {
+        } elseif ($nhom->trang_thai_duyet === 'TU_CHOI') {
             $status = 'rejected';
         }
 
@@ -95,9 +96,9 @@ class DeTaiController extends Controller
             'code' => 200,
             'results' => [
                 'object' => [
-                    'topicId' => (string)$nhom->de_tai_id,
+                    'topicId' => (string) $nhom->de_tai_id,
                     'topicTitle' => $nhom->deTai ? $nhom->deTai->ten_de_tai : 'Chưa chọn đề tài',
-                    'groupName' => 'Nhóm số #' . $nhom->nhom_id,
+                    'groupName' => 'Nhóm số #'.$nhom->nhom_id,
                     'batch' => $nhom->dot ? $nhom->dot->ten_dot : '',
                     'submittedAt' => $nhom->ngay_dang_ky ? date('d/m/Y H:i', strtotime($nhom->ngay_dang_ky)) : '—',
                     'status' => $status,
@@ -106,11 +107,11 @@ class DeTaiController extends Controller
                     'members' => $nhom->members->map(function ($sv) {
                         return [
                             'studentCode' => $sv->ma_so_sinh_vien,
-                            'name' => $sv->ho_ten
+                            'name' => $sv->ho_ten,
                         ];
-                    })->values()
-                ]
-            ]
+                    })->values(),
+                ],
+            ],
         ]);
     }
 
@@ -120,24 +121,24 @@ class DeTaiController extends Controller
     public function dangKyDeTai(Request $request)
     {
         $sinhVien = $request->user();
-        if (!$sinhVien) {
+        if (! $sinhVien) {
             return response()->json([
                 'success' => false,
-                'message' => 'Bạn chưa đăng nhập.'
+                'message' => 'Bạn chưa đăng nhập.',
             ], 401);
         }
 
         $request->validate([
-            'topicId' => 'required|integer'
+            'topicId' => 'required|integer',
         ]);
 
         $topicId = $request->input('topicId');
         $deTai = DeTai::find($topicId);
 
-        if (!$deTai) {
+        if (! $deTai) {
             return response()->json([
                 'success' => false,
-                'message' => 'Đề tài không tồn tại.'
+                'message' => 'Đề tài không tồn tại.',
             ], 404);
         }
 
@@ -149,15 +150,15 @@ class DeTaiController extends Controller
 
         // Tìm nhóm mà sinh viên đang tham gia trong đợt này
         $nhom = Nhom::where('dot_id', $dotId)
-            ->whereHas('members', function($q) use ($sinhVien) {
+            ->whereHas('members', function ($q) use ($sinhVien) {
                 $q->where('sinhvien.sinh_vien_id', $sinhVien->sinh_vien_id);
             })->first();
 
         // Yêu cầu phải có nhóm trước mới được đăng ký đề tài
-        if (!$nhom) {
+        if (! $nhom) {
             return response()->json([
                 'success' => false,
-                'message' => 'Bạn phải tạo nhóm ĐATN trước khi đăng ký đề tài!'
+                'message' => 'Bạn phải tạo nhóm ĐATN trước khi đăng ký đề tài!',
             ], 400);
         }
 
@@ -167,10 +168,10 @@ class DeTaiController extends Controller
             ->where('sinh_vien_id', $sinhVien->sinh_vien_id)
             ->first();
 
-        if (!$pivot || $pivot->la_truong_nhom != 1) {
+        if (! $pivot || $pivot->la_truong_nhom != 1) {
             return response()->json([
                 'success' => false,
-                'message' => 'Chỉ trưởng nhóm mới có quyền đăng ký đề tài cho nhóm.'
+                'message' => 'Chỉ trưởng nhóm mới có quyền đăng ký đề tài cho nhóm.',
             ], 400);
         }
 
@@ -178,7 +179,7 @@ class DeTaiController extends Controller
         if ($nhom->trang_thai_duyet === 'DA_DUYET') {
             return response()->json([
                 'success' => false,
-                'message' => 'Đề tài của nhóm đã được phê duyệt, bạn không thể thay đổi đề tài.'
+                'message' => 'Đề tài của nhóm đã được phê duyệt, bạn không thể thay đổi đề tài.',
             ], 400);
         }
 
@@ -187,7 +188,7 @@ class DeTaiController extends Controller
         try {
             $nhom->update([
                 'de_tai_id' => $deTai->de_tai_id,
-                'trang_thai_duyet' => 'CHO_DUYET'
+                'trang_thai_duyet' => 'CHO_DUYET',
             ]);
 
             // Lưu thông tin đăng ký vào bảng dangkydetai
@@ -196,26 +197,26 @@ class DeTaiController extends Controller
                 'de_tai_id' => $deTai->de_tai_id,
                 'trang_thai_duyet' => 'CHO_DUYET',
                 'ngay_dang_ky' => date('Y-m-d H:i:s'),
-                'ly_do_tu_choi' => null
+                'ly_do_tu_choi' => null,
             ]);
 
             // Broadcast real-time event when a student registers a topic
-            \App\Services\RealtimeService::broadcast('slot_updated', [
+            RealtimeService::broadcast('slot_updated', [
                 'type' => 'student_registered_topic',
                 'topicId' => $topicId,
-                'nhomId' => $nhom->nhom_id
+                'nhomId' => $nhom->nhom_id,
             ]);
 
-            \App\Services\RealtimeService::broadcast('notification', [
+            RealtimeService::broadcast('notification', [
                 'title' => 'Đăng ký đề tài mới',
-                'message' => 'Sinh viên ' . $sinhVien->ho_ten . ' vừa đăng ký đề tài: ' . $deTai->ten_de_tai,
+                'message' => 'Sinh viên '.$sinhVien->ho_ten.' vừa đăng ký đề tài: '.$deTai->ten_de_tai,
                 'type' => 'student_registered_topic',
                 'payload' => [
-                    'topicId' => (string)$deTai->de_tai_id,
+                    'topicId' => (string) $deTai->de_tai_id,
                     'topicTitle' => $deTai->ten_de_tai,
-                    'groupName' => 'Nhóm số #' . $nhom->nhom_id,
+                    'groupName' => 'Nhóm số #'.$nhom->nhom_id,
                     'studentName' => $sinhVien->ho_ten,
-                ]
+                ],
             ]);
 
             DB::commit();
@@ -225,21 +226,22 @@ class DeTaiController extends Controller
                 'message' => 'Đăng ký đề tài ĐATN thành công!',
                 'results' => [
                     'object' => [
-                        'topicId' => (string)$deTai->de_tai_id,
+                        'topicId' => (string) $deTai->de_tai_id,
                         'topicTitle' => $deTai->ten_de_tai,
-                        'groupName' => 'Nhóm số #' . $nhom->nhom_id,
+                        'groupName' => 'Nhóm số #'.$nhom->nhom_id,
                         'batch' => $deTai->dot ? $deTai->dot->ten_dot : 'Đợt hiện tại',
                         'submittedAt' => date('d/m/Y H:i'),
                         'status' => 'pending',
-                        'note' => 'Đã gửi yêu cầu đăng ký đề tài lên giảng viên.'
-                    ]
-                ]
+                        'note' => 'Đã gửi yêu cầu đăng ký đề tài lên giảng viên.',
+                    ],
+                ],
             ]);
         } catch (\Exception $e) {
             DB::rollBack();
+
             return response()->json([
                 'success' => false,
-                'message' => 'Lỗi hệ thống khi đăng ký đề tài: ' . $e->getMessage()
+                'message' => 'Lỗi hệ thống khi đăng ký đề tài: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -250,19 +252,19 @@ class DeTaiController extends Controller
     public function huyDangKy(Request $request)
     {
         $sinhVien = $request->user();
-        if (!$sinhVien) {
+        if (! $sinhVien) {
             return response()->json([
                 'success' => false,
-                'message' => 'Bạn chưa đăng nhập.'
+                'message' => 'Bạn chưa đăng nhập.',
             ], 401);
         }
 
         $activePeriod = $this->xacDinhDotDatnHienTai($sinhVien);
 
-        if (!$activePeriod) {
+        if (! $activePeriod) {
             return response()->json([
                 'success' => false,
-                'message' => 'Không tìm thấy đợt ĐATN hiện tại.'
+                'message' => 'Không tìm thấy đợt ĐATN hiện tại.',
             ], 400);
         }
 
@@ -272,21 +274,21 @@ class DeTaiController extends Controller
 
         // Tìm nhóm
         $nhom = Nhom::where('dot_id', $activePeriod->dot_id)
-            ->whereHas('members', function($q) use ($sinhVien) {
+            ->whereHas('members', function ($q) use ($sinhVien) {
                 $q->where('sinhvien.sinh_vien_id', $sinhVien->sinh_vien_id);
             })->first();
 
-        if (!$nhom) {
+        if (! $nhom) {
             return response()->json([
                 'success' => false,
-                'message' => 'Bạn chưa đăng ký đề tài nào.'
+                'message' => 'Bạn chưa đăng ký đề tài nào.',
             ], 400);
         }
 
         if ($nhom->trang_thai_duyet === 'DA_DUYET') {
             return response()->json([
                 'success' => false,
-                'message' => 'Đề tài đã được phê duyệt bởi giảng viên, bạn không thể tự ý hủy đăng ký.'
+                'message' => 'Đề tài đã được phê duyệt bởi giảng viên, bạn không thể tự ý hủy đăng ký.',
             ], 400);
         }
 
@@ -296,10 +298,10 @@ class DeTaiController extends Controller
             ->where('sinh_vien_id', $sinhVien->sinh_vien_id)
             ->first();
 
-        if (!$pivot || $pivot->la_truong_nhom != 1) {
+        if (! $pivot || $pivot->la_truong_nhom != 1) {
             return response()->json([
                 'success' => false,
-                'message' => 'Chỉ trưởng nhóm mới có quyền hủy đăng ký đề tài của nhóm.'
+                'message' => 'Chỉ trưởng nhóm mới có quyền hủy đăng ký đề tài của nhóm.',
             ], 400);
         }
 
@@ -307,29 +309,30 @@ class DeTaiController extends Controller
         try {
             // Xóa lịch sử đăng ký đề tài tương ứng
             DB::table('dangkydetai')->where('nhom_id', $nhom->nhom_id)->delete();
-            
+
             // Cập nhật nhóm: bỏ đề tài đi, giữ nguyên nhóm
             $nhom->update([
                 'de_tai_id' => null,
-                'trang_thai_duyet' => 'CHO_DUYET'
+                'trang_thai_duyet' => 'CHO_DUYET',
             ]);
 
-            \App\Services\RealtimeService::broadcast('slot_updated', [
+            RealtimeService::broadcast('slot_updated', [
                 'type' => 'student_cancelled_registration',
-                'nhomId' => $nhom->nhom_id
+                'nhomId' => $nhom->nhom_id,
             ]);
 
             DB::commit();
 
             return response()->json([
                 'success' => true,
-                'message' => 'Hủy đăng ký đề tài thành công! Nhóm của bạn vẫn được giữ lại.'
+                'message' => 'Hủy đăng ký đề tài thành công! Nhóm của bạn vẫn được giữ lại.',
             ]);
         } catch (\Exception $e) {
             DB::rollBack();
+
             return response()->json([
                 'success' => false,
-                'message' => 'Lỗi hệ thống khi hủy đăng ký đề tài: ' . $e->getMessage()
+                'message' => 'Lỗi hệ thống khi hủy đăng ký đề tài: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -340,34 +343,34 @@ class DeTaiController extends Controller
     public function xemLoiMoiDaGui(Request $request)
     {
         $sinhVien = $request->user();
-        if (!$sinhVien) {
+        if (! $sinhVien) {
             return response()->json(['success' => false, 'message' => 'Bạn chưa đăng nhập.'], 401);
         }
 
         // Lấy đợt ĐATN đang diễn ra của sinh viên
         $activePeriod = $this->xacDinhDotDatnHienTai($sinhVien);
 
-        if (!$activePeriod) {
+        if (! $activePeriod) {
             return response()->json([
                 'code' => 200,
                 'results' => [
-                    'objects' => []
-                ]
+                    'objects' => [],
+                ],
             ]);
         }
 
         // Tìm nhóm của sinh viên này
         $nhom = Nhom::where('dot_id', $activePeriod->dot_id)
-            ->whereHas('members', function($q) use ($sinhVien) {
+            ->whereHas('members', function ($q) use ($sinhVien) {
                 $q->where('sinhvien.sinh_vien_id', $sinhVien->sinh_vien_id);
             })->first();
 
-        if (!$nhom) {
+        if (! $nhom) {
             return response()->json([
                 'code' => 200,
                 'results' => [
-                    'objects' => []
-                ]
+                    'objects' => [],
+                ],
             ]);
         }
 
@@ -380,22 +383,22 @@ class DeTaiController extends Controller
             $status = 'pending';
             if ($lm->trang_thai_xac_nhan === 'DA_CHAP_NHAN') {
                 $status = 'accepted';
-            } else if ($lm->trang_thai_xac_nhan === 'TU_CHOI') {
+            } elseif ($lm->trang_thai_xac_nhan === 'TU_CHOI') {
                 $status = 'rejected';
             }
 
             return [
                 'id' => $lm->sinhVienDuocMoi ? $lm->sinhVienDuocMoi->ma_so_sinh_vien : '',
-                'inviteId' => (string)$lm->loi_moi_id,
-                'status' => $status
+                'inviteId' => (string) $lm->loi_moi_id,
+                'status' => $status,
             ];
         });
 
         return response()->json([
             'code' => 200,
             'results' => [
-                'objects' => $formatted
-            ]
+                'objects' => $formatted,
+            ],
         ]);
     }
 
@@ -405,21 +408,21 @@ class DeTaiController extends Controller
     public function guiLoiMoiNhom(Request $request)
     {
         $sinhVien = $request->user();
-        if (!$sinhVien) {
+        if (! $sinhVien) {
             return response()->json(['success' => false, 'message' => 'Bạn chưa đăng nhập.'], 401);
         }
 
         $request->validate([
             'studentCode' => 'required|string',
-            'topicId' => 'nullable'
+            'topicId' => 'nullable',
         ]);
 
         $studentCode = $request->input('studentCode');
         $topicId = $request->input('topicId');
         // convert string/number topicId to clean type
         if ($topicId !== null) {
-            $topicId = (int)$topicId;
-            if ($topicId <= 0 || !\App\Models\DeTai::where('de_tai_id', $topicId)->exists()) {
+            $topicId = (int) $topicId;
+            if ($topicId <= 0 || ! DeTai::where('de_tai_id', $topicId)->exists()) {
                 $topicId = null;
             }
         }
@@ -427,7 +430,7 @@ class DeTaiController extends Controller
         // Tìm đợt ĐATN đang diễn ra của sinh viên
         $activePeriod = $this->xacDinhDotDatnHienTai($sinhVien);
 
-        if (!$activePeriod) {
+        if (! $activePeriod) {
             return response()->json(['success' => false, 'message' => 'Không tìm thấy đợt ĐATN hiện tại.'], 400);
         }
 
@@ -437,7 +440,7 @@ class DeTaiController extends Controller
 
         // Tìm nhóm của sinh viên hiện tại trong đợt này
         $nhom = Nhom::where('dot_id', $activePeriod->dot_id)
-            ->whereHas('members', function($q) use ($sinhVien) {
+            ->whereHas('members', function ($q) use ($sinhVien) {
                 $q->where('sinhvien.sinh_vien_id', $sinhVien->sinh_vien_id);
             })->first();
 
@@ -457,7 +460,7 @@ class DeTaiController extends Controller
                     ->where('sinh_vien_id', $sinhVien->sinh_vien_id)
                     ->first();
 
-                if (!$pivot || $pivot->la_truong_nhom != 1) {
+                if (! $pivot || $pivot->la_truong_nhom != 1) {
                     return response()->json(['success' => false, 'message' => 'Chỉ trưởng nhóm mới có quyền gửi lời mời thành viên.'], 400);
                 }
 
@@ -474,7 +477,7 @@ class DeTaiController extends Controller
                     'dot_id' => $activePeriod->dot_id,
                     'trang_thai_nhom' => 'MOI_TAO',
                     'trang_thai_duyet' => 'CHO_DUYET',
-                    'ngay_dang_ky' => now()
+                    'ngay_dang_ky' => now(),
                 ]);
 
                 // Thêm sinh viên hiện tại làm trưởng nhóm
@@ -482,7 +485,7 @@ class DeTaiController extends Controller
                     'nhom_id' => $nhom->nhom_id,
                     'sinh_vien_id' => $sinhVien->sinh_vien_id,
                     'la_truong_nhom' => 1,
-                    'dieu_kien_lam_do_an' => 'DAT'
+                    'dieu_kien_lam_do_an' => 'DAT',
                 ]);
 
                 // Nếu có chọn đề tài, lưu đăng ký vào bảng dangkydetai
@@ -492,19 +495,19 @@ class DeTaiController extends Controller
                         'de_tai_id' => $topicId,
                         'trang_thai_duyet' => 'CHO_DUYET',
                         'ngay_dang_ky' => date('Y-m-d H:i:s'),
-                        'ly_do_tu_choi' => null
+                        'ly_do_tu_choi' => null,
                     ]);
                 }
             }
 
             // Tìm sinh viên cần mời theo mã số sinh viên
             $targetStudent = SinhVien::where('ma_so_sinh_vien', $studentCode)->first();
-            if (!$targetStudent) {
-                return response()->json(['success' => false, 'message' => 'Không tìm thấy sinh viên có mã số ' . $studentCode], 404);
+            if (! $targetStudent) {
+                return response()->json(['success' => false, 'message' => 'Không tìm thấy sinh viên có mã số '.$studentCode], 404);
             }
 
             // Kiểm tra xem sinh viên được mời có đang hoạt động không
-            if (!$targetStudent->dang_hoat_dong) {
+            if (! $targetStudent->dang_hoat_dong) {
                 return response()->json(['success' => false, 'message' => 'Tài khoản của sinh viên được mời đã bị khóa.'], 400);
             }
 
@@ -514,7 +517,7 @@ class DeTaiController extends Controller
 
             // Kiểm tra xem sinh viên được mời đã có nhóm trong đợt này chưa
             $targetHasGroup = Nhom::where('dot_id', $activePeriod->dot_id)
-                ->whereHas('members', function($q) use ($targetStudent) {
+                ->whereHas('members', function ($q) use ($targetStudent) {
                     $q->where('sinhvien.sinh_vien_id', $targetStudent->sinh_vien_id);
                 })->exists();
 
@@ -537,7 +540,7 @@ class DeTaiController extends Controller
                 'nhom_id' => $nhom->nhom_id,
                 'sinh_vien_duoc_moi_id' => $targetStudent->sinh_vien_id,
                 'trang_thai_xac_nhan' => 'CHO_XAC_NHAN',
-                'ngay_tao' => date('Y-m-d H:i:s')
+                'ngay_tao' => date('Y-m-d H:i:s'),
             ]);
 
             DB::commit();
@@ -548,17 +551,18 @@ class DeTaiController extends Controller
                 'results' => [
                     'object' => [
                         'id' => $targetStudent->ma_so_sinh_vien,
-                        'inviteId' => (string)$lm->loi_moi_id,
-                        'status' => 'pending'
-                    ]
-                ]
+                        'inviteId' => (string) $lm->loi_moi_id,
+                        'status' => 'pending',
+                    ],
+                ],
             ]);
 
         } catch (\Exception $e) {
             DB::rollBack();
+
             return response()->json([
                 'success' => false,
-                'message' => 'Lỗi hệ thống khi gửi lời mời: ' . $e->getMessage()
+                'message' => 'Lỗi hệ thống khi gửi lời mời: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -569,33 +573,33 @@ class DeTaiController extends Controller
     public function xemLoiMoiNhanDuoc(Request $request)
     {
         $sinhVien = $request->user();
-        if (!$sinhVien) {
+        if (! $sinhVien) {
             return response()->json(['success' => false, 'message' => 'Bạn chưa đăng nhập.'], 401);
         }
 
         // Lấy đợt ĐATN đang diễn ra của sinh viên
         $activePeriod = $this->xacDinhDotDatnHienTai($sinhVien);
 
-        if (!$activePeriod) {
+        if (! $activePeriod) {
             return response()->json([
                 'code' => 200,
                 'results' => [
-                    'objects' => []
-                ]
+                    'objects' => [],
+                ],
             ]);
         }
 
         // Lấy tất cả lời mời chờ hoặc đã xử lý gửi tới sinh viên này trong đợt hiện tại
         $loiMois = LoiMoiNhom::with(['nhom.deTai', 'nhom.members'])
             ->where('sinh_vien_duoc_moi_id', $sinhVien->sinh_vien_id)
-            ->whereHas('nhom', function($q) use ($activePeriod) {
+            ->whereHas('nhom', function ($q) use ($activePeriod) {
                 $q->where('dot_id', $activePeriod->dot_id);
             })->get();
 
         $formatted = $loiMois->map(function ($lm) {
             $nhom = $lm->nhom;
             // Tìm người gửi (trưởng nhóm)
-            $leader = $nhom ? $nhom->members->first(function($m) {
+            $leader = $nhom ? $nhom->members->first(function ($m) {
                 return $m->pivot->la_truong_nhom == 1;
             }) : null;
 
@@ -605,23 +609,23 @@ class DeTaiController extends Controller
             $status = 'pending';
             if ($lm->trang_thai_xac_nhan === 'DA_CHAP_NHAN') {
                 $status = 'accepted';
-            } else if ($lm->trang_thai_xac_nhan === 'TU_CHOI') {
+            } elseif ($lm->trang_thai_xac_nhan === 'TU_CHOI') {
                 $status = 'rejected';
             }
 
             return [
-                'id' => (string)$lm->loi_moi_id, // Sử dụng loi_moi_id làm ID của lời mời
+                'id' => (string) $lm->loi_moi_id, // Sử dụng loi_moi_id làm ID của lời mời
                 'from' => $senderName,
                 'topic' => $topicTitle,
-                'status' => $status
+                'status' => $status,
             ];
         });
 
         return response()->json([
             'code' => 200,
             'results' => [
-                'objects' => $formatted
-            ]
+                'objects' => $formatted,
+            ],
         ]);
     }
 
@@ -631,12 +635,12 @@ class DeTaiController extends Controller
     public function chapNhanLoiMoi(Request $request, $id)
     {
         $sinhVien = $request->user();
-        if (!$sinhVien) {
+        if (! $sinhVien) {
             return response()->json(['success' => false, 'message' => 'Bạn chưa đăng nhập.'], 401);
         }
 
         $loiMoi = LoiMoiNhom::find($id);
-        if (!$loiMoi) {
+        if (! $loiMoi) {
             return response()->json(['success' => false, 'message' => 'Không tìm thấy lời mời này.'], 404);
         }
 
@@ -649,7 +653,7 @@ class DeTaiController extends Controller
         }
 
         $nhom = Nhom::find($loiMoi->nhom_id);
-        if (!$nhom) {
+        if (! $nhom) {
             return response()->json(['success' => false, 'message' => 'Nhóm gửi lời mời không còn tồn tại.'], 400);
         }
 
@@ -672,7 +676,7 @@ class DeTaiController extends Controller
 
         // Kiểm tra xem sinh viên hiện tại đã gia nhập nhóm nào khác trong đợt này chưa
         $existingGroup = Nhom::where('dot_id', $nhom->dot_id)
-            ->whereHas('members', function($q) use ($sinhVien) {
+            ->whereHas('members', function ($q) use ($sinhVien) {
                 $q->where('sinhvien.sinh_vien_id', $sinhVien->sinh_vien_id);
             })->first();
 
@@ -691,7 +695,7 @@ class DeTaiController extends Controller
                 'nhom_id' => $nhom->nhom_id,
                 'sinh_vien_id' => $sinhVien->sinh_vien_id,
                 'la_truong_nhom' => 0,
-                'dieu_kien_lam_do_an' => 'DAT'
+                'dieu_kien_lam_do_an' => 'DAT',
             ]);
 
             // Từ chối tất cả lời mời chờ khác của sinh viên này trong đợt hiện tại
@@ -699,23 +703,24 @@ class DeTaiController extends Controller
                 ->where('trang_thai_xac_nhan', 'CHO_XAC_NHAN')
                 ->update(['trang_thai_xac_nhan' => 'TU_CHOI']);
 
-            \App\Services\RealtimeService::broadcast('slot_updated', [
+            RealtimeService::broadcast('slot_updated', [
                 'type' => 'group_member_joined',
-                'nhomId' => $nhom->nhom_id
+                'nhomId' => $nhom->nhom_id,
             ]);
 
             DB::commit();
 
             return response()->json([
                 'success' => true,
-                'message' => 'Chấp nhận lời mời gia nhập nhóm thành công!'
+                'message' => 'Chấp nhận lời mời gia nhập nhóm thành công!',
             ]);
 
         } catch (\Exception $e) {
             DB::rollBack();
+
             return response()->json([
                 'success' => false,
-                'message' => 'Lỗi hệ thống khi xử lý chấp nhận lời mời: ' . $e->getMessage()
+                'message' => 'Lỗi hệ thống khi xử lý chấp nhận lời mời: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -726,12 +731,12 @@ class DeTaiController extends Controller
     public function tuChoiLoiMoi(Request $request, $id)
     {
         $sinhVien = $request->user();
-        if (!$sinhVien) {
+        if (! $sinhVien) {
             return response()->json(['success' => false, 'message' => 'Bạn chưa đăng nhập.'], 401);
         }
 
         $loiMoi = LoiMoiNhom::find($id);
-        if (!$loiMoi) {
+        if (! $loiMoi) {
             return response()->json(['success' => false, 'message' => 'Không tìm thấy lời mời này.'], 404);
         }
 
@@ -753,12 +758,12 @@ class DeTaiController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Từ chối lời mời gia nhập nhóm thành công!'
+                'message' => 'Từ chối lời mời gia nhập nhóm thành công!',
             ]);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Lỗi hệ thống khi xử lý từ chối: ' . $e->getMessage()
+                'message' => 'Lỗi hệ thống khi xử lý từ chối: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -769,18 +774,18 @@ class DeTaiController extends Controller
     public function huyLoiMoiNhom(Request $request, $id)
     {
         $sinhVien = $request->user();
-        if (!$sinhVien) {
+        if (! $sinhVien) {
             return response()->json(['success' => false, 'message' => 'Bạn chưa đăng nhập.'], 401);
         }
 
         $loiMoi = LoiMoiNhom::find($id);
-        if (!$loiMoi) {
+        if (! $loiMoi) {
             return response()->json(['success' => false, 'message' => 'Không tìm thấy lời mời này.'], 404);
         }
 
         // Chỉ trưởng nhóm mới được hủy
         $nhom = Nhom::find($loiMoi->nhom_id);
-        if (!$nhom) {
+        if (! $nhom) {
             return response()->json(['success' => false, 'message' => 'Nhóm không tồn tại.'], 400);
         }
 
@@ -793,7 +798,7 @@ class DeTaiController extends Controller
             ->where('sinh_vien_id', $sinhVien->sinh_vien_id)
             ->first();
 
-        if (!$pivot || $pivot->la_truong_nhom != 1) {
+        if (! $pivot || $pivot->la_truong_nhom != 1) {
             return response()->json(['success' => false, 'message' => 'Chỉ trưởng nhóm mới có quyền hủy lời mời.'], 400);
         }
 
@@ -804,19 +809,19 @@ class DeTaiController extends Controller
         try {
             $loiMoi->delete();
 
-            \App\Services\RealtimeService::broadcast('slot_updated', [
+            RealtimeService::broadcast('slot_updated', [
                 'type' => 'group_invite_cancelled',
-                'nhomId' => $nhom->nhom_id
+                'nhomId' => $nhom->nhom_id,
             ]);
 
             return response()->json([
                 'success' => true,
-                'message' => 'Hủy lời mời nhóm thành công!'
+                'message' => 'Hủy lời mời nhóm thành công!',
             ]);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Lỗi hệ thống khi hủy lời mời: ' . $e->getMessage()
+                'message' => 'Lỗi hệ thống khi hủy lời mời: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -827,19 +832,19 @@ class DeTaiController extends Controller
     public function giaiTanNhom(Request $request)
     {
         $sinhVien = $request->user();
-        if (!$sinhVien) {
+        if (! $sinhVien) {
             return response()->json([
                 'success' => false,
-                'message' => 'Bạn chưa đăng nhập.'
+                'message' => 'Bạn chưa đăng nhập.',
             ], 401);
         }
 
         $activePeriod = $this->xacDinhDotDatnHienTai($sinhVien);
 
-        if (!$activePeriod) {
+        if (! $activePeriod) {
             return response()->json([
                 'success' => false,
-                'message' => 'Không tìm thấy đợt ĐATN hiện tại.'
+                'message' => 'Không tìm thấy đợt ĐATN hiện tại.',
             ], 400);
         }
 
@@ -849,21 +854,21 @@ class DeTaiController extends Controller
 
         // Tìm nhóm
         $nhom = Nhom::where('dot_id', $activePeriod->dot_id)
-            ->whereHas('members', function($q) use ($sinhVien) {
+            ->whereHas('members', function ($q) use ($sinhVien) {
                 $q->where('sinhvien.sinh_vien_id', $sinhVien->sinh_vien_id);
             })->first();
 
-        if (!$nhom) {
+        if (! $nhom) {
             return response()->json([
                 'success' => false,
-                'message' => 'Bạn chưa tham gia nhóm nào.'
+                'message' => 'Bạn chưa tham gia nhóm nào.',
             ], 400);
         }
 
         if ($nhom->trang_thai_duyet === 'DA_DUYET') {
             return response()->json([
                 'success' => false,
-                'message' => 'Nhóm đề tài đã được phê duyệt bởi giảng viên, không thể tự ý rời nhóm hoặc giải tán.'
+                'message' => 'Nhóm đề tài đã được phê duyệt bởi giảng viên, không thể tự ý rời nhóm hoặc giải tán.',
             ], 400);
         }
 
@@ -892,22 +897,23 @@ class DeTaiController extends Controller
                 $msg = 'Rời khỏi nhóm ĐATN thành công!';
             }
 
-            \App\Services\RealtimeService::broadcast('slot_updated', [
+            RealtimeService::broadcast('slot_updated', [
                 'type' => 'student_left_group',
-                'nhomId' => $nhom->nhom_id
+                'nhomId' => $nhom->nhom_id,
             ]);
 
             DB::commit();
 
             return response()->json([
                 'success' => true,
-                'message' => $msg
+                'message' => $msg,
             ]);
         } catch (\Exception $e) {
             DB::rollBack();
+
             return response()->json([
                 'success' => false,
-                'message' => 'Lỗi hệ thống khi thực hiện rời nhóm/giải tán: ' . $e->getMessage()
+                'message' => 'Lỗi hệ thống khi thực hiện rời nhóm/giải tán: '.$e->getMessage(),
             ], 500);
         }
     }
