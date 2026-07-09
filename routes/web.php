@@ -47,10 +47,6 @@ Route::middleware([
     Route::post('/private/v1/companies/publish', [CongTyController::class, 'congBo']);
 
     Route::get('/private/v1/internships/confirmations', [CongTyController::class, 'layDanhSachXacNhan']);
-    Route::get('/private/v1/internships/confirmations/{id}', [CongTyController::class, 'xemChiTietXacNhan']);
-    Route::post('/private/v1/internships/confirmations', [CongTyController::class, 'themMoiXacNhan']);
-    Route::patch('/private/v1/internships/confirmations/{id}', [CongTyController::class, 'capNhatXacNhan']);
-    Route::delete('/private/v1/internships/confirmations/{id}', [CongTyController::class, 'xoaXacNhan']);
 
     Route::get('/private/v1/internships/declarations', [CongTyController::class, 'layDanhSachKhaiBao']);
     Route::get('/private/v1/internships/declarations/{id}', [CongTyController::class, 'xemChiTietXacNhan']);

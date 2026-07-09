@@ -53,8 +53,7 @@ class LopService
      */
     public function createClass(array $data)
     {
-        // ten_lop là trường duy nhất trong DB, map với name hoặc code từ FE
-        $tenLop = $data['name'] ?? $data['code'] ?? '';
+        $tenLop = $data['name'] ?? '';
 
         $lop = Lop::create([
             'ten_lop' => $tenLop,
@@ -93,8 +92,6 @@ class LopService
         $updateData = [];
         if (isset($data['name'])) {
             $updateData['ten_lop'] = $data['name'];
-        } elseif (isset($data['code'])) {
-            $updateData['ten_lop'] = $data['code'];
         }
 
         if (isset($data['level'])) {
@@ -165,12 +162,10 @@ class LopService
 
         return [
             'id' => (string) $lop->lop_id,
-            'code' => $lop->ten_lop,
             'name' => $lop->ten_lop,
             'level' => $this->mapBackendLevelToFrontend($lop->bac_dao_tao),
             'course' => $lop->khoa_hoc ?? '',
             'major' => $lop->chuyen_nganh ?? '',
-            'supervisor' => 'TS. Nguyễn Văn A', // Mock supervisor teacher
             'members' => $members,
             'maxStudents' => count($members) + 10,
             'status' => 'ACTIVE',
