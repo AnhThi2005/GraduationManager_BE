@@ -127,7 +127,15 @@ class DotController extends Controller
      */
     public function xoa(Request $request, $id)
     {
-        $success = $this->dotService->deletePeriod($id);
+        try {
+            $success = $this->dotService->deletePeriod($id);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+
         if (! $success) {
             return response()->json([
                 'success' => false,

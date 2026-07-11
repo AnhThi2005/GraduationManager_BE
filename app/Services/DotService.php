@@ -2,7 +2,10 @@
 
 namespace App\Services;
 
+use App\Models\DangKyThucTap;
+use App\Models\DeTai;
 use App\Models\Dot;
+use App\Models\Nhom;
 use App\Models\SinhVien;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -192,6 +195,16 @@ class DotService
         $dot = Dot::find($id);
         if (! $dot) {
             return false;
+        }
+
+        if (
+            DeTai::where('dot_id', $id)->exists()
+            || DangKyThucTap::where('dot_id', $id)->exists()
+            || Nhom::where('dot_id', $id)->exists()
+        ) {
+            throw new \InvalidArgumentException(
+                'Không thể xóa đợt này vì đã có đề tài, khai báo thực tập hoặc nhóm đồ án gắn với đợt. Vui lòng xử lý dữ liệu liên quan trước.'
+            );
         }
 
         $dot->delete();

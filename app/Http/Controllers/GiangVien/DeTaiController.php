@@ -214,7 +214,15 @@ class DeTaiController extends Controller
             return $resp;
         }
 
-        $success = $this->deTaiService->deleteTopic($id);
+        try {
+            $success = $this->deTaiService->deleteTopic($id);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+
         if (! $success) {
             return response()->json([
                 'success' => false,
@@ -322,6 +330,20 @@ class DeTaiController extends Controller
             $memberCount = DB::table('thanhviennhom')->where('nhom_id', $groupId)->count();
             if ($memberCount < 2) {
                 return response()->json(['success' => false, 'message' => 'Nhóm phải có đủ ít nhất 2 thành viên mới được duyệt đề tài!'], 400);
+            }
+
+            $topic = DeTai::find($dangkydetai->de_tai_id);
+            $maxSlots = $topic->so_luong_sv_toi_da ?? 4;
+            $approvedSlots = DB::table('thanhviennhom')
+                ->join('nhomsvda', 'thanhviennhom.nhom_id', '=', 'nhomsvda.nhom_id')
+                ->where('nhomsvda.de_tai_id', $dangkydetai->de_tai_id)
+                ->where('nhomsvda.trang_thai_duyet', 'DA_DUYET')
+                ->count();
+            if ($approvedSlots + $memberCount > $maxSlots) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Đề tài chỉ còn '.max(0, $maxSlots - $approvedSlots).' chỗ trống, không đủ cho nhóm '.$memberCount.' thành viên này!',
+                ], 400);
             }
 
             DB::table('dangkydetai')->where('nhom_id', $groupId)->update(['trang_thai_duyet' => 'DA_DUYET']);

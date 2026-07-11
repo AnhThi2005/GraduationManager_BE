@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Concerns\KiemTraTrangThaiDot;
 use App\Http\Controllers\Controller;
+use App\Models\DeTai;
 use App\Models\Dot;
 use App\Models\Nhom;
 use App\Models\SinhVien;
@@ -296,6 +297,9 @@ class NhomController extends Controller
 
         DB::table('thanhviennhom')->where('nhom_id', $id)->delete();
         DB::table('dangkydetai')->where('nhom_id', $id)->delete();
+        DB::table('lichbaove')->where('nhom_id', $id)->delete();
+        DB::table('diembaocao')->where('nhom_id', $id)->delete();
+        DB::table('diemtongketdatn')->where('nhom_id', $id)->delete();
         $g->delete();
 
         RealtimeService::broadcast('slot_updated', [
@@ -330,6 +334,19 @@ class NhomController extends Controller
 
         $dangkydetai = DB::table('dangkydetai')->where('nhom_id', $id)->first();
         if ($dangkydetai) {
+            $topic = DeTai::find($dangkydetai->de_tai_id);
+            $maxSlots = $topic->so_luong_sv_toi_da ?? 4;
+            $approvedSlots = DB::table('thanhviennhom')
+                ->join('nhomsvda', 'thanhviennhom.nhom_id', '=', 'nhomsvda.nhom_id')
+                ->where('nhomsvda.de_tai_id', $dangkydetai->de_tai_id)
+                ->where('nhomsvda.trang_thai_duyet', 'DA_DUYET')
+                ->count();
+            if ($approvedSlots + $memberCount > $maxSlots) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Đề tài chỉ còn '.max(0, $maxSlots - $approvedSlots).' chỗ trống, không đủ cho nhóm '.$memberCount.' thành viên này!',
+                ], 400);
+            }
             $g->de_tai_id = $dangkydetai->de_tai_id;
         }
         $g->trang_thai_duyet = 'DA_DUYET';

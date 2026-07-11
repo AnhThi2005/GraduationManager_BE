@@ -155,14 +155,16 @@ class DeTaiController extends Controller
     {
         $user = $request->user();
         $deTai = DeTai::find($id);
-        if ($user->tokenCan('GIANG_VIEN')) {
+        if ($user->tokenCan('ADMIN')) {
+            // Admin có toàn quyền, không cần kiểm tra chủ sở hữu đề tài.
+        } elseif ($user->tokenCan('GIANG_VIEN')) {
             if ($deTai && $deTai->giang_vien_id !== $user->giang_vien_id) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Bạn không có quyền xóa đề tài của giảng viên khác!',
                 ], 403);
             }
-        } elseif (! $user->tokenCan('ADMIN')) {
+        } else {
             return response()->json([
                 'success' => false,
                 'message' => 'Bạn không có quyền thực hiện thao tác này!',
@@ -173,7 +175,15 @@ class DeTaiController extends Controller
             return $resp;
         }
 
-        $success = $this->deTaiService->deleteTopic($id);
+        try {
+            $success = $this->deTaiService->deleteTopic($id);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+
         if (! $success) {
             return response()->json([
                 'success' => false,

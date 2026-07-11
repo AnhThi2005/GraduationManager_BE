@@ -62,7 +62,6 @@ Route::middleware([
     // 7. Chức năng quản lý điểm số (Student Scores)
     Route::get('/private/v1/student-scores', [DiemSinhVienController::class, 'layDanhSach']);
     Route::get('/private/v1/student-scores/{id}', [DiemSinhVienController::class, 'xemChiTiet']);
-    Route::patch('/private/v1/student-scores/{id}', [DiemSinhVienController::class, 'capNhat']);
 
     // 8. Chức năng quản lý nhóm (Groups)
     Route::get('/private/v1/groups', [NhomController::class, 'layDanhSach']);

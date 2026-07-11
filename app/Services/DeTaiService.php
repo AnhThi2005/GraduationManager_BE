@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\DeTai;
 use App\Models\Dot;
 use App\Models\GiangVien;
+use App\Models\Nhom;
 use Illuminate\Support\Facades\DB;
 
 class DeTaiService
@@ -169,6 +170,12 @@ class DeTaiService
         $deTai = DeTai::find($id);
         if (! $deTai) {
             return false;
+        }
+
+        if (Nhom::where('de_tai_id', $id)->exists()) {
+            throw new \InvalidArgumentException(
+                'Không thể xóa đề tài này vì đã có nhóm sinh viên đăng ký. Vui lòng xử lý nhóm liên quan trước.'
+            );
         }
 
         $deTai->delete();

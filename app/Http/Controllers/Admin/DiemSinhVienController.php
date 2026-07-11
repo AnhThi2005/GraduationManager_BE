@@ -2,11 +2,8 @@
 
 namespace App\Http\Controllers\Admin;
 
-use App\Exceptions\GradingValidationException;
 use App\Http\Controllers\Controller;
-use App\Http\Requests\Admin\QuanLyDiem\CapNhatDiemSinhVienRequest;
 use App\Services\DiemSinhVienService;
-use App\Services\RealtimeService;
 use Illuminate\Http\Request;
 
 class DiemSinhVienController extends Controller
@@ -58,50 +55,6 @@ class DiemSinhVienController extends Controller
                 'message' => 'Không tìm thấy điểm số của sinh viên này!',
             ], 404);
         }
-
-        return response()->json([
-            'code' => 200,
-            'results' => [
-                'object' => $score,
-            ],
-        ], 200);
-    }
-
-    /**
-     * API Cập nhật điểm tốt nghiệp/thực tập của 1 sinh viên
-     */
-    public function capNhat(CapNhatDiemSinhVienRequest $request, $id)
-    {
-
-        try {
-            $score = $this->diemSinhVienService->updateScore($id, $request->all());
-        } catch (GradingValidationException $e) {
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage(),
-            ], $e->getStatusCode());
-        }
-
-        if (! $score) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Không tìm thấy thông tin hoặc đợt tốt nghiệp tương ứng để chấm điểm!',
-            ], 404);
-        }
-
-        RealtimeService::broadcast('score_updated', [
-            'type' => 'score_updated',
-            'studentId' => $id,
-            'payload' => $score,
-        ]);
-
-        RealtimeService::broadcast('notification', [
-            'type' => 'score_updated',
-            'studentId' => $id,
-            'title' => 'Cập nhật điểm số',
-            'message' => 'Điểm số của sinh viên đã được cập nhật bởi Admin',
-            'payload' => $score,
-        ]);
 
         return response()->json([
             'code' => 200,
