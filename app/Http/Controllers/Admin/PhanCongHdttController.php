@@ -35,13 +35,13 @@ class PhanCongHdttController extends Controller
 
         if ($isTttn) {
             // --- LOGIC CHO ĐỢT THỰC TẬP TỐT NGHIỆP (TTTN) ---
-            $query = SinhVien::query()->with('lop');
-            if ($lopIdsInPeriod->isNotEmpty()) {
-                $query->whereIn('lop_id', $lopIdsInPeriod);
-            } else {
-                $query->whereNull('sinh_vien_id');
-            }
-            $students = $query->get();
+            // Chỉ lấy danh sách sinh viên thực tế đăng ký tham gia đợt TTTN này (bảng dot_sinhvien)
+            $students = SinhVien::query()
+                ->join('dot_sinhvien', 'sinhvien.sinh_vien_id', '=', 'dot_sinhvien.sinh_vien_id')
+                ->where('dot_sinhvien.dot_id', $dotId)
+                ->with('lop')
+                ->select('sinhvien.*')
+                ->get();
 
             // Lấy phân công theo đợt
             $assignments = PhanCongHdtt::with('giangVien')

@@ -146,7 +146,38 @@ class ThucTapController extends Controller
         ]);
 
         $companyName = $request->input('companyName');
-        $taxId = $request->input('taxId');
+        $taxId = trim((string) $request->input('taxId'));
+
+        // Kiểm tra định dạng mã số thuế (10 hoặc 13 chữ số)
+        if (! preg_match('/^[0-9]{10}([0-9]{3})?$/', $taxId)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Mã số thuế phải gồm 10 hoặc 13 chữ số.',
+            ], 422);
+        }
+
+        // Gọi API VietQR để xác định doanh nghiệp thật
+        try {
+            $response = Http::timeout(6)->get("https://api.vietqr.io/v2/business/{$taxId}");
+            $body = $response->json();
+
+            if (! $response->successful() || empty($body['data'])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Mã số thuế này không tồn tại trên hệ thống Đăng ký doanh nghiệp quốc gia.',
+                ], 422);
+            }
+
+            // Ghi đè tên công ty và địa chỉ bằng thông tin chuẩn từ đăng ký thuế để tránh sinh viên nhập sai
+            $companyName = $body['data']['name'];
+            if (! empty($body['data']['address'])) {
+                $request->merge(['address' => $body['data']['address']]);
+            }
+        } catch (\Throwable $e) {
+            // Khi dịch vụ ngoài gặp sự cố kết nối, ghi log nhưng cho phép đi tiếp (fallback)
+            // để tránh nghẽn luồng đăng ký của sinh viên trong trường hợp API ngoài bị lỗi
+            \Illuminate\Support\Facades\Log::warning("VietQR API error during declaration: " . $e->getMessage());
+        }
 
         // Tìm hoặc tạo mới công ty ở trạng thái CHO_DUYET (chờ duyệt), khớp theo mã số thuế
         // (giống cách admin khai báo hộ) để tránh tạo trùng công ty do lệch chính tả tên gọi
