@@ -301,7 +301,16 @@ class ThucTapController extends Controller
             $activePeriod = Dot::where('loai_dot', 'TTTN')
                 ->whereHas('lops', function ($q) use ($lopId) {
                     $q->where('lop.lop_id', $lopId);
-                })->orderBy('dot_id', 'desc')->first();
+                })
+                ->where('trang_thai', '!=', 'DA_DONG')
+                ->orderBy('dot_id', 'desc')
+                ->first();
+            if (! $activePeriod) {
+                $activePeriod = Dot::where('loai_dot', 'TTTN')
+                    ->whereHas('lops', function ($q) use ($lopId) {
+                        $q->where('lop.lop_id', $lopId);
+                    })->orderBy('dot_id', 'desc')->first();
+            }
         }
 
         if (! $activePeriod) {

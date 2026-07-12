@@ -5,6 +5,7 @@ namespace App\Http\Controllers\SinhVien;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use App\Models\Dot;
 
 class DiemController extends Controller
 {
@@ -19,12 +20,66 @@ class DiemController extends Controller
         }
 
         $sinhVienId = $sinhVien->sinh_vien_id;
+        $lopId = $sinhVien->lop_id;
 
-        // Lấy điểm TTTN
-        $diemTttn = DB::table('diemthuctap')->where('sinh_vien_id', $sinhVienId)->first();
+        // 1. Kiểm tra xem sinh viên có đợt TTTN nào đang hoạt động (chưa đóng) hay không
+        $hasActiveTttn = Dot::where('loai_dot', 'TTTN')
+            ->where('trang_thai', '!=', 'DA_DONG')
+            ->where(function ($query) use ($lopId, $sinhVienId) {
+                $query->whereHas('lops', function ($q) use ($lopId) {
+                    $q->where('lop.lop_id', $lopId);
+                })->orWhereHas('sinhViens', function ($q) use ($sinhVienId) {
+                    $q->where('sinhvien.sinh_vien_id', $sinhVienId);
+                });
+            })
+            ->exists();
 
-        // Lấy điểm ĐATN
-        $diemDatn = DB::table('diemtongketdatn')->where('sinh_vien_id', $sinhVienId)->first();
+        if ($hasActiveTttn) {
+            // Nếu đang trong đợt hoạt động, bắt buộc lấy điểm đợt hoạt động (chấp nhận chưa có điểm)
+            $diemTttn = DB::table('diemthuctap')
+                ->join('dot', 'diemthuctap.dot_id', '=', 'dot.dot_id')
+                ->where('diemthuctap.sinh_vien_id', $sinhVienId)
+                ->where('dot.trang_thai', '!=', 'DA_DONG')
+                ->select('diemthuctap.*')
+                ->first();
+        } else {
+            // Nếu không có đợt hoạt động nào, mới lấy điểm của đợt cũ gần nhất
+            $diemTttn = DB::table('diemthuctap')
+                ->where('sinh_vien_id', $sinhVienId)
+                ->orderBy('dot_id', 'desc')
+                ->first();
+        }
+
+        // 2. Kiểm tra xem sinh viên có đợt ĐATN nào đang hoạt động (chưa đóng) hay không
+        $hasActiveDatn = Dot::where('loai_dot', 'DATN')
+            ->where('trang_thai', '!=', 'DA_DONG')
+            ->where(function ($query) use ($lopId, $sinhVienId) {
+                $query->whereHas('lops', function ($q) use ($lopId) {
+                    $q->where('lop.lop_id', $lopId);
+                })->orWhereHas('sinhViens', function ($q) use ($sinhVienId) {
+                    $q->where('sinhvien.sinh_vien_id', $sinhVienId);
+                });
+            })
+            ->exists();
+
+        if ($hasActiveDatn) {
+            // Nếu đang trong đợt hoạt động, bắt buộc lấy điểm đợt hoạt động (chấp nhận chưa có điểm)
+            $diemDatn = DB::table('diemtongketdatn')
+                ->join('nhomsvda', 'diemtongketdatn.nhom_id', '=', 'nhomsvda.nhom_id')
+                ->join('dot', 'nhomsvda.dot_id', '=', 'dot.dot_id')
+                ->where('diemtongketdatn.sinh_vien_id', $sinhVienId)
+                ->where('dot.trang_thai', '!=', 'DA_DONG')
+                ->select('diemtongketdatn.*')
+                ->first();
+        } else {
+            // Nếu không có đợt hoạt động nào, mới lấy điểm của đợt cũ gần nhất
+            $diemDatn = DB::table('diemtongketdatn')
+                ->join('nhomsvda', 'diemtongketdatn.nhom_id', '=', 'nhomsvda.nhom_id')
+                ->where('diemtongketdatn.sinh_vien_id', $sinhVienId)
+                ->orderBy('nhomsvda.dot_id', 'desc')
+                ->select('diemtongketdatn.*')
+                ->first();
+        }
 
         // 1. Dữ liệu TTTN
         $tttnFinal = $diemTttn && $diemTttn->diem_so !== null ? (string) round($diemTttn->diem_so, 2) : 'Chưa chấm';

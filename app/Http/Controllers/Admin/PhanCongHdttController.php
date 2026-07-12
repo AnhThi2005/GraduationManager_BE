@@ -462,6 +462,39 @@ class PhanCongHdttController extends Controller
             return $resp;
         }
 
+        $assign = PhanCongHdtt::where('sinh_vien_id', $sv->sinh_vien_id)
+            ->where('dot_id', $dotId)
+            ->first();
+
+        if ($assign) {
+            // 1. Kiểm tra xem giảng viên hướng dẫn đã nhập điểm thực tập chưa
+            $hasGrade = DB::table('diemthuctap')
+                ->where('sinh_vien_id', $sv->sinh_vien_id)
+                ->where('dot_id', $dotId)
+                ->whereNotNull('diem_so')
+                ->exists();
+            if ($hasGrade) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Không thể xóa phân công hướng dẫn vì giảng viên đã nhập điểm cho sinh viên này!',
+                ], 400);
+            }
+
+            // 2. Kiểm tra xem giảng viên đã có nhận xét trên báo cáo tiến độ chưa
+            $hasComments = DB::table('nhanxetbaocao')
+                ->join('baocaotiendo', 'nhanxetbaocao.bao_cao_id', '=', 'baocaotiendo.bao_cao_id')
+                ->where('baocaotiendo.sinh_vien_id', $sv->sinh_vien_id)
+                ->where('baocaotiendo.dot_id', $dotId)
+                ->where('nhanxetbaocao.giang_vien_id', $assign->giang_vien_id)
+                ->exists();
+            if ($hasComments) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Không thể xóa phân công hướng dẫn vì giảng viên đã có nhận xét trên báo cáo tiến độ của sinh viên này!',
+                ], 400);
+            }
+        }
+
         $deleted = PhanCongHdtt::where('sinh_vien_id', $sv->sinh_vien_id)
             ->where('dot_id', $dotId)
             ->delete();

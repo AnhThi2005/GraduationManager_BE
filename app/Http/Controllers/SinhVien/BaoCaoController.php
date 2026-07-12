@@ -24,12 +24,21 @@ class BaoCaoController extends Controller
             return response()->json(['success' => false, 'message' => 'Bạn chưa đăng nhập.'], 401);
         }
 
-        // Lấy đợt TTTN đang diễn ra của sinh viên
+        // Lấy đợt TTTN đang diễn ra của sinh viên: ưu tiên đợt chưa đóng (hoạt động), fallback lấy đợt gần nhất
         $lopId = $sinhVien->lop_id;
         $activePeriod = Dot::where('loai_dot', 'TTTN')
             ->whereHas('lops', function ($q) use ($lopId) {
                 $q->where('lop.lop_id', $lopId);
-            })->orderBy('dot_id', 'desc')->first();
+            })
+            ->where('trang_thai', '!=', 'DA_DONG')
+            ->orderBy('dot_id', 'desc')
+            ->first();
+        if (! $activePeriod) {
+            $activePeriod = Dot::where('loai_dot', 'TTTN')
+                ->whereHas('lops', function ($q) use ($lopId) {
+                    $q->where('lop.lop_id', $lopId);
+                })->orderBy('dot_id', 'desc')->first();
+        }
 
         if (! $activePeriod) {
             return response()->json([
@@ -175,12 +184,21 @@ class BaoCaoController extends Controller
         $filePath = $request->input('file') ?: null;
         $fileOriginalName = $request->input('fileName') ?: null;
 
-        // Lấy đợt TTTN đang diễn ra của sinh viên
+        // Lấy đợt TTTN đang diễn ra của sinh viên: ưu tiên đợt chưa đóng (hoạt động), fallback lấy đợt gần nhất
         $lopId = $sinhVien->lop_id;
         $activePeriod = Dot::where('loai_dot', 'TTTN')
             ->whereHas('lops', function ($q) use ($lopId) {
                 $q->where('lop.lop_id', $lopId);
-            })->orderBy('dot_id', 'desc')->first();
+            })
+            ->where('trang_thai', '!=', 'DA_DONG')
+            ->orderBy('dot_id', 'desc')
+            ->first();
+        if (! $activePeriod) {
+            $activePeriod = Dot::where('loai_dot', 'TTTN')
+                ->whereHas('lops', function ($q) use ($lopId) {
+                    $q->where('lop.lop_id', $lopId);
+                })->orderBy('dot_id', 'desc')->first();
+        }
 
         if (! $activePeriod) {
             return response()->json(['success' => false, 'message' => 'Không tìm thấy đợt thực tập tốt nghiệp hiện tại.'], 400);
@@ -305,15 +323,44 @@ class BaoCaoController extends Controller
             return response()->json(['success' => false, 'message' => 'Bạn chưa đăng nhập.'], 401);
         }
 
-        // Tìm nhóm ĐATN đã được duyệt và có đề tài của sinh viên
-        $nhom = DB::table('nhomsvda')
-            ->join('thanhviennhom', 'nhomsvda.nhom_id', '=', 'thanhviennhom.nhom_id')
-            ->where('thanhviennhom.sinh_vien_id', $sinhVien->sinh_vien_id)
-            ->where('nhomsvda.trang_thai_duyet', 'DA_DUYET')
-            ->whereNotNull('nhomsvda.de_tai_id')
-            ->orderBy('nhomsvda.dot_id', 'desc')
-            ->select('nhomsvda.*')
-            ->first();
+        $lopId = $sinhVien->lop_id;
+        $sinhVienId = $sinhVien->sinh_vien_id;
+
+        // Kiểm tra xem sinh viên có đợt ĐATN nào đang hoạt động (chưa đóng) hay không
+        $hasActivePeriod = Dot::where('loai_dot', 'DATN')
+            ->where('trang_thai', '!=', 'DA_DONG')
+            ->where(function ($query) use ($lopId, $sinhVienId) {
+                $query->whereHas('lops', function ($q) use ($lopId) {
+                    $q->where('lop.lop_id', $lopId);
+                })->orWhereHas('sinhViens', function ($q) use ($sinhVienId) {
+                    $q->where('sinhvien.sinh_vien_id', $sinhVienId);
+                });
+            })
+            ->exists();
+
+        if ($hasActivePeriod) {
+            // Nếu có đợt đang hoạt động, BẮT BUỘC chỉ tìm nhóm trong đợt hoạt động (không tự động lấy đợt cũ)
+            $nhom = DB::table('nhomsvda')
+                ->join('thanhviennhom', 'nhomsvda.nhom_id', '=', 'thanhviennhom.nhom_id')
+                ->join('dot', 'nhomsvda.dot_id', '=', 'dot.dot_id')
+                ->where('thanhviennhom.sinh_vien_id', $sinhVienId)
+                ->where('nhomsvda.trang_thai_duyet', 'DA_DUYET')
+                ->whereNotNull('nhomsvda.de_tai_id')
+                ->where('dot.trang_thai', '!=', 'DA_DONG')
+                ->orderBy('nhomsvda.dot_id', 'desc')
+                ->select('nhomsvda.*')
+                ->first();
+        } else {
+            // Nếu không có đợt nào đang hoạt động, mới lấy đợt cũ gần nhất
+            $nhom = DB::table('nhomsvda')
+                ->join('thanhviennhom', 'nhomsvda.nhom_id', '=', 'thanhviennhom.nhom_id')
+                ->where('thanhviennhom.sinh_vien_id', $sinhVienId)
+                ->where('nhomsvda.trang_thai_duyet', 'DA_DUYET')
+                ->whereNotNull('nhomsvda.de_tai_id')
+                ->orderBy('nhomsvda.dot_id', 'desc')
+                ->select('nhomsvda.*')
+                ->first();
+        }
 
         if (! $nhom) {
             return response()->json([
@@ -447,15 +494,44 @@ class BaoCaoController extends Controller
         $file = $request->input('file');
         $fileOriginalName = $request->input('fileName') ?: null;
 
-        // Tìm nhóm ĐATN đã được duyệt và có đề tài của sinh viên
-        $nhom = DB::table('nhomsvda')
-            ->join('thanhviennhom', 'nhomsvda.nhom_id', '=', 'thanhviennhom.nhom_id')
-            ->where('thanhviennhom.sinh_vien_id', $sinhVien->sinh_vien_id)
-            ->where('nhomsvda.trang_thai_duyet', 'DA_DUYET')
-            ->whereNotNull('nhomsvda.de_tai_id')
-            ->orderBy('nhomsvda.dot_id', 'desc')
-            ->select('nhomsvda.*')
-            ->first();
+        $lopId = $sinhVien->lop_id;
+        $sinhVienId = $sinhVien->sinh_vien_id;
+
+        // Kiểm tra xem sinh viên có đợt ĐATN nào đang hoạt động (chưa đóng) hay không
+        $hasActivePeriod = Dot::where('loai_dot', 'DATN')
+            ->where('trang_thai', '!=', 'DA_DONG')
+            ->where(function ($query) use ($lopId, $sinhVienId) {
+                $query->whereHas('lops', function ($q) use ($lopId) {
+                    $q->where('lop.lop_id', $lopId);
+                })->orWhereHas('sinhViens', function ($q) use ($sinhVienId) {
+                    $q->where('sinhvien.sinh_vien_id', $sinhVienId);
+                });
+            })
+            ->exists();
+
+        if ($hasActivePeriod) {
+            // Nếu có đợt đang hoạt động, BẮT BUỘC chỉ tìm nhóm trong đợt hoạt động (không tự động lấy đợt cũ)
+            $nhom = DB::table('nhomsvda')
+                ->join('thanhviennhom', 'nhomsvda.nhom_id', '=', 'thanhviennhom.nhom_id')
+                ->join('dot', 'nhomsvda.dot_id', '=', 'dot.dot_id')
+                ->where('thanhviennhom.sinh_vien_id', $sinhVienId)
+                ->where('nhomsvda.trang_thai_duyet', 'DA_DUYET')
+                ->whereNotNull('nhomsvda.de_tai_id')
+                ->where('dot.trang_thai', '!=', 'DA_DONG')
+                ->orderBy('nhomsvda.dot_id', 'desc')
+                ->select('nhomsvda.*')
+                ->first();
+        } else {
+            // Nếu không có đợt nào đang hoạt động, mới lấy đợt cũ gần nhất
+            $nhom = DB::table('nhomsvda')
+                ->join('thanhviennhom', 'nhomsvda.nhom_id', '=', 'thanhviennhom.nhom_id')
+                ->where('thanhviennhom.sinh_vien_id', $sinhVienId)
+                ->where('nhomsvda.trang_thai_duyet', 'DA_DUYET')
+                ->whereNotNull('nhomsvda.de_tai_id')
+                ->orderBy('nhomsvda.dot_id', 'desc')
+                ->select('nhomsvda.*')
+                ->first();
+        }
 
         if (! $nhom) {
             return response()->json([

@@ -162,7 +162,16 @@ class CongTyService
             return false;
         }
 
-        // Gỡ liên kết trong dangkythuctap
+        // Kiểm tra ràng buộc: có sinh viên đã được duyệt thực tập tại đây (đã duyệt hoặc chờ cấp giấy)
+        $hasInternships = DangKyThucTap::where('cong_ty_id', $id)
+            ->whereIn('trang_thai', ['DA_DUYET', 'CHO_CAP_GIAY'])
+            ->exists();
+
+        if ($hasInternships) {
+            throw new \Exception('Không thể xóa doanh nghiệp này vì đang có sinh viên thực tập đã được phê duyệt (đã duyệt hoặc chờ cấp giấy)!');
+        }
+
+        // Gỡ liên kết trong dangkythuctap (chỉ còn các bản ghi bị từ chối TU_CHOI nếu có)
         DangKyThucTap::where('cong_ty_id', $id)->update(['cong_ty_id' => null]);
 
         // Xóa lĩnh vực hoạt động
@@ -543,7 +552,7 @@ class CongTyService
             ->all();
 
         $studentsCount = DangKyThucTap::where('cong_ty_id', $company->cong_ty_id)
-            ->where('trang_thai', 'DA_DUYET')
+            ->whereIn('trang_thai', ['DA_DUYET', 'CHO_CAP_GIAY'])
             ->count();
 
         $partnersCount = DangKyThucTap::where('cong_ty_id', $company->cong_ty_id)

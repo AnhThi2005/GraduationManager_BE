@@ -27,7 +27,10 @@ class DeTaiController extends Controller
      */
     private function xacDinhDotDatnHienTai(SinhVien $sinhVien): ?Dot
     {
-        $nhom = Nhom::whereHas('members', function ($q) use ($sinhVien) {
+        $nhom = Nhom::whereHas('dot', function ($q) {
+            $q->where('trang_thai', '!=', 'DA_DONG');
+        })
+        ->whereHas('members', function ($q) use ($sinhVien) {
             $q->where('sinhvien.sinh_vien_id', $sinhVien->sinh_vien_id);
         })->orderBy('dot_id', 'desc')->first();
 
@@ -65,13 +68,28 @@ class DeTaiController extends Controller
             ], 401);
         }
 
-        // Tìm nhóm ĐATN mà sinh viên là thành viên (ưu tiên nhóm thực tế thay vì suy luận đợt qua lớp,
-        // vì một lớp có thể liên kết nhiều đợt ĐATN cùng lúc)
+        $periodId = $request->query('periodId') ?? $request->input('periodId');
+        if ($periodId) {
+            $activePeriod = Dot::find($periodId);
+        } else {
+            $activePeriod = $this->xacDinhDotDatnHienTai($sinhVien);
+        }
+
+        if (! $activePeriod) {
+            return response()->json([
+                'code' => 200,
+                'results' => [
+                    'object' => null,
+                ],
+            ]);
+        }
+
+        // Tìm nhóm ĐATN mà sinh viên là thành viên trong đợt được chọn này (không tự động fallback sang đợt khác)
         $nhom = Nhom::with(['deTai.giangVien', 'dot', 'members'])
+            ->where('dot_id', $activePeriod->dot_id)
             ->whereHas('members', function ($q) use ($sinhVien) {
                 $q->where('sinhvien.sinh_vien_id', $sinhVien->sinh_vien_id);
             })
-            ->orderBy('dot_id', 'desc')
             ->first();
 
         if (! $nhom) {
@@ -347,8 +365,12 @@ class DeTaiController extends Controller
             return response()->json(['success' => false, 'message' => 'Bạn chưa đăng nhập.'], 401);
         }
 
-        // Lấy đợt ĐATN đang diễn ra của sinh viên
-        $activePeriod = $this->xacDinhDotDatnHienTai($sinhVien);
+        $periodId = $request->query('periodId') ?? $request->input('periodId');
+        if ($periodId) {
+            $activePeriod = Dot::find($periodId);
+        } else {
+            $activePeriod = $this->xacDinhDotDatnHienTai($sinhVien);
+        }
 
         if (! $activePeriod) {
             return response()->json([
@@ -535,13 +557,18 @@ class DeTaiController extends Controller
                 return response()->json(['success' => false, 'message' => 'Bạn đã gửi lời mời cho sinh viên này rồi và đang chờ phản hồi.'], 400);
             }
 
-            // Tạo lời mời mới
-            $lm = LoiMoiNhom::create([
-                'nhom_id' => $nhom->nhom_id,
-                'sinh_vien_duoc_moi_id' => $targetStudent->sinh_vien_id,
-                'trang_thai_xac_nhan' => 'CHO_XAC_NHAN',
-                'ngay_tao' => date('Y-m-d H:i:s'),
-            ]);
+            // Tạo lời mời mới, hoặc cập nhật lại lời mời cũ nếu đã từng mời cặp (nhóm, sinh viên) này trước đó
+            // (bảng loimoinhom có UNIQUE trên nhom_id + sinh_vien_duoc_moi_id, chỉ giữ 1 dòng duy nhất mỗi cặp)
+            $lm = LoiMoiNhom::updateOrCreate(
+                [
+                    'nhom_id' => $nhom->nhom_id,
+                    'sinh_vien_duoc_moi_id' => $targetStudent->sinh_vien_id,
+                ],
+                [
+                    'trang_thai_xac_nhan' => 'CHO_XAC_NHAN',
+                    'ngay_tao' => date('Y-m-d H:i:s'),
+                ]
+            );
 
             DB::commit();
 
@@ -577,8 +604,12 @@ class DeTaiController extends Controller
             return response()->json(['success' => false, 'message' => 'Bạn chưa đăng nhập.'], 401);
         }
 
-        // Lấy đợt ĐATN đang diễn ra của sinh viên
-        $activePeriod = $this->xacDinhDotDatnHienTai($sinhVien);
+        $periodId = $request->query('periodId') ?? $request->input('periodId');
+        if ($periodId) {
+            $activePeriod = Dot::find($periodId);
+        } else {
+            $activePeriod = $this->xacDinhDotDatnHienTai($sinhVien);
+        }
 
         if (! $activePeriod) {
             return response()->json([

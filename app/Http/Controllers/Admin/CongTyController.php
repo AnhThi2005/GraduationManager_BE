@@ -98,12 +98,19 @@ class CongTyController extends Controller
 
     public function xoa(Request $request, $id)
     {
-        $success = $this->congTyService->deleteCompany($id);
-        if (! $success) {
+        try {
+            $success = $this->congTyService->deleteCompany($id);
+            if (! $success) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Không tìm thấy doanh nghiệp này để xóa!',
+                ], 404);
+            }
+        } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Không tìm thấy doanh nghiệp này để xóa!',
-            ], 404);
+                'message' => $e->getMessage(),
+            ], 400);
         }
 
         return response()->json([
@@ -267,8 +274,41 @@ class CongTyController extends Controller
     public function xoaXacNhan(Request $request, $id)
     {
         $existing = DangKyThucTap::find($id);
-        if ($resp = $this->chanNeuDotDaDong($existing?->dot)) {
+        if (! $existing) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Không tìm thấy hồ sơ khai báo này để xóa!',
+            ], 404);
+        }
+
+        if ($resp = $this->chanNeuDotDaDong($existing->dot)) {
             return $resp;
+        }
+
+        // Kiểm tra ràng buộc:
+        // 1. Sinh viên đã nộp báo cáo tiến độ
+        $hasReports = \Illuminate\Support\Facades\DB::table('baocaotiendo')
+            ->where('sinh_vien_id', $existing->sinh_vien_id)
+            ->where('dot_id', $existing->dot_id)
+            ->exists();
+        if ($hasReports) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Không thể xóa khai báo thực tập vì sinh viên đã nộp báo cáo tiến độ!',
+            ], 400);
+        }
+
+        // 3. Sinh viên đã có điểm thực tập
+        $hasGrade = \Illuminate\Support\Facades\DB::table('diemthuctap')
+            ->where('sinh_vien_id', $existing->sinh_vien_id)
+            ->where('dot_id', $existing->dot_id)
+            ->whereNotNull('diem_so')
+            ->exists();
+        if ($hasGrade) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Không thể xóa khai báo thực tập vì sinh viên đã có điểm thực tập tốt nghiệp!',
+            ], 400);
         }
 
         $success = $this->congTyService->deleteConfirmationRequest($id);
