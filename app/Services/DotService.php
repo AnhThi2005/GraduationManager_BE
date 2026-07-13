@@ -130,6 +130,15 @@ class DotService
             return null;
         }
 
+        if ($dot->daKhoaHoanToan()) {
+            $disallowedKeys = array_diff(array_keys($data), ['status', 'type']);
+            if (! empty($disallowedKeys)) {
+                throw new \InvalidArgumentException(
+                    "Đợt \"{$dot->ten_dot}\" đã đóng, không thể chỉnh sửa thông tin cấu hình của đợt này nữa."
+                );
+            }
+        }
+
         $updateData = [];
         if (isset($data['name'])) {
             $updateData['ten_dot'] = $data['name'];
@@ -313,7 +322,6 @@ class DotService
                 'status' => $sv->dang_hoat_dong == 1 ? 'active' : 'inactive',
                 'gender' => $sv->gioi_tinh,
                 'dateOfBirth' => $sv->ngay_sinh,
-                'reason' => $sv->pivot->ly_do ?? 'Rớt đợt trước',
             ];
         })->all();
         $externalStudentIds = collect($externalStudents)->pluck('id')->all();
@@ -411,7 +419,7 @@ class DotService
     /**
      * Thêm một sinh viên vào nhiều đợt đăng ký
      */
-    public function addStudentToPeriods($studentCode, array $periodIds, $reason = 'Rớt đợt trước')
+    public function addStudentToPeriods($studentCode, array $periodIds)
     {
         $student = SinhVien::where('ma_so_sinh_vien', $studentCode)
             ->orWhere('sinh_vien_id', $studentCode)
@@ -425,9 +433,7 @@ class DotService
         foreach ($periodIds as $periodId) {
             $dot = Dot::find($periodId);
             if ($dot) {
-                $dot->sinhViens()->syncWithoutDetaching([
-                    $studentId => ['ly_do' => $reason],
-                ]);
+                $dot->sinhViens()->syncWithoutDetaching([$studentId]);
             }
         }
 

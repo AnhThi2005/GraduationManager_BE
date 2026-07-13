@@ -24,6 +24,9 @@ Route::post('/dang-nhap-google', [MockAuthController::class, 'dangNhapGoogle']);
 Route::post('/lam-moi-token', [MockAuthController::class, 'lamMoiToken']);
 Route::get('/v1/realtime/stream', [RealtimeController::class, 'stream']);
 
+// Thống kê công khai (không cần đăng nhập) - dùng cho màn hình đăng nhập
+Route::get('/private/v1/public/thong-ke-tong-quan', [ThongKeController::class, 'getPublicSummary']);
+
 Route::get('/login', function () {
     return response()->json([
         'success' => false,

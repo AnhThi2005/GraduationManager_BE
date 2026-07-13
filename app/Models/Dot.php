@@ -36,8 +36,7 @@ class Dot extends Model
 
     public function sinhViens()
     {
-        return $this->belongsToMany(SinhVien::class, 'dot_sinhvien', 'dot_id', 'sinh_vien_id')
-            ->withPivot('ly_do');
+        return $this->belongsToMany(SinhVien::class, 'dot_sinhvien', 'dot_id', 'sinh_vien_id');
     }
 
     /**

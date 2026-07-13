@@ -10,6 +10,18 @@ use Illuminate\Support\Facades\DB;
 class ThongKeService
 {
     /**
+     * Thống kê rút gọn, dùng cho các màn hình công khai (chưa đăng nhập) như trang đăng nhập.
+     */
+    public function getPublicSummary()
+    {
+        return [
+            'totalStudents' => SinhVien::count(),
+            'totalTeachers' => GiangVien::count(),
+            'totalTopics' => DB::table('detai')->count(),
+        ];
+    }
+
+    /**
      * Lấy dữ liệu thống kê tổng quan cho Dashboard từ cơ sở dữ liệu thực tế
      */
     public function getDashboardData()

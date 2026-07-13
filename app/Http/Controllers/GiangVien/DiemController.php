@@ -475,12 +475,15 @@ class DiemController extends Controller
                         continue;
                     }
 
-                    $presentation = isset($row['presentation']) ? floatval($row['presentation']) : 0;
-                    $demo = isset($row['demo']) ? floatval($row['demo']) : 0;
-                    $qna = isset($row['qna']) ? floatval($row['qna']) : 0;
+                    $presentation = (isset($row['presentation']) && $row['presentation'] !== null && $row['presentation'] !== '') ? floatval($row['presentation']) : null;
+                    $demo = (isset($row['demo']) && $row['demo'] !== null && $row['demo'] !== '') ? floatval($row['demo']) : null;
+                    $qna = (isset($row['qna']) && $row['qna'] !== null && $row['qna'] !== '') ? floatval($row['qna']) : null;
                     $report = (isset($row['report']) && $row['report'] !== null && $row['report'] !== '') ? floatval($row['report']) : null;
 
-                    if ($presentation < 0 || $presentation > 3 || $demo < 0 || $demo > 5 || $qna < 0 || $qna > 2 || ($report !== null && ($report < 0 || $report > 10))) {
+                    if (($presentation !== null && ($presentation < 0 || $presentation > 3))
+                        || ($demo !== null && ($demo < 0 || $demo > 5))
+                        || ($qna !== null && ($qna < 0 || $qna > 2))
+                        || ($report !== null && ($report < 0 || $report > 10))) {
                         throw new GradingValidationException('Điểm thành phần không hợp lệ.', 400);
                     }
 
@@ -521,11 +524,14 @@ class DiemController extends Controller
                         ]
                     );
 
-                    // B. Điểm Bảo vệ (80%) — chỉ ghi khi người chấm thực sự là thành viên hội đồng,
-                    // tránh GVHD/GVPB không thuộc hội đồng vô tình ghi đè bằng điểm 0.
-                    if ($isCouncilMember) {
+                    // B. Điểm Bảo vệ (80%) — chỉ ghi khi người chấm thực sự là thành viên hội đồng
+                    // và đã thực sự nhập ít nhất 1 thành phần điểm cho sinh viên này.
+                    // Tránh: (1) GVHD/GVPB không thuộc hội đồng vô tình ghi đè bằng điểm 0;
+                    // (2) payload gửi cả nhóm mỗi lần Lưu khiến các sinh viên CHƯA được chấm
+                    // cũng bị tạo bản ghi rác (điểm 0) chỉ vì đứng chung nhóm với người vừa được chấm.
+                    if ($isCouncilMember && ($presentation !== null || $demo !== null || $qna !== null)) {
                         // 1. Tính điểm bảo vệ của từng giảng viên: diem_bao_ve = diem_thuyet_trinh + diem_demo + diem_van_dap
-                        $diemBaoVeGv = round($presentation + $demo + $qna, 2);
+                        $diemBaoVeGv = round(($presentation ?? 0) + ($demo ?? 0) + ($qna ?? 0), 2);
 
                         DB::table('diemhoidongbaove')->updateOrInsert(
                             [

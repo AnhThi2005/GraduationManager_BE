@@ -21,6 +21,9 @@ Route::get('/', function () {
     return view('welcome');
 });
 
+// Thống kê công khai (không cần đăng nhập) - dùng cho màn hình đăng nhập
+Route::get('/private/v1/public/thong-ke-tong-quan', [ThongKeController::class, 'getPublicSummary']);
+
 // Fallback routes for frontend requests missing the /api prefix
 Route::middleware([
     'auth:sanctum',
