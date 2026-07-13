@@ -59,14 +59,101 @@ class HoiDongController extends Controller
             $dotId = $activePeriod ? $activePeriod->dot_id : 1;
         }
 
-        if ($resp = $this->chanNeuDotDaDong(Dot::find($dotId))) {
+        $dot = Dot::find($dotId);
+        if ($resp = $this->chanNeuDotDaDong($dot)) {
             return $resp;
         }
 
-        return DB::transaction(function () use ($request, $dotId) {
+        // Validate defense date range constraint
+        if ($dot) {
+            $ngayBaoVe = $request->date ?? $request->input('date');
+            if ($ngayBaoVe) {
+                $ngayBatDauBaoVe = $dot->ngay_bat_dau_bao_ve;
+                $ngayKetThucBaoVe = $dot->ngay_ket_thuc_bao_ve;
+
+                if ($ngayBatDauBaoVe && $ngayKetThucBaoVe) {
+                    if ($ngayBaoVe < $ngayBatDauBaoVe || $ngayBaoVe > $ngayKetThucBaoVe) {
+                        $startFormatted = date('d/m/Y', strtotime($ngayBatDauBaoVe));
+                        $endFormatted = date('d/m/Y', strtotime($ngayKetThucBaoVe));
+                        return response()->json([
+                            'success' => false,
+                            'message' => "Ngày bảo vệ phải nằm trong thời gian quy định {$startFormatted} - {$endFormatted}",
+                        ], 422);
+                    }
+                }
+            }
+        }
+
+        // Validate at least 5 members
+        $members = $request->input('members', []);
+        if (count($members) < 5) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Không đủ thành viên hội đồng ít nhất 5 thành viên',
+            ], 422);
+        }
+
+        $chairId = $request->input('chair_id') ?? $request->input('chairId');
+        $secretaryId = $request->input('secretary_id') ?? $request->input('secretaryId');
+
+        if (empty($chairId)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Chưa phân công Chủ tịch hội đồng.',
+            ], 422);
+        }
+
+        if (empty($secretaryId)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Chưa phân công Thư ký hội đồng.',
+            ], 422);
+        }
+
+        if ($chairId === $secretaryId) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Chủ tịch và Thư ký không được trùng nhau.',
+            ], 422);
+        }
+
+        if ($chairId) {
+            $otherCouncilChair = DB::table('thanhvienhoidong')
+                ->join('hoidong', 'thanhvienhoidong.hoi_dong_id', '=', 'hoidong.hoi_dong_id')
+                ->join('giangvien', 'thanhvienhoidong.giang_vien_id', '=', 'giangvien.giang_vien_id')
+                ->where('thanhvienhoidong.vai_tro', 'CHU_TICH')
+                ->where('thanhvienhoidong.giang_vien_id', $chairId)
+                ->select('hoidong.ten_hoi_dong', 'giangvien.ho_ten')
+                ->first();
+
+            if ($otherCouncilChair) {
+                return response()->json([
+                    'success' => false,
+                    'message' => "giảng viên {$otherCouncilChair->ho_ten} đã làm chủ tịch tại {$otherCouncilChair->ten_hoi_dong}",
+                ], 422);
+            }
+        }
+
+        // Auto-generate name: "Hội đồng <số thứ tự>"
+        $title = $request->title;
+        if (empty($title) || !preg_match('/^Hội\s+đồng\s+(\d+)$/ui', $title)) {
+            $maxNum = 0;
+            $existingCouncils = HoiDong::all();
+            foreach ($existingCouncils as $exHd) {
+                if (preg_match('/^Hội\s+đồng\s+(\d+)$/ui', $exHd->ten_hoi_dong, $matches)) {
+                    $num = (int)$matches[1];
+                    if ($num > $maxNum) {
+                        $maxNum = $num;
+                    }
+                }
+            }
+            $title = 'Hội đồng ' . ($maxNum + 1);
+        }
+
+        return DB::transaction(function () use ($request, $dotId, $title, $members, $chairId, $secretaryId) {
             $hd = HoiDong::create([
                 'dot_id' => $dotId,
-                'ten_hoi_dong' => $request->title,
+                'ten_hoi_dong' => $title,
                 'ngay_bao_ve' => $request->date ?? date('Y-m-d'),
                 'gio_bao_ve' => $request->time ?? '08:00–12:00',
                 'phong_bao_ve' => $request->room,
@@ -74,13 +161,14 @@ class HoiDongController extends Controller
             ]);
 
             // Save members
-            $members = $request->input('members', []);
             $topics = $request->input('topics', []);
 
-            foreach ($members as $idx => $gvId) {
+            foreach ($members as $gvId) {
                 $role = 'UY_VIEN';
-                if ($idx === 0) {
+                if ((string)$gvId === (string)$chairId) {
                     $role = 'CHU_TICH';
+                } elseif ((string)$gvId === (string)$secretaryId) {
+                    $role = 'THU_KY';
                 } else {
                     $isReviewer = collect($topics)->contains('reviewerId', $gvId);
                     if ($isReviewer) {
@@ -95,6 +183,19 @@ class HoiDongController extends Controller
             }
 
             // Save groups & schedule
+            $nhomIds = collect($topics)->map(function($t) {
+                return $t['nhom_id'] ?? $t['id'] ?? null;
+            })->filter()->toArray();
+
+            if (!empty($nhomIds)) {
+                // Delete existing schedules for these groups from other councils
+                DB::table('lichbaove')->whereIn('nhom_id', $nhomIds)->delete();
+                // Update their old council to null
+                DB::table('nhomsvda')->whereIn('nhom_id', $nhomIds)->update([
+                    'hoi_dong_id' => null,
+                ]);
+            }
+
             foreach ($topics as $idx => $t) {
                 if (empty($t)) {
                     continue;
@@ -156,8 +257,91 @@ class HoiDongController extends Controller
             ], 404);
         }
 
-        if ($resp = $this->chanNeuDotDaDong($hd->dot)) {
+        $dot = $hd->dot;
+        if ($resp = $this->chanNeuDotDaDong($dot)) {
             return $resp;
+        }
+
+        // Validate defense date range constraint
+        if ($dot) {
+            $ngayBaoVe = $request->input('date');
+            if ($ngayBaoVe) {
+                $ngayBatDauBaoVe = $dot->ngay_bat_dau_bao_ve;
+                $ngayKetThucBaoVe = $dot->ngay_ket_thuc_bao_ve;
+
+                if ($ngayBatDauBaoVe && $ngayKetThucBaoVe) {
+                    if ($ngayBaoVe < $ngayBatDauBaoVe || $ngayBaoVe > $ngayKetThucBaoVe) {
+                        $startFormatted = date('d/m/Y', strtotime($ngayBatDauBaoVe));
+                        $endFormatted = date('d/m/Y', strtotime($ngayKetThucBaoVe));
+                        return response()->json([
+                            'success' => false,
+                            'message' => "Ngày bảo vệ phải nằm trong thời gian quy định {$startFormatted} - {$endFormatted}",
+                        ], 422);
+                    }
+                }
+            }
+        }
+
+        // Validate at least 5 members if sent
+        if ($request->has('members')) {
+            $members = $request->input('members', []);
+            if (count($members) < 5) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Không đủ thành viên hội đồng ít nhất 5 thành viên',
+                ], 422);
+            }
+
+            $chairId = $request->input('chair_id') ?? $request->input('chairId');
+            $secretaryId = $request->input('secretary_id') ?? $request->input('secretaryId');
+
+            if (empty($chairId)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Chưa phân công Chủ tịch hội đồng.',
+                ], 422);
+            }
+
+            if (empty($secretaryId)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Chưa phân công Thư ký hội đồng.',
+                ], 422);
+            }
+
+            if ($chairId === $secretaryId) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Chủ tịch và Thư ký không được trùng nhau.',
+                ], 422);
+            }
+
+            if ($chairId) {
+                $otherCouncilChair = DB::table('thanhvienhoidong')
+                    ->join('hoidong', 'thanhvienhoidong.hoi_dong_id', '=', 'hoidong.hoi_dong_id')
+                    ->join('giangvien', 'thanhvienhoidong.giang_vien_id', '=', 'giangvien.giang_vien_id')
+                    ->where('thanhvienhoidong.vai_tro', 'CHU_TICH')
+                    ->where('thanhvienhoidong.giang_vien_id', $chairId)
+                    ->where('thanhvienhoidong.hoi_dong_id', '!=', $id)
+                    ->select('hoidong.ten_hoi_dong', 'giangvien.ho_ten')
+                    ->first();
+
+                if ($otherCouncilChair) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => "giảng viên {$otherCouncilChair->ho_ten} đã làm chủ tịch tại {$otherCouncilChair->ten_hoi_dong}",
+                    ], 422);
+                }
+            }
+        }
+
+        // Enforce/validate title format if updated
+        $title = $request->input('title');
+        if ($title !== null && (empty($title) || !preg_match('/^Hội\s+đồng\s+(\d+)$/ui', $title))) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Tên hội đồng phải có định dạng là Hội đồng <số thứ tự>',
+            ], 422);
         }
 
         return DB::transaction(function () use ($request, $hd) {
@@ -174,11 +358,15 @@ class HoiDongController extends Controller
                 DB::table('thanhvienhoidong')->where('hoi_dong_id', $hd->hoi_dong_id)->delete();
                 $members = $request->input('members', []);
                 $topics = $request->input('topics', []);
+                $chairId = $request->input('chair_id') ?? $request->input('chairId');
+                $secretaryId = $request->input('secretary_id') ?? $request->input('secretaryId');
 
-                foreach ($members as $idx => $gvId) {
+                foreach ($members as $gvId) {
                     $role = 'UY_VIEN';
-                    if ($idx === 0) {
+                    if ((string)$gvId === (string)$chairId) {
                         $role = 'CHU_TICH';
+                    } elseif ((string)$gvId === (string)$secretaryId) {
+                        $role = 'THU_KY';
                     } else {
                         $isReviewer = collect($topics)->contains('reviewerId', $gvId);
                         if ($isReviewer) {
@@ -200,6 +388,15 @@ class HoiDongController extends Controller
                 DB::table('lichbaove')->where('hoi_dong_id', $hd->hoi_dong_id)->delete();
 
                 $topics = $request->input('topics', []);
+                $nhomIds = collect($topics)->map(function($t) {
+                    return $t['nhom_id'] ?? $t['id'] ?? null;
+                })->filter()->toArray();
+
+                if (!empty($nhomIds)) {
+                    // Delete existing schedules for these groups from other councils
+                    DB::table('lichbaove')->whereIn('nhom_id', $nhomIds)->delete();
+                }
+
                 foreach ($topics as $idx => $t) {
                     if (empty($t)) {
                         continue;
@@ -282,6 +479,7 @@ class HoiDongController extends Controller
         $chair = [];
         $reviewer = [];
         $member = [];
+        $secretary = [];
         foreach ($hd->giangViens as $gv) {
             $role = $gv->pivot->vai_tro;
             $nameWithTitle = ($gv->hoc_vi ? $gv->hoc_vi.' ' : 'ThS. ').$gv->ho_ten;
@@ -289,7 +487,9 @@ class HoiDongController extends Controller
                 $chair[] = $nameWithTitle;
             } elseif ($role === 'PHAN_BIEN') {
                 $reviewer[] = $nameWithTitle;
-            } elseif ($role === 'UY_VIEN') {
+            } elseif ($role === 'TH' || $role === 'THU_KY') {
+                $secretary[] = $nameWithTitle;
+            } else {
                 $member[] = $nameWithTitle;
             }
         }
@@ -416,6 +616,7 @@ class HoiDongController extends Controller
             'chair' => $chair,
             'reviewer' => $reviewer,
             'member' => $member,
+            'secretary' => $secretary,
             'topicGroups' => $topicGroups,
             'topics' => $topics,
             'accent' => $hd->hoi_dong_id % 2 === 0 ? 'green' : 'blue',
