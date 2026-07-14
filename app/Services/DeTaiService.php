@@ -225,7 +225,7 @@ class DeTaiService
         // Định dạng tên giảng viên kèm học vị
         $teacherName = 'Chưa phân công';
         if ($deTai->giangVien) {
-            $teacherName = ($deTai->giangVien->hoc_vi ? $deTai->giangVien->hoc_vi.'. ' : '').$deTai->giangVien->ho_ten;
+            $teacherName = $deTai->giangVien->ho_ten;
         }
 
         return [

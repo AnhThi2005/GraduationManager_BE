@@ -616,7 +616,7 @@ class CongTyService
                 ->select('giangvien.ho_ten', 'giangvien.hoc_vi')
                 ->first();
             if ($phanCong) {
-                $gvhdName = ($phanCong->hoc_vi ? $phanCong->hoc_vi.'. ' : '').$phanCong->ho_ten;
+                $gvhdName = $phanCong->ho_ten;
             }
         }
 
