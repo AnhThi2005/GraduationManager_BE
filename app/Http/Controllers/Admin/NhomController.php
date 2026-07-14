@@ -447,6 +447,7 @@ class NhomController extends Controller
             'registrationBatch' => $g->dot ? $g->dot->ten_dot : '',
             'ket_qua_huong_dan' => $g->ket_qua_huong_dan,
             'ket_qua_phan_bien' => $g->ket_qua_phan_bien,
+            'hoi_dong_id' => $g->hoi_dong_id,
         ];
     }
 }
