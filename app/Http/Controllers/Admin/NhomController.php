@@ -437,7 +437,7 @@ class NhomController extends Controller
 
         return [
             'id' => (string) $g->nhom_id,
-            'code' => 'NH'.str_pad($g->nhom_id, 2, '0', STR_PAD_LEFT),
+            'code' => null,
             'title' => $g->deTai ? $g->deTai->ten_de_tai : '—',
             'topicDirection' => $g->deTai ? $g->deTai->huong_de_tai : null,
             'supervisor' => ($g->deTai && $g->deTai->giangVien) ? $g->deTai->giangVien->ho_ten : '—',

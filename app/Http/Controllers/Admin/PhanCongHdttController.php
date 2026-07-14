@@ -161,7 +161,7 @@ class PhanCongHdttController extends Controller
                 if (isset($studentGroupMap[$sv->sinh_vien_id])) {
                     $group = $studentGroupMap[$sv->sinh_vien_id];
                     $groupId = (string) $group->nhom_id;
-                    $groupCode = 'NH'.str_pad($group->nhom_id, 2, '0', STR_PAD_LEFT);
+                    $groupCode = null;
 
                     // Check eligibility of members
                     foreach ($group->members as $m) {

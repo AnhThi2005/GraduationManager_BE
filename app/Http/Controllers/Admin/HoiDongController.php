@@ -232,9 +232,12 @@ class HoiDongController extends Controller
                     $time = date('H:i:s', strtotime($t['start_time'] ?? $t['startTime']));
                 }
 
+                $examinerId = $t['examinerId'] ?? (isset($t['examinerIds']) && is_array($t['examinerIds']) ? (reset($t['examinerIds']) ?: null) : null);
                 DB::table('lichbaove')->insert([
                     'hoi_dong_id' => $hd->hoi_dong_id,
                     'nhom_id' => $nhomId,
+                    'giang_vien_pb_id' => $t['reviewerId'] ?? null,
+                    'giang_vien_cham_id' => json_encode($t['examinerIds'] ?? []),
                     'thoi_gian_bat_dau' => $time,
                     'thu_tu' => $idx + 1,
                     'ghi_chu' => json_encode([
@@ -445,9 +448,12 @@ class HoiDongController extends Controller
                         $time = date('H:i:s', strtotime($t['start_time'] ?? $t['startTime']));
                     }
 
+                    $examinerId = $t['examinerId'] ?? (isset($t['examinerIds']) && is_array($t['examinerIds']) ? (reset($t['examinerIds']) ?: null) : null);
                     DB::table('lichbaove')->insert([
                         'hoi_dong_id' => $hd->hoi_dong_id,
                         'nhom_id' => $nhomId,
+                        'giang_vien_pb_id' => $t['reviewerId'] ?? null,
+                        'giang_vien_cham_id' => json_encode($t['examinerIds'] ?? []),
                         'thoi_gian_bat_dau' => $time,
                         'thu_tu' => $idx + 1,
                         'ghi_chu' => json_encode([
@@ -639,7 +645,7 @@ class HoiDongController extends Controller
         $secretary = [];
         foreach ($hd->giangViens as $gv) {
             $role = $gv->pivot->vai_tro;
-            $nameWithTitle = ($gv->hoc_vi ? $gv->hoc_vi.' ' : 'ThS. ').$gv->ho_ten;
+            $nameWithTitle = $gv->ho_ten;
             if ($role === 'CHU_TICH') {
                 $chair[] = $nameWithTitle;
             } elseif ($role === 'PHAN_BIEN') {
@@ -665,6 +671,7 @@ class HoiDongController extends Controller
 
         $nhoms = $hd->nhoms;
         $dot = $hd->dot;
+
         if ($dot) {
             $now = date('Y-m-d');
             $ngayBatDau = $dot->ngay_bat_dau;
@@ -685,7 +692,7 @@ class HoiDongController extends Controller
         }
 
         foreach ($nhoms as $nhom) {
-            $code = 'NH'.str_pad($nhom->nhom_id, 2, '0', STR_PAD_LEFT);
+            $code = null;
             $title = $nhom->deTai ? $nhom->deTai->ten_de_tai : 'Nhóm #'.$nhom->nhom_id;
             $membersCount = $nhom->members->count();
 
@@ -699,6 +706,7 @@ class HoiDongController extends Controller
             $sched = $schedules->get($nhom->nhom_id);
             $minutes = 40;
             $reviewerId = null;
+            $examinerId = null;
             $rawEx = [];
             $examinerIds = [];
             $externalExaminers = [];
@@ -708,29 +716,144 @@ class HoiDongController extends Controller
                 if ($sched->thoi_gian_bat_dau) {
                     $startTime = date('H:i', strtotime($sched->thoi_gian_bat_dau));
                 }
+                $reviewerId = $sched->giang_vien_pb_id;
+                $examinerIdVal = $sched->giang_vien_cham_id;
+                $examinerId = null;
+                if ($examinerIdVal) {
+                    $decodedEx = json_decode($examinerIdVal, true);
+                    if (is_array($decodedEx)) {
+                        $rawEx = $decodedEx;
+                        $examinerId = reset($decodedEx) ?: null;
+                    } else {
+                        $examinerId = $examinerIdVal;
+                    }
+                }
+
                 if ($sched->ghi_chu) {
                     $decoded = json_decode($sched->ghi_chu, true);
                     if (is_array($decoded)) {
                         $minutes = $decoded['minutes'] ?? 40;
-                        $reviewerId = $decoded['reviewer_id'] ?? null;
-
-                        $rawEx = $decoded['examiner_ids'] ?? [];
-                        foreach ($rawEx as $eid) {
-                            $exGv = $lecturers->get($eid);
-                            if ($exGv) {
-                                $examinerIds[] = ($exGv->hoc_vi ? $exGv->hoc_vi.' ' : 'ThS. ').$exGv->ho_ten;
-                            }
+                        if (empty($reviewerId)) {
+                            $reviewerId = $decoded['reviewer_id'] ?? null;
                         }
 
-                        // Also map external examiner IDs to names if they represent teacher IDs, or keep them if they are names
-                        $rawExt = $decoded['external_examiners'] ?? [];
-                        foreach ($rawExt as $eid) {
-                            $extGv = $lecturers->get($eid);
-                            if ($extGv) {
-                                $externalExaminers[] = ($extGv->hoc_vi ? $extGv->hoc_vi.' ' : 'ThS. ').$extGv->ho_ten;
-                            } else {
-                                $externalExaminers[] = $eid;
-                            }
+                        if (empty($rawEx)) {
+                            $rawEx = $decoded['examiner_ids'] ?? [];
+                        }
+                        if (empty($examinerId) && !empty($rawEx)) {
+                            $examinerId = reset($rawEx) ?: null;
+                        }
+                    }
+                }
+
+                // Resolve name strings to numeric IDs for backward compatibility
+                if ($reviewerId && !is_numeric($reviewerId)) {
+                    $foundGv = GiangVien::where('ho_ten', $reviewerId)->first();
+                    if ($foundGv) {
+                        $reviewerId = (string) $foundGv->giang_vien_id;
+                    }
+                }
+                if ($examinerId && !is_numeric($examinerId)) {
+                    $foundGv = GiangVien::where('ho_ten', $examinerId)->first();
+                    if ($foundGv) {
+                        $examinerId = (string) $foundGv->giang_vien_id;
+                    }
+                }
+                $rawExMapped = [];
+                foreach ($rawEx as $exIdOrName) {
+                    if (is_numeric($exIdOrName)) {
+                        $rawExMapped[] = (string) $exIdOrName;
+                    } else {
+                        $foundGv = GiangVien::where('ho_ten', $exIdOrName)->first();
+                        if ($foundGv) {
+                            $rawExMapped[] = (string) $foundGv->giang_vien_id;
+                        } else {
+                            $rawExMapped[] = $exIdOrName;
+                        }
+                    }
+                }
+                $rawEx = $rawExMapped;
+            }
+
+            // Map examiner names and lists
+            if (!empty($rawEx)) {
+                $rawExMapped = [];
+                foreach ($rawEx as $eid) {
+                    if ($eid && !is_numeric($eid)) {
+                        $foundGv = GiangVien::where('ho_ten', $eid)->first();
+                        $eid = $foundGv ? (string) $foundGv->giang_vien_id : $eid;
+                    }
+                    $exGv = $lecturers->get($eid);
+                    if ($exGv) {
+                        $examinerIds[] = $exGv->ho_ten;
+                        $rawExMapped[] = (string) $eid;
+                    } else {
+                        $examinerIds[] = $eid;
+                        $rawExMapped[] = (string) $eid;
+                    }
+                }
+                $rawEx = $rawExMapped;
+            } elseif ($examinerId) {
+                if ($examinerId && !is_numeric($examinerId)) {
+                    $foundGv = GiangVien::where('ho_ten', $examinerId)->first();
+                    $examinerId = $foundGv ? (string) $foundGv->giang_vien_id : $examinerId;
+                }
+                $rawEx = [$examinerId];
+                $exGv = $lecturers->get($examinerId);
+                if ($exGv) {
+                    $examinerIds[] = $exGv->ho_ten;
+                } else {
+                    $examinerIds[] = $examinerId;
+                }
+            }
+
+            // High-quality auto-fill: if rawEx has less than 2 elements (e.g. old data stored only 1 examiner),
+            // we can automatically fill it with the other eligible members of the council.
+            $advisorId = ($nhom->deTai && $nhom->deTai->giangVien) ? (string) $nhom->deTai->giangVien->giang_vien_id : null;
+            if (count($rawEx) < 2) {
+                // Find all council members
+                $councilMemberIds = $hd->giangViens->map(fn($gv) => (string)$gv->giang_vien_id)->all();
+                
+                // Eligible members are those who are not the advisor and not the reviewer
+                $eligibleMemberIds = array_filter($councilMemberIds, function($mid) use ($advisorId, $reviewerId) {
+                    return $mid !== $advisorId && $mid !== (string)$reviewerId;
+                });
+                $eligibleMemberIds = array_values($eligibleMemberIds);
+                
+                if (count($rawEx) === 1) {
+                    $savedId = $rawEx[0];
+                    if (in_array($savedId, $eligibleMemberIds)) {
+                        $rawEx = $eligibleMemberIds;
+                    } else {
+                        $rawEx = array_merge([$savedId], array_slice($eligibleMemberIds, 1));
+                    }
+                } else {
+                    $rawEx = $eligibleMemberIds;
+                }
+                
+                // Re-map the names
+                $examinerIds = [];
+                foreach ($rawEx as $eid) {
+                    $exGv = $lecturers->get($eid);
+                    if ($exGv) {
+                        $examinerIds[] = $exGv->ho_ten;
+                    } else {
+                        $examinerIds[] = $eid;
+                    }
+                }
+            }
+
+            if ($sched && $sched->ghi_chu) {
+                $decoded = json_decode($sched->ghi_chu, true);
+                if (is_array($decoded)) {
+                    // Also map external examiner IDs to names if they represent teacher IDs, or keep them if they are names
+                    $rawExt = $decoded['external_examiners'] ?? [];
+                    foreach ($rawExt as $eid) {
+                        $extGv = $lecturers->get($eid);
+                        if ($extGv) {
+                            $externalExaminers[] = $extGv->ho_ten;
+                        } else {
+                            $externalExaminers[] = $eid;
                         }
                     }
                 }
@@ -740,7 +863,7 @@ class HoiDongController extends Controller
             if ($reviewerId) {
                 $revGv = $lecturers->get($reviewerId);
                 if ($revGv) {
-                    $reviewerName = ($revGv->hoc_vi ? $revGv->hoc_vi.' ' : 'ThS. ').$revGv->ho_ten;
+                    $reviewerName = $revGv->ho_ten;
                 }
             }
 
@@ -756,10 +879,11 @@ class HoiDongController extends Controller
                 'topicName' => $title,
                 'members' => $studentsList,
                 'advisorId' => ($nhom->deTai && $nhom->deTai->giangVien) ? (string) $nhom->deTai->giangVien->giang_vien_id : '—',
-                'advisorName' => ($nhom->deTai && $nhom->deTai->giangVien) ? (($nhom->deTai->giangVien->hoc_vi ? $nhom->deTai->giangVien->hoc_vi.' ' : 'ThS. ').$nhom->deTai->giangVien->ho_ten) : '—',
+                'advisorName' => ($nhom->deTai && $nhom->deTai->giangVien) ? $nhom->deTai->giangVien->ho_ten : '—',
                 'minutes' => $minutes,
                 'reviewerId' => (string) $reviewerId,
                 'reviewer' => $reviewerName,
+                'examinerId' => $examinerId ? (string) $examinerId : null,
                 'examinerIds' => $rawEx,
                 'examiners' => $examinerIds,
                 'externalExaminers' => $externalExaminers,

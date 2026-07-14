@@ -294,7 +294,7 @@ class DeTaiController extends Controller
 
             return [
                 'id' => (string) $g->id,
-                'topicCode' => 'NH'.str_pad($g->id, 2, '0', STR_PAD_LEFT),
+                'topicCode' => null,
                 'topicName' => $g->topicName,
                 'groupName' => 'Nhóm #'.$g->id,
                 'leader' => $leader ? $leader->name : '—',
@@ -385,7 +385,7 @@ class DeTaiController extends Controller
 
         $groupObj = [
             'id' => (string) $groupId,
-            'topicCode' => 'NH'.str_pad($groupId, 2, '0', STR_PAD_LEFT),
+            'topicCode' => null,
             'topicName' => $g->topicName ?? '—',
             'groupName' => 'Nhóm #'.$groupId,
             'leader' => $leader ? $leader->name : '—',

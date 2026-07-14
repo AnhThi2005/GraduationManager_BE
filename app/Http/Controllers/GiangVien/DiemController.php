@@ -112,9 +112,12 @@ class DiemController extends Controller
 
                 $lich = DB::table('lichbaove')->where('nhom_id', $g->nhom_id)->first();
                 $reviewerId = null;
-                if ($lich && $lich->ghi_chu) {
-                    $decoded = json_decode($lich->ghi_chu, true);
-                    $reviewerId = $decoded['reviewer_id'] ?? null;
+                if ($lich) {
+                    $reviewerId = $lich->giang_vien_pb_id;
+                    if (!$reviewerId && $lich->ghi_chu) {
+                        $decoded = json_decode($lich->ghi_chu, true);
+                        $reviewerId = $decoded['reviewer_id'] ?? null;
+                    }
                 }
 
                 $advisorName = '—';
@@ -170,9 +173,12 @@ class DiemController extends Controller
             foreach ($hd->nhoms as $g) {
                 $lich = DB::table('lichbaove')->where('nhom_id', $g->nhom_id)->first();
                 $reviewerId = null;
-                if ($lich && $lich->ghi_chu) {
-                    $decoded = json_decode($lich->ghi_chu, true);
-                    $reviewerId = $decoded['reviewer_id'] ?? null;
+                if ($lich) {
+                    $reviewerId = $lich->giang_vien_pb_id;
+                    if (!$reviewerId && $lich->ghi_chu) {
+                        $decoded = json_decode($lich->ghi_chu, true);
+                        $reviewerId = $decoded['reviewer_id'] ?? null;
+                    }
                 }
                 $isAdvisor = ($g->deTai && $g->deTai->giang_vien_id == $teacherId);
                 $isReviewer = ($reviewerId == $teacherId);
@@ -278,9 +284,12 @@ class DiemController extends Controller
 
         $gvpbId = null;
         $lich = DB::table('lichbaove')->where('nhom_id', $groupId)->first();
-        if ($lich && $lich->ghi_chu) {
-            $decoded = json_decode($lich->ghi_chu, true);
-            $gvpbId = $decoded['reviewer_id'] ?? null;
+        if ($lich) {
+            $gvpbId = $lich->giang_vien_pb_id;
+            if (!$gvpbId && $lich->ghi_chu) {
+                $decoded = json_decode($lich->ghi_chu, true);
+                $gvpbId = $decoded['reviewer_id'] ?? null;
+            }
         }
         if (! $gvpbId && $nhom && $nhom->hoi_dong_id) {
             $thanhVienPb = DB::table('thanhvienhoidong')
@@ -451,9 +460,12 @@ class DiemController extends Controller
         // Resolve the specific GVPB (Reviewer) assigned to this group from the schedule
         $lich = DB::table('lichbaove')->where('nhom_id', $groupId)->first();
         $reviewerId = null;
-        if ($lich && $lich->ghi_chu) {
-            $decoded = json_decode($lich->ghi_chu, true);
-            $reviewerId = $decoded['reviewer_id'] ?? null;
+        if ($lich) {
+            $reviewerId = $lich->giang_vien_pb_id;
+            if (!$reviewerId && $lich->ghi_chu) {
+                $decoded = json_decode($lich->ghi_chu, true);
+                $reviewerId = $decoded['reviewer_id'] ?? null;
+            }
         }
 
         // Chỉ GVHD, GVPB được phân công, hoặc thành viên hội đồng của nhóm mới được phép chấm điểm nhóm này
