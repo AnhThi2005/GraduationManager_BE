@@ -581,6 +581,18 @@ class DotService
             }
         }
 
+        // 0. Kiểm tra tên đợt duy nhất (Unique period name)
+        $name = $data['name'] ?? ($existingDot ? $existingDot->ten_dot : null);
+        if ($name) {
+            $query = DB::table('dot')->where('ten_dot', $name);
+            if ($existingDot) {
+                $query->where('dot_id', '!=', $existingDot->dot_id);
+            }
+            if ($query->exists()) {
+                throw new \InvalidArgumentException("Tên đợt tốt nghiệp \"{$name}\" đã tồn tại. Vui lòng chọn tên khác!");
+            }
+        }
+
         // 1. Kiểm tra Năm học (schoolYear)
         $schoolYear = $data['schoolYear'] ?? ($existingDot ? $existingDot->nam_hoc : null);
         if ($schoolYear) {
