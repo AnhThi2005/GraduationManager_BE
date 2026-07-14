@@ -100,7 +100,8 @@ class DotService
             'trang_thai' => $trangThaiMoi,
             'ngay_bat_dau' => $this->parseDate($data['startDate'] ?? null),
             'ngay_ket_thuc' => $this->parseDate($data['endDate'] ?? null),
-            'han_dang_ky' => $this->parseDate($data['regDeadline'] ?? null),
+            'han_dang_ky' => $this->parseDate($data['regDeadline'] ?? null) 
+                ?? $this->parseDate($data['startDate'] ?? null),
             'hoc_ky' => $data['semester'] ?? 1,
             'nam_hoc' => $data['schoolYear'] ?? (date('Y').'-'.(date('Y') + 1)),
             'giang_vien_id' => $data['teacherId'] ?? 1, // Mặc định gán giảng viên tạo
@@ -127,6 +128,7 @@ class DotService
             // TTTN mode
             $insertData['han_nop_bao_cao'] = $this->parseDate($data['reportDeadline'] ?? null)
                 ?? Carbon::parse($insertData['ngay_ket_thuc'])->subDays(3)->format('Y-m-d');
+            $insertData['ngay_bat_dau_nop_bao_cao'] = $this->parseDate($data['reportStartDate'] ?? null);
             $insertData['ngay_bat_dau_phan_bien'] = null;
             $insertData['ngay_ket_thuc_phan_bien'] = null;
             $insertData['ngay_bat_dau_bao_ve'] = null;
@@ -216,6 +218,8 @@ class DotService
         }
         if (isset($data['regDeadline'])) {
             $updateData['han_dang_ky'] = $this->parseDate($data['regDeadline']);
+        } elseif ($loaiDot === 'TTTN' && isset($data['startDate'])) {
+            $updateData['han_dang_ky'] = $this->parseDate($data['startDate']);
         }
         if (isset($data['regOpenDate'])) {
             $updateData['ngay_bat_dau_dang_ky'] = $this->parseDate($data['regOpenDate']);
@@ -230,6 +234,7 @@ class DotService
             $updateData['ngay_ket_thuc_cham_diem'] = $this->parseDate($data['gradingEndDate']);
         }
         if ($loaiDot === 'TTTN') {
+            $updateData['ngay_bat_dau_nop_bao_cao'] = isset($data['reportStartDate']) ? $this->parseDate($data['reportStartDate']) : $dot->ngay_bat_dau_nop_bao_cao;
             $updateData['ngay_bat_dau_phan_bien'] = null;
             $updateData['ngay_ket_thuc_phan_bien'] = null;
             $updateData['ngay_bat_dau_bao_ve'] = null;
@@ -420,6 +425,9 @@ class DotService
             'endDate' => $dot->ngay_ket_thuc ? Carbon::parse($dot->ngay_ket_thuc)->format('d/m/Y') : '',
             'regDeadline' => $dot->han_dang_ky ? Carbon::parse($dot->han_dang_ky)->format('d/m/Y') : '',
             'regOpenDate' => $dot->ngay_bat_dau_dang_ky ? Carbon::parse($dot->ngay_bat_dau_dang_ky)->format('d/m/Y') : '',
+            'reportStartDate' => $dot->loai_dot === 'TTTN' && $dot->ngay_bat_dau_nop_bao_cao 
+                ? Carbon::parse($dot->ngay_bat_dau_nop_bao_cao)->format('d/m/Y') 
+                : ($dot->ngay_bat_dau ? Carbon::parse($dot->ngay_bat_dau)->format('d/m/Y') : ''),
             'reportDeadline' => $dot->han_nop_bao_cao ? Carbon::parse($dot->han_nop_bao_cao)->format('d/m/Y') : '',
             'gradingStartDate' => $dot->ngay_bat_dau_cham_diem ? Carbon::parse($dot->ngay_bat_dau_cham_diem)->format('d/m/Y') : '',
             'gradingEndDate' => $dot->ngay_ket_thuc_cham_diem ? Carbon::parse($dot->ngay_ket_thuc_cham_diem)->format('d/m/Y') : '',
@@ -548,6 +556,31 @@ class DotService
      */
     private function validatePeriodDatesAndSchoolYear(array $data, $existingDot = null)
     {
+        $loaiDot = strtoupper($data['type'] ?? ($existingDot ? $existingDot->loai_dot : 'TTTN'));
+
+        // 0. Kiểm tra Tên đợt (name) phải tuân thủ quy tắc và không lẫn lộn loại đợt
+        $name = $data['name'] ?? ($existingDot ? $existingDot->ten_dot : null);
+        if ($name) {
+            $isTttnName = preg_match('/thực\s+tập|thuc\s+tap|\btt\b|\btt\d/ui', $name);
+            $isDatnName = preg_match('/đồ\s+án|do\s+an|\bda\b|\bda\d/ui', $name);
+
+            if ($loaiDot === 'TTTN') {
+                if ($isDatnName) {
+                    throw new \InvalidArgumentException('Tên đợt chứa ký tự của ĐATN (đồ án/DA), vui lòng kiểm tra lại để tránh nhầm đợt!');
+                }
+                if (!$isTttnName) {
+                    throw new \InvalidArgumentException('Tên đợt TTTN phải chứa ký tự liên quan như "Thực tập" hoặc "TT"!');
+                }
+            } else if ($loaiDot === 'DATN') {
+                if ($isTttnName) {
+                    throw new \InvalidArgumentException('Tên đợt chứa ký tự của TTTN (thực tập/TT), vui lòng kiểm tra lại để tránh nhầm đợt!');
+                }
+                if (!$isDatnName) {
+                    throw new \InvalidArgumentException('Tên đợt ĐATN phải chứa ký tự liên quan như "Đồ án" hoặc "DA"!');
+                }
+            }
+        }
+
         // 1. Kiểm tra Năm học (schoolYear)
         $schoolYear = $data['schoolYear'] ?? ($existingDot ? $existingDot->nam_hoc : null);
         if ($schoolYear) {
@@ -587,9 +620,7 @@ class DotService
             throw new \InvalidArgumentException('Hạn đăng ký phải sau ngày mở đăng ký!');
         }
 
-        $loaiDot = strtoupper($data['type'] ?? ($existingDot ? $existingDot->loai_dot : 'tttn'));
-
-        if ($regDeadline && $reportDeadline && Carbon::parse($reportDeadline)->lte(Carbon::parse($regDeadline))) {
+        if ($loaiDot === 'DATN' && $regDeadline && $reportDeadline && Carbon::parse($reportDeadline)->lte(Carbon::parse($regDeadline))) {
             throw new \InvalidArgumentException('Hạn nộp báo cáo tiến độ phải sau hạn đăng ký!');
         }
 
@@ -614,9 +645,24 @@ class DotService
                 throw new \InvalidArgumentException('Bắt đầu chấm điểm không được trước Bắt đầu bảo vệ!');
             }
         } else {
-            // TTTN mode: Bắt đầu chấm điểm phải sau Hạn nộp báo cáo tiến độ
+            $reportStartDate = $this->parseDate($data['reportStartDate'] ?? ($existingDot ? $existingDot->ngay_bat_dau_nop_bao_cao : null));
+            // TTTN mode: Bắt đầu chấm điểm phải sau Hạn nộp báo cáo tiến độ và sau Ngày bắt đầu nộp báo cáo tiến độ
+            if ($reportStartDate && $gradingStartDate && Carbon::parse($gradingStartDate)->lte(Carbon::parse($reportStartDate))) {
+                throw new \InvalidArgumentException('Ngày bắt đầu chấm điểm phải sau ngày bắt đầu nộp báo cáo tiến độ!');
+            }
             if ($reportDeadline && $gradingStartDate && Carbon::parse($gradingStartDate)->lte(Carbon::parse($reportDeadline))) {
                 throw new \InvalidArgumentException('Ngày bắt đầu chấm điểm phải sau hạn nộp báo cáo tiến độ!');
+            }
+            if ($reportStartDate) {
+                if ($startDate && Carbon::parse($reportStartDate)->lt(Carbon::parse($startDate))) {
+                    throw new \InvalidArgumentException('Ngày bắt đầu nộp báo cáo tiến độ không được trước ngày bắt đầu đợt học!');
+                }
+                if ($reportDeadline && Carbon::parse($reportStartDate)->gte(Carbon::parse($reportDeadline))) {
+                    throw new \InvalidArgumentException('Ngày bắt đầu nộp báo cáo tiến độ phải trước hạn nộp báo cáo!');
+                }
+                if ($endDate && Carbon::parse($reportStartDate)->gte(Carbon::parse($endDate))) {
+                    throw new \InvalidArgumentException('Ngày bắt đầu nộp báo cáo tiến độ phải trước ngày kết thúc đợt học!');
+                }
             }
         }
 

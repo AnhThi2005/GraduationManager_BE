@@ -31,6 +31,7 @@ class Dot extends Model
         'ngay_ket_thuc_phan_bien',
         'ngay_bat_dau_bao_ve',
         'ngay_ket_thuc_bao_ve',
+        'ngay_bat_dau_nop_bao_cao',
     ];
 
     public function lops()

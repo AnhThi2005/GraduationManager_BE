@@ -130,20 +130,30 @@ class ThucTapController extends Controller
             'position' => 'required|string|max:255',
             'address' => 'nullable|string|max:255',
             'mentor' => 'nullable|string|max:255',
-            'phone' => 'nullable|string|max:255',
-            'duration' => 'nullable|string|max:255',
+            'phone' => 'required|string|regex:/^(0|\+84)[3|5|7|8|9][0-9]{8}$/',
+            'email' => 'required|string|email|max:255',
+            'duration' => 'required|string|max:255',
             'confirmPaper' => 'nullable|boolean',
             'internshipAddress' => 'nullable|string|max:255',
         ];
 
-        if ($request->filled('email')) {
-            $rules['email'] = 'string|email|max:255';
-        }
-
         $request->validate($rules, [
             'taxId.required' => 'Mã số thuế công ty không được để trống.',
             'position.required' => 'Vị trí thực tập không được để trống.',
+            'phone.required' => 'Số điện thoại liên hệ không được để trống.',
+            'phone.regex' => 'Số điện thoại liên hệ không hợp lệ (phải gồm 10 chữ số bắt đầu bằng 0 hoặc +84).',
+            'email.required' => 'Email người liên hệ không được để trống.',
+            'email.email' => 'Email người liên hệ không đúng định dạng.',
+            'duration.required' => 'Thời gian thực tập không được để trống.',
         ]);
+
+        $duration = $request->input('duration');
+        if ($this->parseDurationToWeeks($duration) < 8) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Thời gian thực tập phải từ 8 tuần trở lên.',
+            ], 422);
+        }
 
         $companyName = $request->input('companyName');
         $taxId = trim((string) $request->input('taxId'));
@@ -392,5 +402,30 @@ class ThucTapController extends Controller
                 ],
             ],
         ]);
+    }
+
+    /**
+     * Chuyển đổi chuỗi thời gian thực tập sang số tuần
+     */
+    private function parseDurationToWeeks($durationStr): float
+    {
+        if (!$durationStr) {
+            return 0;
+        }
+        $str = mb_strtolower(trim($durationStr), 'UTF-8');
+        
+        preg_match('/\d+(?:\.\d+)?/', $str, $matches);
+        if (empty($matches)) {
+            return 0;
+        }
+        $num = (float) $matches[0];
+        
+        if (str_contains($str, 'tháng') || str_contains($str, 'thang')) {
+            return $num * 4;
+        } elseif (str_contains($str, 'ngày') || str_contains($str, 'ngay')) {
+            return $num / 7;
+        } else {
+            return $num;
+        }
     }
 }
