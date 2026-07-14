@@ -77,7 +77,9 @@ class BaoCaoController extends Controller
             ]);
         }
 
-        $start = Carbon::parse($activePeriod->ngay_bat_dau, 'Asia/Ho_Chi_Minh');
+        $start = $activePeriod->loai_dot === 'TTTN' && $activePeriod->ngay_bat_dau_nop_bao_cao
+            ? Carbon::parse($activePeriod->ngay_bat_dau_nop_bao_cao, 'Asia/Ho_Chi_Minh')
+            : Carbon::parse($activePeriod->ngay_bat_dau, 'Asia/Ho_Chi_Minh');
         $now = Carbon::now();
 
         $reports = BaoCaoTienDo::where('sinh_vien_id', $sinhVien->sinh_vien_id)
@@ -246,7 +248,10 @@ class BaoCaoController extends Controller
         }
 
         // Chặn nộp trước các tuần ở tương lai
-        $startOfWeek = Carbon::parse($activePeriod->ngay_bat_dau, 'Asia/Ho_Chi_Minh')->addWeeks($week - 1);
+        $reportStart = $activePeriod->loai_dot === 'TTTN' && $activePeriod->ngay_bat_dau_nop_bao_cao
+            ? Carbon::parse($activePeriod->ngay_bat_dau_nop_bao_cao, 'Asia/Ho_Chi_Minh')
+            : Carbon::parse($activePeriod->ngay_bat_dau, 'Asia/Ho_Chi_Minh');
+        $startOfWeek = $reportStart->copy()->addWeeks($week - 1);
         if (Carbon::now()->lt($startOfWeek)) {
             return response()->json([
                 'success' => false,

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\QuanLyLop\ThemLopRequest;
+use App\Http\Requests\Admin\QuanLyLop\CapNhatLopRequest;
 use App\Services\LopService;
 use Illuminate\Http\Request;
 
@@ -57,11 +58,32 @@ class LopController extends Controller
     }
 
     /**
+     * API Lấy danh sách metadata của lớp học (tên lớp, bậc đào tạo, khóa học, chuyên ngành)
+     */
+    public function layMetadata(Request $request)
+    {
+        $metadata = $this->lopService->getClassMetadata();
+        return response()->json([
+            'code' => 200,
+            'results' => [
+                'object' => $metadata,
+            ],
+        ], 200);
+    }
+
+    /**
      * API Tạo mới lớp học
      */
     public function themMoi(ThemLopRequest $request)
     {
-        $class = $this->lopService->createClass($request->all());
+        try {
+            $class = $this->lopService->createClass($request->all());
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 400);
+        }
 
         return response()->json([
             'code' => 200,
@@ -71,17 +93,21 @@ class LopController extends Controller
         ], 200);
     }
 
-    /**
-     * API Cập nhật lớp học
-     */
-    public function capNhat(Request $request, $id)
+    public function capNhat(CapNhatLopRequest $request, $id)
     {
-        $class = $this->lopService->updateClass($id, $request->all());
-        if (! $class) {
+        try {
+            $class = $this->lopService->updateClass($id, $request->all());
+            if (! $class) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Không tìm thấy lớp học này để cập nhật!',
+                ], 404);
+            }
+        } catch (\InvalidArgumentException $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Không tìm thấy lớp học này để cập nhật!',
-            ], 404);
+                'message' => $e->getMessage(),
+            ], 400);
         }
 
         return response()->json([

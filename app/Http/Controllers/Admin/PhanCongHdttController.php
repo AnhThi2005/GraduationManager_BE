@@ -35,12 +35,29 @@ class PhanCongHdttController extends Controller
 
         if ($isTttn) {
             // --- LOGIC CHO ĐỢT THỰC TẬP TỐT NGHIỆP (TTTN) ---
-            // Chỉ lấy danh sách sinh viên thực tế đăng ký tham gia đợt TTTN này (bảng dot_sinhvien)
+            // Lấy danh sách sinh viên tham gia đợt TTTN:
+            // 1. Sinh viên thuộc các lớp được gán cho đợt này (dot_lop)
+            // 2. Sinh viên tự do được gán riêng cho đợt này (dot_sinhvien)
+            // 3. Sinh viên đã được phân công trong đợt này (phanconghdtt)
+            $studentIdsInDotSinhvien = DB::table('dot_sinhvien')->where('dot_id', $dotId)->pluck('sinh_vien_id');
+            $studentIdsInPhanCong = DB::table('phanconghdtt')->where('dot_id', $dotId)->pluck('sinh_vien_id');
+
             $students = SinhVien::query()
-                ->join('dot_sinhvien', 'sinhvien.sinh_vien_id', '=', 'dot_sinhvien.sinh_vien_id')
-                ->where('dot_sinhvien.dot_id', $dotId)
+                ->where(function ($q) use ($lopIdsInPeriod, $studentIdsInDotSinhvien, $studentIdsInPhanCong) {
+                    if ($lopIdsInPeriod->isNotEmpty()) {
+                        $q->whereIn('lop_id', $lopIdsInPeriod);
+                    }
+                    if ($studentIdsInDotSinhvien->isNotEmpty()) {
+                        $q->orWhereIn('sinh_vien_id', $studentIdsInDotSinhvien);
+                    }
+                    if ($studentIdsInPhanCong->isNotEmpty()) {
+                        $q->orWhereIn('sinh_vien_id', $studentIdsInPhanCong);
+                    }
+                    if ($lopIdsInPeriod->isEmpty() && $studentIdsInDotSinhvien->isEmpty() && $studentIdsInPhanCong->isEmpty()) {
+                        $q->whereNull('sinh_vien_id'); // Trả về trống nếu không có điều kiện nào
+                    }
+                })
                 ->with('lop')
-                ->select('sinhvien.*')
                 ->get();
 
             // Lấy phân công theo đợt
@@ -74,6 +91,7 @@ class PhanCongHdttController extends Controller
                 }
 
                 return [
+                    'id' => (string) $sv->ma_so_sinh_vien,
                     'studentId' => (string) $sv->ma_so_sinh_vien,
                     'name' => $sv->ho_ten,
                     'className' => $sv->lop ? $sv->lop->ten_lop : '—',
@@ -234,6 +252,7 @@ class PhanCongHdttController extends Controller
                 }
 
                 return [
+                    'id' => (string) $sv->ma_so_sinh_vien,
                     'studentId' => (string) $sv->ma_so_sinh_vien,
                     'name' => $sv->ho_ten,
                     'className' => $sv->lop ? $sv->lop->ten_lop : '—',
@@ -577,7 +596,7 @@ class PhanCongHdttController extends Controller
             return [
                 'id' => (string) $gv->giang_vien_id,
                 'name' => $gv->ho_ten,
-                'degree' => $gv->hoc_vi ?? 'ThS.',
+                'degree' => $gv->hoc_vi,
                 'major' => $gv->chuyen_mon ?? 'Phần mềm',
                 'status' => $status,
                 'assignedCount' => $count,

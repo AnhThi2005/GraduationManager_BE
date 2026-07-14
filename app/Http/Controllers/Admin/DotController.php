@@ -158,19 +158,23 @@ class DotController extends Controller
             'studentId' => 'required',
             'periodIds' => 'required|array',
             'periodIds.*' => 'required',
-            'reason' => 'nullable|string',
         ]);
 
         $studentId = $request->input('studentId');
         $periodIds = $request->input('periodIds');
-        $reason = $request->input('reason', 'Rớt đợt trước');
 
-        $res = $this->dotService->addStudentToPeriods($studentId, $periodIds, $reason);
-
-        if (! $res) {
+        try {
+            $res = $this->dotService->addStudentToPeriods($studentId, $periodIds);
+            if (! $res) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Không tìm thấy sinh viên hoặc đợt hợp lệ!',
+                ], 400);
+            }
+        } catch (\InvalidArgumentException $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Không tìm thấy sinh viên hoặc đợt hợp lệ!',
+                'message' => $e->getMessage(),
             ], 400);
         }
 

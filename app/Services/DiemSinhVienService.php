@@ -75,13 +75,32 @@ class DiemSinhVienService
                     'detai.ten_de_tai as topicName',
                     'giangvien.ho_ten as mentor',
                     'diemtongketdatn.tong_ket_id as id',
-                    DB::raw('(SELECT COALESCE(SUM(diem_thuyet_trinh), 0) FROM diemhoidongbaove WHERE diemhoidongbaove.sinh_vien_id = sinhvien.sinh_vien_id AND diemhoidongbaove.nhom_id = nhomsvda.nhom_id) / COALESCE(NULLIF((SELECT COUNT(*) FROM thanhvienhoidong WHERE thanhvienhoidong.hoi_dong_id = nhomsvda.hoi_dong_id), 0), 1) as defenseScore'),
-                    DB::raw('(SELECT COALESCE(SUM(diem_demo), 0) FROM diemhoidongbaove WHERE diemhoidongbaove.sinh_vien_id = sinhvien.sinh_vien_id AND diemhoidongbaove.nhom_id = nhomsvda.nhom_id) / COALESCE(NULLIF((SELECT COUNT(*) FROM thanhvienhoidong WHERE thanhvienhoidong.hoi_dong_id = nhomsvda.hoi_dong_id), 0), 1) as demoScore'),
-                    DB::raw('(SELECT COALESCE(SUM(diem_van_dap), 0) FROM diemhoidongbaove WHERE diemhoidongbaove.sinh_vien_id = sinhvien.sinh_vien_id AND diemhoidongbaove.nhom_id = nhomsvda.nhom_id) / COALESCE(NULLIF((SELECT COUNT(*) FROM thanhvienhoidong WHERE thanhvienhoidong.hoi_dong_id = nhomsvda.hoi_dong_id), 0), 1) as qaScore'),
+                    DB::raw('(SELECT SUM(diem_thuyet_trinh) FROM diemhoidongbaove WHERE diemhoidongbaove.sinh_vien_id = sinhvien.sinh_vien_id AND diemhoidongbaove.nhom_id = nhomsvda.nhom_id) / COALESCE(NULLIF((SELECT COUNT(*) FROM thanhvienhoidong WHERE thanhvienhoidong.hoi_dong_id = nhomsvda.hoi_dong_id), 0), 1) as defenseScore'),
+                    DB::raw('(SELECT SUM(diem_demo) FROM diemhoidongbaove WHERE diemhoidongbaove.sinh_vien_id = sinhvien.sinh_vien_id AND diemhoidongbaove.nhom_id = nhomsvda.nhom_id) / COALESCE(NULLIF((SELECT COUNT(*) FROM thanhvienhoidong WHERE thanhvienhoidong.hoi_dong_id = nhomsvda.hoi_dong_id), 0), 1) as demoScore'),
+                    DB::raw('(SELECT SUM(diem_van_dap) FROM diemhoidongbaove WHERE diemhoidongbaove.sinh_vien_id = sinhvien.sinh_vien_id AND diemhoidongbaove.nhom_id = nhomsvda.nhom_id) / COALESCE(NULLIF((SELECT COUNT(*) FROM thanhvienhoidong WHERE thanhvienhoidong.hoi_dong_id = nhomsvda.hoi_dong_id), 0), 1) as qaScore'),
                     'diemtongketdatn.diem_bao_cao_chung as reportScore',
                     'diemtongketdatn.diem_tong_ket as finalScore',
                     DB::raw("CASE WHEN diemtongketdatn.trang_thai IS NOT NULL THEN 'finalized' ELSE 'draft' END as status"),
                 ]);
+
+            // Chỉ hiển thị sinh viên đã có ít nhất 1 điểm thành phần được chấm THẬT
+            // (bảo vệ/demo/vấn đáp từ hội đồng, hoặc điểm báo cáo) - ẩn sinh viên chưa chấm.
+            // Không dùng whereExists đơn thuần vì hội đồng có thể đã có sẵn bản ghi rỗng (toàn NULL)
+            // ngay khi được phân công, trước khi ai thực sự chấm điểm.
+            $studentsQuery->where(function ($q) {
+                $q->whereNotNull('diemtongketdatn.diem_bao_cao_chung')
+                    ->orWhereExists(function ($sub) {
+                        $sub->select(DB::raw(1))
+                            ->from('diemhoidongbaove')
+                            ->whereColumn('diemhoidongbaove.sinh_vien_id', 'sinhvien.sinh_vien_id')
+                            ->whereColumn('diemhoidongbaove.nhom_id', 'nhomsvda.nhom_id')
+                            ->where(function ($w) {
+                                $w->whereNotNull('diem_thuyet_trinh')
+                                    ->orWhereNotNull('diem_demo')
+                                    ->orWhereNotNull('diem_van_dap');
+                            });
+                    });
+            });
         }
 
         // Áp dụng bộ lọc tìm kiếm theo từ khóa
@@ -120,20 +139,22 @@ class DiemSinhVienService
             }
         }
 
+        $studentsQuery->orderBy('sinhvien.sinh_vien_id', 'desc');
+
         $total = $studentsQuery->count();
         $rows = $studentsQuery->get();
 
         // Chuẩn hóa dữ liệu đầu ra cho frontend
         $rows = $rows->map(function ($row) use ($loai) {
             $row->id = $row->id ? (string) $row->id : 'TEMP_'.$row->sinh_vien_id;
-            $row->finalScore = $row->finalScore !== null ? floatval($row->finalScore) : 0;
+            $row->finalScore = $row->finalScore !== null ? floatval($row->finalScore) : null;
             $row->status = $row->status ?? 'draft';
 
             if ($loai === 'DO_AN') {
-                $row->defenseScore = $row->defenseScore !== null ? round(floatval($row->defenseScore), 2) : 0.00;
-                $row->demoScore = $row->demoScore !== null ? round(floatval($row->demoScore), 2) : 0.00;
-                $row->qaScore = $row->qaScore !== null ? round(floatval($row->qaScore), 2) : 0.00;
-                $row->reportScore = $row->reportScore !== null ? round(floatval($row->reportScore), 2) : 0.00;
+                $row->defenseScore = $row->defenseScore !== null ? round(floatval($row->defenseScore), 2) : null;
+                $row->demoScore = $row->demoScore !== null ? round(floatval($row->demoScore), 2) : null;
+                $row->qaScore = $row->qaScore !== null ? round(floatval($row->qaScore), 2) : null;
+                $row->reportScore = $row->reportScore !== null ? round(floatval($row->reportScore), 2) : null;
             }
 
             return $row;
@@ -246,9 +267,9 @@ class DiemSinhVienService
                     'detai.ten_de_tai as topicName',
                     'giangvien.ho_ten as mentor',
                     'diemtongketdatn.tong_ket_id as id',
-                    DB::raw('(SELECT COALESCE(SUM(diem_thuyet_trinh), 0) FROM diemhoidongbaove WHERE diemhoidongbaove.sinh_vien_id = sinhvien.sinh_vien_id AND diemhoidongbaove.nhom_id = nhomsvda.nhom_id) / COALESCE(NULLIF((SELECT COUNT(*) FROM thanhvienhoidong WHERE thanhvienhoidong.hoi_dong_id = nhomsvda.hoi_dong_id), 0), 1) as defenseScore'),
-                    DB::raw('(SELECT COALESCE(SUM(diem_demo), 0) FROM diemhoidongbaove WHERE diemhoidongbaove.sinh_vien_id = sinhvien.sinh_vien_id AND diemhoidongbaove.nhom_id = nhomsvda.nhom_id) / COALESCE(NULLIF((SELECT COUNT(*) FROM thanhvienhoidong WHERE thanhvienhoidong.hoi_dong_id = nhomsvda.hoi_dong_id), 0), 1) as demoScore'),
-                    DB::raw('(SELECT COALESCE(SUM(diem_van_dap), 0) FROM diemhoidongbaove WHERE diemhoidongbaove.sinh_vien_id = sinhvien.sinh_vien_id AND diemhoidongbaove.nhom_id = nhomsvda.nhom_id) / COALESCE(NULLIF((SELECT COUNT(*) FROM thanhvienhoidong WHERE thanhvienhoidong.hoi_dong_id = nhomsvda.hoi_dong_id), 0), 1) as qaScore'),
+                    DB::raw('(SELECT SUM(diem_thuyet_trinh) FROM diemhoidongbaove WHERE diemhoidongbaove.sinh_vien_id = sinhvien.sinh_vien_id AND diemhoidongbaove.nhom_id = nhomsvda.nhom_id) / COALESCE(NULLIF((SELECT COUNT(*) FROM thanhvienhoidong WHERE thanhvienhoidong.hoi_dong_id = nhomsvda.hoi_dong_id), 0), 1) as defenseScore'),
+                    DB::raw('(SELECT SUM(diem_demo) FROM diemhoidongbaove WHERE diemhoidongbaove.sinh_vien_id = sinhvien.sinh_vien_id AND diemhoidongbaove.nhom_id = nhomsvda.nhom_id) / COALESCE(NULLIF((SELECT COUNT(*) FROM thanhvienhoidong WHERE thanhvienhoidong.hoi_dong_id = nhomsvda.hoi_dong_id), 0), 1) as demoScore'),
+                    DB::raw('(SELECT SUM(diem_van_dap) FROM diemhoidongbaove WHERE diemhoidongbaove.sinh_vien_id = sinhvien.sinh_vien_id AND diemhoidongbaove.nhom_id = nhomsvda.nhom_id) / COALESCE(NULLIF((SELECT COUNT(*) FROM thanhvienhoidong WHERE thanhvienhoidong.hoi_dong_id = nhomsvda.hoi_dong_id), 0), 1) as qaScore'),
                     'diemtongketdatn.diem_bao_cao_chung as reportScore',
                     'diemtongketdatn.diem_tong_ket as finalScore',
                     DB::raw("CASE WHEN diemtongketdatn.trang_thai IS NOT NULL THEN 'finalized' ELSE 'draft' END as status"),
@@ -258,14 +279,14 @@ class DiemSinhVienService
 
         if ($detail) {
             $detail->id = $detail->id ? (string) $detail->id : 'TEMP_'.$detail->sinh_vien_id;
-            $detail->finalScore = $detail->finalScore !== null ? floatval($detail->finalScore) : 0;
+            $detail->finalScore = $detail->finalScore !== null ? floatval($detail->finalScore) : null;
             $detail->status = $detail->status ?? 'draft';
 
             if ($loai === 'DO_AN') {
-                $detail->defenseScore = $detail->defenseScore !== null ? round(floatval($detail->defenseScore), 2) : 0.00;
-                $detail->demoScore = $detail->demoScore !== null ? round(floatval($detail->demoScore), 2) : 0.00;
-                $detail->qaScore = $detail->qaScore !== null ? round(floatval($detail->qaScore), 2) : 0.00;
-                $detail->reportScore = $detail->reportScore !== null ? round(floatval($detail->reportScore), 2) : 0.00;
+                $detail->defenseScore = $detail->defenseScore !== null ? round(floatval($detail->defenseScore), 2) : null;
+                $detail->demoScore = $detail->demoScore !== null ? round(floatval($detail->demoScore), 2) : null;
+                $detail->qaScore = $detail->qaScore !== null ? round(floatval($detail->qaScore), 2) : null;
+                $detail->reportScore = $detail->reportScore !== null ? round(floatval($detail->reportScore), 2) : null;
             }
         }
 
@@ -319,6 +340,22 @@ class DiemSinhVienService
         // 1. Lấy điểm Báo cáo trung bình
         $dbc = DB::table('diembaocao')->where('sinh_vien_id', $sinhVienId)->where('nhom_id', $nhomId)->first();
         $diemBaoCaoTrungBinh = $dbc ? $dbc->diem_trung_binh : null;
+
+        // Nếu chưa có điểm báo cáo thật và cũng chưa giám khảo nào thực sự chấm điểm bảo vệ,
+        // không tạo/động vào bản ghi diemtongketdatn - tránh set trang_thai cho sinh viên chưa được chấm.
+        $hasRealDefenseScore = DB::table('diemhoidongbaove')
+            ->where('sinh_vien_id', $sinhVienId)
+            ->where('nhom_id', $nhomId)
+            ->where(function ($w) {
+                $w->whereNotNull('diem_thuyet_trinh')
+                    ->orWhereNotNull('diem_demo')
+                    ->orWhereNotNull('diem_van_dap');
+            })
+            ->exists();
+
+        if ($diemBaoCaoTrungBinh === null && ! $hasRealDefenseScore) {
+            return;
+        }
 
         // 2. Lấy điểm Bảo vệ trung bình của toàn hội đồng (tính trung bình cộng theo số lượng thành viên hội đồng, chưa chấm/chấm 0 thì tính là 0)
         $nhomsvda = DB::table('nhomsvda')->where('nhom_id', $nhomId)->first();

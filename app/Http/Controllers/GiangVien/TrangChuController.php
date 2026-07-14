@@ -107,7 +107,7 @@ class TrangChuController extends Controller
                 'name' => $teacher->ho_ten,
                 'email' => $teacher->email,
                 'phone' => $teacher->so_dien_thoai ?? '—',
-                'degree' => $teacher->hoc_vi ?? 'ThS',
+                'degree' => $teacher->hoc_vi,
                 'specialty' => $teacher->chuyen_mon ?? 'Khoa Công nghệ thông tin',
             ],
         ]);
