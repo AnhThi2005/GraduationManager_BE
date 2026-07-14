@@ -147,10 +147,23 @@ class HoiDongController extends Controller
                     }
                 }
             }
-            $title = 'Hội đồng ' . ($maxNum + 1);
         }
 
-        return DB::transaction(function () use ($request, $dotId, $title, $members, $chairId, $secretaryId) {
+        try {
+            $this->validateNameAndRoomConflicts(
+                $title,
+                $request->input('room'),
+                $request->input('date'),
+                $request->input('time')
+            );
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+
+        return DB::transaction(function () use ($request, $dotId, $title, $members, $chairId, $secretaryId, $dot) {
             $hd = HoiDong::create([
                 'dot_id' => $dotId,
                 'ten_hoi_dong' => $title,
@@ -205,11 +218,8 @@ class HoiDongController extends Controller
                     continue;
                 }
 
-                $status = $request->input('status', 'NHAP');
                 $nhom = Nhom::find($nhomId);
-                if ($status === 'DA_CONG_BO' && $nhom && $nhom->ket_qua_huong_dan !== 'DAT') {
-                    throw new \Exception("Nhóm ID {$nhomId} chưa đạt đánh giá hướng dẫn (GVHD), không thể xếp vào hội đồng đã công bố!");
-                }
+                $this->validateNhomDotConstraint($nhom, $dot);
 
                 // Update group's council
                 DB::table('nhomsvda')->where('nhom_id', $nhomId)->update([
@@ -344,7 +354,22 @@ class HoiDongController extends Controller
             ], 422);
         }
 
-        return DB::transaction(function () use ($request, $hd) {
+        try {
+            $this->validateNameAndRoomConflicts(
+                $request->input('title', $hd->ten_hoi_dong),
+                $request->input('room', $hd->phong_bao_ve),
+                $request->input('date', $hd->ngay_bao_ve),
+                $request->input('time', $hd->gio_bao_ve),
+                $hd->hoi_dong_id
+            );
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+
+        return DB::transaction(function () use ($request, $hd, $dot) {
             $hd->update([
                 'ten_hoi_dong' => $request->input('title', $hd->ten_hoi_dong),
                 'phong_bao_ve' => $request->input('room', $hd->phong_bao_ve),
@@ -406,11 +431,8 @@ class HoiDongController extends Controller
                         continue;
                     }
 
-                    $newStatus = $request->input('status', $hd->trang_thai);
                     $nhom = Nhom::find($nhomId);
-                    if ($newStatus === 'DA_CONG_BO' && $nhom && $nhom->ket_qua_huong_dan !== 'DAT') {
-                        throw new \Exception("Nhóm ID {$nhomId} chưa đạt đánh giá hướng dẫn (GVHD), không thể công bố hội đồng!");
-                    }
+                    $this->validateNhomDotConstraint($nhom, $dot);
 
                     // Update group's council
                     DB::table('nhomsvda')->where('nhom_id', $nhomId)->update([
@@ -463,6 +485,41 @@ class HoiDongController extends Controller
             return $resp;
         }
 
+        $dot = $hd->dot;
+        if ($dot) {
+            $hasGroups = DB::table('nhomsvda')->where('hoi_dong_id', $id)->exists();
+            if ($hasGroups) {
+                $now = date('Y-m-d');
+                $ngayBatDauPhanBien = $dot->ngay_bat_dau_phan_bien;
+                $ngayKetThuc = $dot->ngay_ket_thuc;
+
+                if ($ngayBatDauPhanBien && $ngayKetThuc && $now >= $ngayBatDauPhanBien && $now <= $ngayKetThuc) {
+                    $phase = 'chấm điểm/phản biện';
+
+                    $ngayBatDauBaoVe = $dot->ngay_bat_dau_bao_ve;
+                    $ngayKetThucBaoVe = $dot->ngay_ket_thuc_bao_ve;
+                    $ngayBatDauChamDiem = $dot->ngay_bat_dau_cham_diem;
+                    $ngayKetThucChamDiem = $dot->ngay_ket_thuc_cham_diem;
+
+                    if ($ngayBatDauChamDiem && $ngayKetThucChamDiem && $now >= $ngayBatDauChamDiem && $now <= $ngayKetThucChamDiem) {
+                        $phase = 'chấm điểm/tổng kết';
+                    } elseif ($ngayBatDauBaoVe && $ngayKetThucBaoVe && $now >= $ngayBatDauBaoVe && $now <= $ngayKetThucBaoVe) {
+                        $phase = 'bảo vệ hội đồng';
+                    } elseif ($ngayBatDauPhanBien && $dot->ngay_ket_thuc_phan_bien && $now >= $ngayBatDauPhanBien && $now <= $dot->ngay_ket_thuc_phan_bien) {
+                        $phase = 'giao nhận/đọc phản biện';
+                    }
+
+                    $startFormatted = date('d/m/Y', strtotime($ngayBatDauPhanBien));
+                    $endFormatted = date('d/m/Y', strtotime($ngayKetThuc));
+
+                    return response()->json([
+                        'success' => false,
+                        'message' => "Hội đồng đang trong quá trình {$phase} (từ {$startFormatted} đến {$endFormatted}) không thể xóa.",
+                    ], 422);
+                }
+            }
+        }
+
         DB::table('nhomsvda')->where('hoi_dong_id', $id)->update(['hoi_dong_id' => null]);
         DB::table('lichbaove')->where('hoi_dong_id', $id)->delete();
         DB::table('thanhvienhoidong')->where('hoi_dong_id', $id)->delete();
@@ -472,6 +529,106 @@ class HoiDongController extends Controller
             'success' => true,
             'message' => 'Xóa hội đồng thành công!',
         ], 200);
+    }
+
+    private function validateNhomDotConstraint($nhom, $dot)
+    {
+        if (!$nhom || !$dot) {
+            return;
+        }
+
+        $now = date('Y-m-d');
+        $ngayBatDau = $dot->ngay_bat_dau;
+        $ngayBatDauPhanBien = $dot->ngay_bat_dau_phan_bien;
+
+        $kqHd = $nhom->ket_qua_huong_dan;
+        $kqPb = $nhom->ket_qua_phan_bien;
+
+        $topicName = $nhom->deTai ? $nhom->deTai->ten_de_tai : 'Nhóm #' . $nhom->nhom_id;
+
+        if ($ngayBatDauPhanBien && $now >= $ngayBatDauPhanBien) {
+            // Từ ngày bắt đầu phản biện trở đi: Bắt buộc cả hai phải là DAT
+            if ($kqHd !== 'DAT' || $kqPb !== 'DAT') {
+                throw new \Exception("Nhóm đề tài '{$topicName}' phải có kết quả Hướng dẫn và Phản biện đạt (DAT) kể từ giai đoạn phản biện!");
+            }
+        } else {
+            // Trước ngày bắt đầu phản biện: Hướng dẫn và Phản biện phải là null hoặc DAT (không được KHONG_DAT)
+            $isHdValid = is_null($kqHd) || $kqHd === 'DAT';
+            $isPbValid = is_null($kqPb) || $kqPb === 'DAT';
+            if (!$isHdValid || !$isPbValid) {
+                throw new \Exception("Nhóm đề tài '{$topicName}' có kết quả không đạt, không thể xếp vào hội đồng!");
+            }
+        }
+    }
+
+    private function parseTimeRange($timeStr)
+    {
+        if (empty($timeStr)) {
+            return [0, 86400]; // Default to all day if empty
+        }
+        // Replace different dashes with a standard dash
+        $timeStr = str_replace(['–', '—', 'to', '-'], '-', $timeStr);
+        $parts = explode('-', $timeStr);
+        if (count($parts) === 2) {
+            $start = strtotime(trim($parts[0]));
+            $end = strtotime(trim($parts[1]));
+            if ($start !== false && $end !== false) {
+                $startSec = date('H', $start) * 3600 + date('i', $start) * 60;
+                $endSec = date('H', $end) * 3600 + date('i', $end) * 60;
+                return [$startSec, $endSec];
+            }
+        } else {
+            $start = strtotime(trim($timeStr));
+            if ($start !== false) {
+                $startSec = date('H', $start) * 3600 + date('i', $start) * 60;
+                return [$startSec, $startSec + 4 * 3600];
+            }
+        }
+        return [0, 86400];
+    }
+
+    private function isTimeOverlapping($timeStr1, $timeStr2)
+    {
+        list($start1, $end1) = $this->parseTimeRange($timeStr1);
+        list($start2, $end2) = $this->parseTimeRange($timeStr2);
+        return ($start1 < $end2 && $start2 < $end1);
+    }
+
+    private function validateNameAndRoomConflicts($title, $room, $date, $time, $excludeId = null)
+    {
+        // 1. Check duplicate name (case-insensitive)
+        if ($title) {
+            $query = HoiDong::whereRaw('LOWER(ten_hoi_dong) = ?', [strtolower($title)]);
+            if ($excludeId) {
+                $query->where('hoi_dong_id', '!=', $excludeId);
+            }
+            if ($query->exists()) {
+                throw new \Exception("Tên hội đồng '{$title}' đã tồn tại trong hệ thống (không phân biệt hoa thường)!");
+            }
+        }
+
+        // 2. Check room scheduling conflict
+        if ($room && $date && $time) {
+            $query = HoiDong::where('phong_bao_ve', $room)
+                ->where('ngay_bao_ve', $date);
+            if ($excludeId) {
+                $query->where('hoi_dong_id', '!=', $excludeId);
+            }
+            $otherCouncils = $query->get();
+
+            foreach ($otherCouncils as $otherHd) {
+                if ($this->isTimeOverlapping($time, $otherHd->gio_bao_ve)) {
+                    $hasScheduledGroups = DB::table('lichbaove')
+                        ->where('hoi_dong_id', $otherHd->hoi_dong_id)
+                        ->exists();
+
+                    if ($hasScheduledGroups) {
+                        $dateFormatted = date('d/m/Y', strtotime($date));
+                        throw new \Exception("Phòng '{$room}' vào thời gian {$time} ngày {$dateFormatted} đã trùng lịch bảo vệ với hội đồng '{$otherHd->ten_hoi_dong}'!");
+                    }
+                }
+            }
+        }
     }
 
     private function transformCouncil($hd)
@@ -507,9 +664,23 @@ class HoiDongController extends Controller
         $topicGroups = [];
 
         $nhoms = $hd->nhoms;
-        if ($hd->trang_thai === 'DA_CONG_BO') {
-            $nhoms = $nhoms->filter(function ($n) {
-                return $n->ket_qua_huong_dan === 'DAT' && $n->ket_qua_phan_bien === 'DAT';
+        $dot = $hd->dot;
+        if ($dot) {
+            $now = date('Y-m-d');
+            $ngayBatDau = $dot->ngay_bat_dau;
+            $ngayBatDauPhanBien = $dot->ngay_bat_dau_phan_bien;
+
+            $nhoms = $nhoms->filter(function ($n) use ($now, $ngayBatDau, $ngayBatDauPhanBien) {
+                $kqHd = $n->ket_qua_huong_dan;
+                $kqPb = $n->ket_qua_phan_bien;
+
+                if ($ngayBatDauPhanBien && $now >= $ngayBatDauPhanBien) {
+                    return $kqHd === 'DAT' && $kqPb === 'DAT';
+                } else {
+                    $isHdValid = is_null($kqHd) || $kqHd === 'DAT';
+                    $isPbValid = is_null($kqPb) || $kqPb === 'DAT';
+                    return $isHdValid && $isPbValid;
+                }
             });
         }
 
