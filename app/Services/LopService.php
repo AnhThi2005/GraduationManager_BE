@@ -100,6 +100,7 @@ class LopService
                         $nameCol = 1;
                         $emailCol = -1;
                         $phoneCol = -1;
+                        $dobCol = -1;
 
                         for ($i = 0; $i < min(3, count($rows)); $i++) {
                             foreach ($rows[$i] as $colIndex => $cellValue) {
@@ -117,6 +118,9 @@ class LopService
                                 }
                                 if (str_contains($cellClean, 'điện thoại') || str_contains($cellClean, 'sđt') || str_contains($cellClean, 'phone')) {
                                     $phoneCol = $colIndex;
+                                }
+                                if (str_contains($cellClean, 'ngày sinh') || str_contains($cellClean, 'ngaysinh') || str_contains($cellClean, 'ngay_sinh') || str_contains($cellClean, 'birth') || str_contains($cellClean, 'dob')) {
+                                    $dobCol = $colIndex;
                                 }
                             }
                         }
@@ -144,11 +148,20 @@ class LopService
                                 }
                             }
 
-                            // Validate Phone (if present)
+                            // Validate Phone (if present): must be 10 digits starting with 0
                             if ($phoneCol >= 0 && isset($row[$phoneCol]) && trim($row[$phoneCol]) !== '') {
                                 $phoneVal = trim($row[$phoneCol]);
-                                if (!preg_match('/^[0-9]+$/', $phoneVal)) {
-                                    $errors[] = "File Excel - Dòng " . ($rowIndex + 1) . ": Số điện thoại '$phoneVal' không hợp lệ (chỉ được chứa chữ số).";
+                                if (!preg_match('/^0[0-9]{9}$/', $phoneVal)) {
+                                    $errors[] = "File Excel - Dòng " . ($rowIndex + 1) . ": Số điện thoại '$phoneVal' không hợp lệ (phải gồm 10 chữ số bắt đầu bằng số 0).";
+                                }
+                            }
+
+                            // Validate Ngày sinh (if present)
+                            if ($dobCol >= 0 && isset($row[$dobCol]) && trim($row[$dobCol]) !== '') {
+                                $dobVal = trim($row[$dobCol]);
+                                $parsedDob = $this->parseExcelDate($dobVal, $worksheet, $rowIndex, $dobCol);
+                                if (!$parsedDob) {
+                                    $errors[] = "File Excel - Dòng " . ($rowIndex + 1) . ": Ngày sinh '$dobVal' không hợp lệ (phải đúng định dạng ngày tháng như dd/mm/yyyy hoặc yyyy-mm-dd).";
                                 }
                             }
 
@@ -171,6 +184,8 @@ class LopService
         foreach ($manualMembers as $index => $member) {
             $mssv = $member['code'] ?? '';
             $name = $member['name'] ?? '';
+            $phone = $member['phone'] ?? '';
+            $dob = $member['dateOfBirth'] ?? '';
 
             if (empty($mssv) || empty($name)) {
                 continue;
@@ -179,6 +194,25 @@ class LopService
             // Validate MSSV format
             if (!preg_match('/^0[0-9]{9}$/', $mssv)) {
                 $errors[] = "Danh sách thủ công - Hàng " . ($index + 1) . ": MSSV '$mssv' không hợp lệ (phải gồm 10 chữ số bắt đầu bằng số 0).";
+            }
+
+            // Validate Phone format
+            if (!empty($phone)) {
+                if (!preg_match('/^0[0-9]{9}$/', trim($phone))) {
+                    $errors[] = "Danh sách thủ công - Hàng " . ($index + 1) . ": Số điện thoại '$phone' không hợp lệ (phải gồm 10 chữ số bắt đầu bằng số 0).";
+                }
+            }
+
+            // Validate Date of Birth format
+            if (!empty($dob)) {
+                try {
+                    $parsedDob = \Carbon\Carbon::parse($dob);
+                    if ($parsedDob->diffInYears(\Carbon\Carbon::now()) < 18) {
+                        $errors[] = "Danh sách thủ công - Hàng " . ($index + 1) . ": Sinh viên phải từ 18 tuổi trở lên.";
+                    }
+                } catch (\Exception $e) {
+                    $errors[] = "Danh sách thủ công - Hàng " . ($index + 1) . ": Ngày sinh không hợp lệ.";
+                }
             }
 
             // Trùng lặp nội bộ trong danh sách thủ công hoặc trùng với file Excel
@@ -391,6 +425,16 @@ class LopService
         foreach ($members as $member) {
             $mssv = $member['code'] ?? '';
             $name = $member['name'] ?? '';
+            $phone = !empty($member['phone']) ? trim($member['phone']) : null;
+            $gender = !empty($member['gender']) ? trim($member['gender']) : 'Nam';
+            $dob = null;
+            if (!empty($member['dateOfBirth'])) {
+                try {
+                    $dob = \Carbon\Carbon::parse($member['dateOfBirth'])->format('Y-m-d');
+                } catch (\Exception $e) {
+                    $dob = null;
+                }
+            }
 
             if (empty($mssv) || empty($name)) {
                 continue;
@@ -403,6 +447,9 @@ class LopService
                 [
                     'ho_ten' => $name,
                     'email' => $email,
+                    'so_dien_thoai' => $phone,
+                    'gioi_tinh' => $gender,
+                    'ngay_sinh' => $dob,
                     'lop_id' => $lopId,
                     'dang_hoat_dong' => 1,
                 ]
@@ -448,6 +495,7 @@ class LopService
             $emailCol = -1;
             $phoneCol = -1;
             $genderCol = -1;
+            $dobCol = -1;
 
             // Quét 3 dòng đầu để tìm dòng tiêu đề
             for ($i = 0; $i < min(3, count($rows)); $i++) {
@@ -469,6 +517,9 @@ class LopService
                     }
                     if (str_contains($cellClean, 'giới tính') || str_contains($cellClean, 'gender')) {
                         $genderCol = $colIndex;
+                    }
+                    if (str_contains($cellClean, 'ngày sinh') || str_contains($cellClean, 'ngaysinh') || str_contains($cellClean, 'ngay_sinh') || str_contains($cellClean, 'birth') || str_contains($cellClean, 'dob')) {
+                        $dobCol = $colIndex;
                     }
                 }
             }
@@ -494,6 +545,11 @@ class LopService
                     }
                 }
 
+                $dob = null;
+                if ($dobCol >= 0 && ! empty($row[$dobCol])) {
+                    $dob = $this->parseExcelDate(trim($row[$dobCol]), $worksheet, $rowIndex, $dobCol);
+                }
+
                 SinhVien::updateOrCreate(
                     ['ma_so_sinh_vien' => $mssv],
                     [
@@ -501,6 +557,7 @@ class LopService
                         'email' => $email,
                         'so_dien_thoai' => $phone,
                         'gioi_tinh' => $gender,
+                        'ngay_sinh' => $dob,
                         'lop_id' => $lopId,
                         'dang_hoat_dong' => 1,
                     ]
@@ -508,6 +565,54 @@ class LopService
             }
         } catch (\Exception $e) {
             Log::error('Class Import Error: '.$e->getMessage());
+        }
+    }
+
+    /**
+     * Parse date from Excel cell
+     */
+    private function parseExcelDate($val, $worksheet, $rowIndex, $colIndex)
+    {
+        if (empty($val)) {
+            return null;
+        }
+
+        try {
+            $cell = $worksheet->getCellByColumnAndRow($colIndex + 1, $rowIndex + 1);
+            if (\PhpOffice\PhpSpreadsheet\Shared\Date::isDateTime($cell)) {
+                $dateTime = \PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject($cell->getValue());
+                return $dateTime->format('Y-m-d');
+            }
+        } catch (\Exception $e) {
+            // Ignore and fall back to string parsing
+        }
+
+        $val = trim($val);
+        
+        $dmyPattern = '/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})$/';
+        if (preg_match($dmyPattern, $val, $matches)) {
+            $day = (int)$matches[1];
+            $month = (int)$matches[2];
+            $year = (int)$matches[3];
+            if (checkdate($month, $day, $year)) {
+                return sprintf('%04d-%02d-%02d', $year, $month, $day);
+            }
+        }
+
+        $ymdPattern = '/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})$/';
+        if (preg_match($ymdPattern, $val, $matches)) {
+            $year = (int)$matches[1];
+            $month = (int)$matches[2];
+            $day = (int)$matches[3];
+            if (checkdate($month, $day, $year)) {
+                return sprintf('%04d-%02d-%02d', $year, $month, $day);
+            }
+        }
+
+        try {
+            return \Carbon\Carbon::parse($val)->format('Y-m-d');
+        } catch (\Exception $e) {
+            return null;
         }
     }
 }
