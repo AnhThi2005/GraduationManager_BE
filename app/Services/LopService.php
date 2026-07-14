@@ -23,7 +23,7 @@ class LopService
             });
         }
 
-        $classes = $query->with('sinhViens')->get();
+        $classes = $query->orderBy('lop_id', 'desc')->with('sinhViens')->get();
 
         $rows = $classes->map(function ($lop) {
             return $this->transformClass($lop);
@@ -49,34 +49,207 @@ class LopService
     }
 
     /**
+     * Lấy danh sách các trường phân loại duy nhất từ database phục vụ dropdown/autocomplete
+     */
+    public function getClassMetadata()
+    {
+        $names = Lop::whereNotNull('ten_lop')->where('ten_lop', '!=', '')->distinct()->pluck('ten_lop')->all();
+        $courses = Lop::whereNotNull('khoa_hoc')->where('khoa_hoc', '!=', '')->distinct()->pluck('khoa_hoc')->all();
+        $majors = Lop::whereNotNull('chuyen_nganh')->where('chuyen_nganh', '!=', '')->distinct()->pluck('chuyen_nganh')->all();
+        
+        $levelsRaw = Lop::whereNotNull('bac_dao_tao')->where('bac_dao_tao', '!=', '')->distinct()->pluck('bac_dao_tao')->all();
+        $levels = collect($levelsRaw)->map(fn($level) => $this->mapBackendLevelToFrontend($level))->unique()->values()->all();
+
+        return [
+            'names' => $names,
+            'courses' => $courses,
+            'majors' => $majors,
+            'levels' => $levels,
+        ];
+    }
+
+    /**
+     * Kiểm tra chéo trùng lặp giữa file Excel, danh sách nhập tay và dữ liệu có sẵn trong database
+     */
+    private function validateClassMembersBeforeImport($lopId, array $manualMembers, $studentListUrl)
+    {
+        $errors = [];
+        $excelMssvs = [];
+        $manualMssvs = [];
+
+        // 1. Kiểm tra dữ liệu trong file Excel
+        if (!empty($studentListUrl)) {
+            try {
+                $parsedUrl = parse_url($studentListUrl);
+                $path = $parsedUrl['path'] ?? '';
+                $localPath = null;
+
+                if (str_contains($path, '/uploads/')) {
+                    $filename = basename($path);
+                    $localPath = public_path('uploads/'.$filename);
+                }
+
+                if ($localPath && file_exists($localPath)) {
+                    $spreadsheet = IOFactory::load($localPath);
+                    $worksheet = $spreadsheet->getActiveSheet();
+                    $rows = $worksheet->toArray();
+
+                    if (count($rows) > 1) {
+                        $headerRowIndex = 0;
+                        $mssvCol = 0;
+                        $nameCol = 1;
+                        $emailCol = -1;
+                        $phoneCol = -1;
+
+                        for ($i = 0; $i < min(3, count($rows)); $i++) {
+                            foreach ($rows[$i] as $colIndex => $cellValue) {
+                                $cellClean = mb_strtolower(trim($cellValue));
+                                if (str_contains($cellClean, 'mssv') || str_contains($cellClean, 'mã số') || str_contains($cellClean, 'sinh viên id')) {
+                                    $mssvCol = $colIndex;
+                                    $headerRowIndex = $i;
+                                }
+                                if (str_contains($cellClean, 'họ tên') || str_contains($cellClean, 'tên') || str_contains($cellClean, 'name')) {
+                                    $nameCol = $colIndex;
+                                    $headerRowIndex = $i;
+                                }
+                                if (str_contains($cellClean, 'email')) {
+                                    $emailCol = $colIndex;
+                                }
+                                if (str_contains($cellClean, 'điện thoại') || str_contains($cellClean, 'sđt') || str_contains($cellClean, 'phone')) {
+                                    $phoneCol = $colIndex;
+                                }
+                            }
+                        }
+
+                        for ($rowIndex = $headerRowIndex + 1; $rowIndex < count($rows); $rowIndex++) {
+                            $row = $rows[$rowIndex];
+                            $mssv = isset($row[$mssvCol]) ? trim($row[$mssvCol]) : '';
+                            $name = isset($row[$nameCol]) ? trim($row[$nameCol]) : '';
+
+                            if (empty($mssv) || empty($name)) {
+                                continue;
+                            }
+
+                            // Validate MSSV format: must be 10 digits starting with 0
+                            if (!preg_match('/^0[0-9]{9}$/', $mssv)) {
+                                $errors[] = "File Excel - Dòng " . ($rowIndex + 1) . ": MSSV '$mssv' không hợp lệ (phải gồm 10 chữ số bắt đầu bằng số 0).";
+                            }
+
+                            // Validate Email (if present) matches expected student email
+                            if ($emailCol >= 0 && isset($row[$emailCol]) && trim($row[$emailCol]) !== '') {
+                                $emailVal = strtolower(trim($row[$emailCol]));
+                                $expectedEmail = strtolower($mssv) . '@caothang.edu.vn';
+                                if ($emailVal !== $expectedEmail) {
+                                    $errors[] = "File Excel - Dòng " . ($rowIndex + 1) . ": Email '$emailVal' không khớp với MSSV '$mssv' (phải là '$expectedEmail').";
+                                }
+                            }
+
+                            // Validate Phone (if present)
+                            if ($phoneCol >= 0 && isset($row[$phoneCol]) && trim($row[$phoneCol]) !== '') {
+                                $phoneVal = trim($row[$phoneCol]);
+                                if (!preg_match('/^[0-9]+$/', $phoneVal)) {
+                                    $errors[] = "File Excel - Dòng " . ($rowIndex + 1) . ": Số điện thoại '$phoneVal' không hợp lệ (chỉ được chứa chữ số).";
+                                }
+                            }
+
+                            // Trùng lặp nội bộ trong file Excel
+                            if (in_array($mssv, $excelMssvs)) {
+                                $errors[] = "File Excel - Dòng " . ($rowIndex + 1) . ": MSSV '$mssv' bị trùng lặp trong file.";
+                                continue;
+                            }
+                            $excelMssvs[] = $mssv;
+                        }
+                    }
+                }
+            } catch (\Exception $e) {
+                Log::error('Validation Excel Error: ' . $e->getMessage());
+                $errors[] = "Không thể đọc hoặc phân tích file Excel: " . $e->getMessage();
+            }
+        }
+
+        // 2. Kiểm tra dữ liệu nhập thủ công
+        foreach ($manualMembers as $index => $member) {
+            $mssv = $member['code'] ?? '';
+            $name = $member['name'] ?? '';
+
+            if (empty($mssv) || empty($name)) {
+                continue;
+            }
+
+            // Validate MSSV format
+            if (!preg_match('/^0[0-9]{9}$/', $mssv)) {
+                $errors[] = "Danh sách thủ công - Hàng " . ($index + 1) . ": MSSV '$mssv' không hợp lệ (phải gồm 10 chữ số bắt đầu bằng số 0).";
+            }
+
+            // Trùng lặp nội bộ trong danh sách thủ công hoặc trùng với file Excel
+            if (in_array($mssv, $manualMssvs) || in_array($mssv, $excelMssvs)) {
+                $errors[] = "Danh sách thủ công - Hàng " . ($index + 1) . ": MSSV '$mssv' bị trùng lặp (đã tồn tại trong file Excel hoặc danh sách nhập tay).";
+                continue;
+            }
+            $manualMssvs[] = $mssv;
+        }
+
+        // 3. Kiểm tra chéo toàn bộ danh sách MSSV độc bản xem có trùng với lớp khác trong hệ thống không
+        $allUniqueMssvs = array_unique(array_merge($excelMssvs, $manualMssvs));
+        foreach ($allUniqueMssvs as $mssv) {
+            $existingSv = SinhVien::where('ma_so_sinh_vien', $mssv)->first();
+            if ($existingSv && $existingSv->lop_id !== null && $existingSv->lop_id != $lopId) {
+                $tenLopHienTai = $existingSv->lop ? $existingSv->lop->ten_lop : 'lớp khác';
+                $errors[] = "Sinh viên có MSSV '$mssv' đã tồn tại trong hệ thống (thuộc lớp $tenLopHienTai).";
+            }
+        }
+
+        if (!empty($errors)) {
+            throw new \InvalidArgumentException("Dữ liệu nhập vào không hợp lệ:\n" . implode("\n", $errors));
+        }
+    }
+
+    /**
      * Tạo lớp học mới
      */
     public function createClass(array $data)
     {
-        $tenLop = $data['name'] ?? '';
+        return DB::transaction(function () use ($data) {
+            // 1. Kiểm tra tính hợp lệ của danh sách sinh viên trước khi tạo
+            $this->validateClassMembersBeforeImport(0, $data['members'] ?? [], $data['studentListUrl'] ?? null);
 
-        $lop = Lop::create([
-            'ten_lop' => $tenLop,
-            'bac_dao_tao' => $this->mapFrontendLevelToBackend($data['level'] ?? ''),
-            'khoa_hoc' => $data['course'] ?? '',
-            'chuyen_nganh' => $data['major'] ?? '',
-            'student_list_url' => $data['studentListUrl'] ?? null,
-            'student_list_filename' => $data['studentListFileName'] ?? null,
-        ]);
+            $tenLop = $data['name'] ?? '';
 
-        $lopId = $lop->lop_id;
+            $lop = Lop::create([
+                'ten_lop' => $tenLop,
+                'bac_dao_tao' => $this->mapFrontendLevelToBackend($data['level'] ?? ''),
+                'khoa_hoc' => $data['course'] ?? '',
+                'chuyen_nganh' => $data['major'] ?? '',
+                'student_list_url' => $data['studentListUrl'] ?? null,
+                'student_list_filename' => $data['studentListFileName'] ?? null,
+            ]);
 
-        // 1. Nhập sinh viên từ file Excel/CSV nếu có
-        if (! empty($data['studentListUrl'])) {
-            $this->importStudentsFromUrl($lopId, $data['studentListUrl']);
-        }
+            $lopId = $lop->lop_id;
 
-        // 2. Nhập sinh viên từ danh sách thủ công gửi kèm
-        if (! empty($data['members']) && is_array($data['members'])) {
-            $this->importManualMembers($lopId, $data['members']);
-        }
+            // Associate with period if provided
+            $periodId = $data['periodId'] ?? $data['period_id'] ?? null;
+            if (!empty($periodId) && $periodId !== 'all') {
+                $lop->dots()->attach($periodId);
+            }
 
-        return $this->getClassDetail($lopId);
+            // 2. Nhập sinh viên từ file Excel/CSV nếu có
+            if (! empty($data['studentListUrl'])) {
+                $this->importStudentsFromUrl($lopId, $data['studentListUrl']);
+            }
+
+            // 3. Nhập sinh viên từ danh sách thủ công gửi kèm
+            if (! empty($data['members']) && is_array($data['members'])) {
+                $this->importManualMembers($lopId, $data['members']);
+            }
+
+            // 4. Kiểm tra số lượng sinh viên tối thiểu
+            $totalCount = SinhVien::where('lop_id', $lopId)->count();
+            if ($totalCount < 1) {
+                throw new \InvalidArgumentException("Lớp học phải có ít nhất 1 sinh viên mới tạo được!");
+            }
+
+            return $this->getClassDetail($lopId);
+        });
     }
 
     /**
@@ -84,45 +257,56 @@ class LopService
      */
     public function updateClass($id, array $data)
     {
-        $lop = Lop::find($id);
-        if (! $lop) {
-            return null;
-        }
+        return DB::transaction(function () use ($id, $data) {
+            $lop = Lop::find($id);
+            if (! $lop) {
+                return null;
+            }
 
-        $updateData = [];
-        if (isset($data['name'])) {
-            $updateData['ten_lop'] = $data['name'];
-        }
+            // 1. Kiểm tra tính hợp lệ của danh sách sinh viên trước khi cập nhật
+            $this->validateClassMembersBeforeImport($id, $data['members'] ?? [], $data['studentListUrl'] ?? null);
 
-        if (isset($data['level'])) {
-            $updateData['bac_dao_tao'] = $this->mapFrontendLevelToBackend($data['level']);
-        }
-        if (isset($data['course'])) {
-            $updateData['khoa_hoc'] = $data['course'];
-        }
-        if (isset($data['major'])) {
-            $updateData['chuyen_nganh'] = $data['major'];
-        }
-        if (isset($data['studentListUrl'])) {
-            $updateData['student_list_url'] = $data['studentListUrl'];
-        }
-        if (isset($data['studentListFileName'])) {
-            $updateData['student_list_filename'] = $data['studentListFileName'];
-        }
+            $updateData = [];
+            if (isset($data['name'])) {
+                $updateData['ten_lop'] = $data['name'];
+            }
 
-        $lop->update($updateData);
+            if (isset($data['level'])) {
+                $updateData['bac_dao_tao'] = $this->mapFrontendLevelToBackend($data['level']);
+            }
+            if (isset($data['course'])) {
+                $updateData['khoa_hoc'] = $data['course'];
+            }
+            if (isset($data['major'])) {
+                $updateData['chuyen_nganh'] = $data['major'];
+            }
+            if (isset($data['studentListUrl'])) {
+                $updateData['student_list_url'] = $data['studentListUrl'];
+            }
+            if (isset($data['studentListFileName'])) {
+                $updateData['student_list_filename'] = $data['studentListFileName'];
+            }
 
-        // 1. Nhập sinh viên từ file Excel/CSV nếu được cập nhật mới
-        if (! empty($data['studentListUrl'])) {
-            $this->importStudentsFromUrl($id, $data['studentListUrl']);
-        }
+            $lop->update($updateData);
 
-        // 2. Đồng bộ sinh viên thủ công nếu gửi kèm
-        if (isset($data['members']) && is_array($data['members'])) {
-            $this->importManualMembers($id, $data['members']);
-        }
+            // 2. Nhập sinh viên từ file Excel/CSV nếu được cập nhật mới
+            if (! empty($data['studentListUrl'])) {
+                $this->importStudentsFromUrl($id, $data['studentListUrl']);
+            }
 
-        return $this->getClassDetail($id);
+            // 3. Đồng bộ sinh viên thủ công nếu gửi kèm
+            if (isset($data['members']) && is_array($data['members'])) {
+                $this->importManualMembers($id, $data['members']);
+            }
+
+            // 4. Kiểm tra số lượng sinh viên tối thiểu
+            $totalCount = SinhVien::where('lop_id', $id)->count();
+            if ($totalCount < 1) {
+                throw new \InvalidArgumentException("Lớp học phải có ít nhất 1 sinh viên!");
+            }
+
+            return $this->getClassDetail($id);
+        });
     }
 
     /**

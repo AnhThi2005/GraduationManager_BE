@@ -207,7 +207,8 @@ class CongTyService
         $query = DangKyThucTap::query()
             ->with(['sinhVien.lop', 'congTy'])
             ->whereNotNull('dia_chi_thuc_tap')
-            ->where('dia_chi_thuc_tap', '!=', '');
+            ->where('dia_chi_thuc_tap', '!=', '')
+            ->orderBy('dang_ky_id', 'desc');
 
         // Lọc theo đợt học
         if (! empty($filters['periodId'])) {
@@ -232,7 +233,8 @@ class CongTyService
     public function getListDeclarations(array $filters)
     {
         $query = DangKyThucTap::query()
-            ->with(['sinhVien.lop', 'congTy']);
+            ->with(['sinhVien.lop', 'congTy'])
+            ->orderBy('dang_ky_id', 'desc');
 
         // Lọc theo đợt học
         if (! empty($filters['periodId'])) {
@@ -426,6 +428,7 @@ class CongTyService
                     $q->orWhereIn('sinh_vien_id', $manualStudentIds);
                 }
             })
+            ->orderBy('sinh_vien_id', 'desc')
             ->get();
 
         // Đăng ký thực tập trong đợt này

@@ -19,7 +19,7 @@ class NhomController extends Controller
 
     public function layDanhSach(Request $request)
     {
-        $groups = Nhom::with(['deTai.giangVien', 'members.lop', 'dot'])
+        $groups = Nhom::orderBy('nhom_id', 'desc')->with(['deTai.giangVien', 'members.lop', 'dot'])
             ->whereNotNull('de_tai_id')
             ->get();
 

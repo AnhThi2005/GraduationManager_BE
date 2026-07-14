@@ -119,7 +119,7 @@ class DiemController extends Controller
 
                 $advisorName = '—';
                 if ($g->deTai && $g->deTai->giangVien) {
-                    $advisorName = ($g->deTai->giangVien->hoc_vi ? $g->deTai->giangVien->hoc_vi.' ' : 'ThS. ').$g->deTai->giangVien->ho_ten;
+                    $advisorName = ($g->deTai->giangVien->hoc_vi ? $g->deTai->giangVien->hoc_vi.' ' : '').$g->deTai->giangVien->ho_ten;
                 }
 
                 $groups[] = [

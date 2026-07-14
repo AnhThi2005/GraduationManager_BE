@@ -139,6 +139,8 @@ class DiemSinhVienService
             }
         }
 
+        $studentsQuery->orderBy('sinhvien.sinh_vien_id', 'desc');
+
         $total = $studentsQuery->count();
         $rows = $studentsQuery->get();
 

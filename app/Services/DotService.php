@@ -78,9 +78,21 @@ class DotService
      */
     public function createPeriod(array $data)
     {
+        $this->validatePeriodDatesAndSchoolYear($data);
         $loaiDot = isset($data['type']) ? strtoupper($data['type']) : 'TTTN';
         $trangThaiMoi = isset($data['status']) ? $this->mapFrontendStatusToBackend($data['status']) : 'DA_CONG_BO';
         $this->assertKhongTrungDotDangHoatDong($loaiDot, $trangThaiMoi);
+
+        // Validation: Check if any manual student belongs to the selected classes
+        if (isset($data['externalStudentIds']) && is_array($data['externalStudentIds']) && !empty($data['classIds']) && is_array($data['classIds'])) {
+            $duplicateStudents = SinhVien::whereIn('ma_so_sinh_vien', $data['externalStudentIds'])
+                ->whereIn('lop_id', $data['classIds'])
+                ->get();
+            if ($duplicateStudents->isNotEmpty()) {
+                $names = $duplicateStudents->map(fn($sv) => $sv->ho_ten . ' (' . $sv->ma_so_sinh_vien . ')')->implode(', ');
+                throw new \InvalidArgumentException('Sinh viên ' . $names . ' đã thuộc lớp học được chọn tham gia đợt!');
+            }
+        }
 
         $insertData = [
             'ten_dot' => $data['name'] ?? '',
@@ -96,13 +108,13 @@ class DotService
 
         // Mốc thời gian phụ: dùng giá trị admin nhập nếu có, nếu không thì tự tính mặc định
         $insertData['ngay_bat_dau_dang_ky'] = $this->parseDate($data['regOpenDate'] ?? null)
-            ?? Carbon::parse($insertData['ngay_bat_dau'])->subDays(15)->format('Y-m-d');
+            ?? $insertData['ngay_bat_dau'];
         $insertData['han_nop_bao_cao'] = $this->parseDate($data['reportDeadline'] ?? null)
-            ?? Carbon::parse($insertData['ngay_ket_thuc'])->subDays(7)->format('Y-m-d');
+            ?? Carbon::parse($insertData['ngay_ket_thuc'])->subDays(3)->format('Y-m-d');
         $insertData['ngay_bat_dau_cham_diem'] = $this->parseDate($data['gradingStartDate'] ?? null)
-            ?? $insertData['ngay_ket_thuc'];
+            ?? Carbon::parse($insertData['ngay_ket_thuc'])->subDays(2)->format('Y-m-d');
         $insertData['ngay_ket_thuc_cham_diem'] = $this->parseDate($data['gradingEndDate'] ?? null)
-            ?? Carbon::parse($insertData['ngay_ket_thuc'])->addDays(15)->format('Y-m-d');
+            ?? Carbon::parse($insertData['ngay_ket_thuc'])->subDays(1)->format('Y-m-d');
 
         $dot = Dot::create($insertData);
 
@@ -130,12 +142,34 @@ class DotService
             return null;
         }
 
+        $this->validatePeriodDatesAndSchoolYear($data, $dot);
+
         if ($dot->daKhoaHoanToan()) {
             $disallowedKeys = array_diff(array_keys($data), ['status', 'type']);
             if (! empty($disallowedKeys)) {
                 throw new \InvalidArgumentException(
                     "Đợt \"{$dot->ten_dot}\" đã đóng, không thể chỉnh sửa thông tin cấu hình của đợt này nữa."
                 );
+            }
+        }
+
+        // Validation: Check if any manual student belongs to the selected classes
+        $checkClassIds = $data['classIds'] ?? null;
+        if ($checkClassIds === null) {
+            $checkClassIds = $dot->lops()->pluck('lop.lop_id')->all();
+        }
+        $checkExternalStudentIds = $data['externalStudentIds'] ?? null;
+        if ($checkExternalStudentIds === null) {
+            $checkExternalStudentIds = $dot->sinhViens()->pluck('sinhvien.ma_so_sinh_vien')->all();
+        }
+
+        if (!empty($checkExternalStudentIds) && is_array($checkExternalStudentIds) && !empty($checkClassIds) && is_array($checkClassIds)) {
+            $duplicateStudents = SinhVien::whereIn('ma_so_sinh_vien', $checkExternalStudentIds)
+                ->whereIn('lop_id', $checkClassIds)
+                ->get();
+            if ($duplicateStudents->isNotEmpty()) {
+                $names = $duplicateStudents->map(fn($sv) => $sv->ho_ten . ' (' . $sv->ma_so_sinh_vien . ')')->implode(', ');
+                throw new \InvalidArgumentException('Sinh viên ' . $names . ' đã thuộc lớp học được chọn tham gia đợt!');
             }
         }
 
@@ -311,19 +345,27 @@ class DotService
         }
 
         // Lấy danh sách sinh viên ngoài lớp (sinh viên tự do/rớt)
-        $externalStudents = $dot->sinhViens->map(function ($sv) {
-            return [
-                'id' => (string) $sv->ma_so_sinh_vien,
-                'name' => $sv->ho_ten,
-                'email' => $sv->email,
-                'className' => $sv->lop ? $sv->lop->ten_lop : null,
-                'phone' => $sv->so_dien_thoai,
-                'role' => 'student',
-                'status' => $sv->dang_hoat_dong == 1 ? 'active' : 'inactive',
-                'gender' => $sv->gioi_tinh,
-                'dateOfBirth' => $sv->ngay_sinh,
-            ];
-        })->all();
+        $externalStudents = $dot->sinhViens()
+            ->where(function ($q) use ($classIds) {
+                if (! empty($classIds)) {
+                    $q->whereNull('sinhvien.lop_id')
+                      ->orWhereNotIn('sinhvien.lop_id', $classIds);
+                }
+            })
+            ->get()
+            ->map(function ($sv) {
+                return [
+                    'id' => (string) $sv->ma_so_sinh_vien,
+                    'name' => $sv->ho_ten,
+                    'email' => $sv->email,
+                    'className' => $sv->lop ? $sv->lop->ten_lop : null,
+                    'phone' => $sv->so_dien_thoai,
+                    'role' => 'student',
+                    'status' => $sv->dang_hoat_dong == 1 ? 'active' : 'inactive',
+                    'gender' => $sv->gioi_tinh,
+                    'dateOfBirth' => $sv->ngay_sinh,
+                ];
+            })->all();
         $externalStudentIds = collect($externalStudents)->pluck('id')->all();
 
         return [
@@ -425,10 +467,23 @@ class DotService
             ->orWhere('sinh_vien_id', $studentCode)
             ->first();
         if (! $student) {
-            return false;
+            throw new \InvalidArgumentException('Không tìm thấy sinh viên trong hệ thống!');
         }
 
         $studentId = $student->sinh_vien_id;
+
+        // Check if student is already in any of the selected periods
+        $duplicatedPeriods = [];
+        foreach ($periodIds as $periodId) {
+            $dot = Dot::find($periodId);
+            if ($dot && $dot->hasStudent($studentId)) {
+                $duplicatedPeriods[] = $dot->ten_dot;
+            }
+        }
+
+        if (! empty($duplicatedPeriods)) {
+            throw new \InvalidArgumentException('Sinh viên ' . $student->ho_ten . ' (' . $student->ma_so_sinh_vien . ') đã tồn tại trong đợt: ' . implode(', ', $duplicatedPeriods) . '!');
+        }
 
         foreach ($periodIds as $periodId) {
             $dot = Dot::find($periodId);
@@ -438,5 +493,83 @@ class DotService
         }
 
         return true;
+    }
+
+    /**
+     * Validate dates and school year of period.
+     */
+    private function validatePeriodDatesAndSchoolYear(array $data, $existingDot = null)
+    {
+        // 1. Kiểm tra Năm học (schoolYear)
+        $schoolYear = $data['schoolYear'] ?? ($existingDot ? $existingDot->nam_hoc : null);
+        if ($schoolYear) {
+            $match = [];
+            if (!preg_match('/^(\d{4})-(\d{4})$/', $schoolYear, $match)) {
+                throw new \InvalidArgumentException('Định dạng năm học phải là YYYY-YYYY, VD: 2026-2027!');
+            }
+            $year1 = (int)$match[1];
+            $year2 = (int)$match[2];
+            if ($year2 <= $year1) {
+                throw new \InvalidArgumentException('Năm học không hợp lệ: năm kết thúc phải lớn hơn năm bắt đầu!');
+            }
+        }
+
+        // 2. Kiểm tra mốc thời gian
+        $startDate = $this->parseDate($data['startDate'] ?? ($existingDot ? $existingDot->ngay_bat_dau : null));
+        $endDate = $this->parseDate($data['endDate'] ?? ($existingDot ? $existingDot->ngay_ket_thuc : null));
+        $regOpenDate = $this->parseDate($data['regOpenDate'] ?? ($existingDot ? $existingDot->ngay_bat_dau_dang_ky : null));
+        $regDeadline = $this->parseDate($data['regDeadline'] ?? ($existingDot ? $existingDot->han_dang_ky : null));
+        $reportDeadline = $this->parseDate($data['reportDeadline'] ?? ($existingDot ? $existingDot->han_nop_bao_cao : null));
+        $gradingStartDate = $this->parseDate($data['gradingStartDate'] ?? ($existingDot ? $existingDot->ngay_bat_dau_cham_diem : null));
+        $gradingEndDate = $this->parseDate($data['gradingEndDate'] ?? ($existingDot ? $existingDot->ngay_ket_thuc_cham_diem : null));
+
+        if ($startDate && $endDate && Carbon::parse($endDate)->lte(Carbon::parse($startDate))) {
+            throw new \InvalidArgumentException('Ngày kết thúc đợt học phải sau ngày bắt đầu!');
+        }
+
+        if ($startDate && $regOpenDate && Carbon::parse($regOpenDate)->lt(Carbon::parse($startDate))) {
+            throw new \InvalidArgumentException('Mở đăng ký không được trước Bắt đầu!');
+        }
+
+        if ($regOpenDate && $regDeadline && Carbon::parse($regDeadline)->lte(Carbon::parse($regOpenDate))) {
+            throw new \InvalidArgumentException('Hạn đăng ký phải sau ngày mở đăng ký!');
+        }
+
+        if ($regDeadline && $reportDeadline && Carbon::parse($reportDeadline)->lte(Carbon::parse($regDeadline))) {
+            throw new \InvalidArgumentException('Hạn nộp báo cáo tiến độ phải sau hạn đăng ký!');
+        }
+
+        if ($reportDeadline && $gradingStartDate && Carbon::parse($gradingStartDate)->lte(Carbon::parse($reportDeadline))) {
+            throw new \InvalidArgumentException('Ngày bắt đầu chấm điểm phải sau hạn nộp báo cáo tiến độ!');
+        }
+
+        if ($gradingStartDate && $gradingEndDate && Carbon::parse($gradingEndDate)->lte(Carbon::parse($gradingStartDate))) {
+            throw new \InvalidArgumentException('Ngày kết thúc chấm điểm phải sau ngày bắt đầu chấm điểm!');
+        }
+
+        if ($reportDeadline && $endDate && Carbon::parse($reportDeadline)->gte(Carbon::parse($endDate))) {
+            throw new \InvalidArgumentException('Hạn nộp báo cáo tiến độ phải trước ngày kết thúc đợt học!');
+        }
+
+        if ($gradingEndDate && $endDate && Carbon::parse($gradingEndDate)->gte(Carbon::parse($endDate))) {
+            throw new \InvalidArgumentException('Ngày kết thúc chấm điểm phải trước ngày kết thúc đợt học!');
+        }
+
+        // 3. Kiểm tra ngày bắt đầu/ngày kết thúc khớp với năm học
+        if ($schoolYear) {
+            $match = [];
+            if (preg_match('/^(\d{4})-(\d{4})$/', $schoolYear, $match)) {
+                $startYear = (int)$match[1];
+                $endYear = (int)$match[2];
+
+                if ($startDate && Carbon::parse($startDate)->year < $startYear) {
+                    throw new \InvalidArgumentException("Ngày bắt đầu phải từ năm học {$startYear} trở đi!");
+                }
+
+                if ($endDate && Carbon::parse($endDate)->year > $endYear) {
+                    throw new \InvalidArgumentException("Ngày kết thúc không được vượt quá năm học {$endYear}!");
+                }
+            }
+        }
     }
 }

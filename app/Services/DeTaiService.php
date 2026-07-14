@@ -17,9 +17,17 @@ class DeTaiService
     {
         $query = DeTai::with(['giangVien', 'dot']);
 
-        // Lọc theo giảng viên
+        // Lọc theo giảng viên (theo ID, dùng nội bộ nếu có)
         if (! empty($filters['teacherId'])) {
             $query->where('giang_vien_id', $filters['teacherId']);
+        }
+
+        // Lọc theo tên giảng viên (từ bộ lọc dropdown trên trang Quản lý đề tài)
+        if (! empty($filters['teacher']) && $filters['teacher'] !== 'all') {
+            $teacherName = $filters['teacher'];
+            $query->whereHas('giangVien', function ($sub) use ($teacherName) {
+                $sub->where('ho_ten', $teacherName);
+            });
         }
 
         // Lọc theo đợt học

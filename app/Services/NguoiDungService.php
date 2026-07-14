@@ -10,7 +10,7 @@ class NguoiDungService
 {
     public function locSinhVien(array $filters, $perPage = 20)
     {
-        $query = SinhVien::query()->with('lop');
+        $query = SinhVien::query()->orderBy('sinh_vien_id', 'desc')->with('lop');
 
         // Lọc theo từ khóa (họ tên hoặc mã số sinh viên)
         if (! empty($filters['ho_ten'])) {
@@ -39,7 +39,7 @@ class NguoiDungService
 
     public function locGiangVien(array $filters, $perPage = 20)
     {
-        $query = GiangVien::query();
+        $query = GiangVien::query()->orderBy('giang_vien_id', 'desc');
 
         // Lọc theo từ khóa (họ tên hoặc mã giảng viên)
         if (! empty($filters['ho_ten'])) {

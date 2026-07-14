@@ -163,14 +163,15 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/private/v1/dashboard', [ThongKeController::class, 'getDashboardData']);
 
         // 4. Chức năng quản lý đợt tốt nghiệp (Periods)
+        Route::post('/private/v1/periods/add-student', [DotController::class, 'themSinhVienVaoCacDot']);
         Route::get('/private/v1/periods/{id}', [DotController::class, 'xemChiTiet']);
         Route::post('/private/v1/periods', [DotController::class, 'themMoi']);
         Route::patch('/private/v1/periods/{id}', [DotController::class, 'capNhat']);
         Route::delete('/private/v1/periods/{id}', [DotController::class, 'xoa']);
-        Route::post('/private/v1/periods/add-student', [DotController::class, 'themSinhVienVaoCacDot']);
 
         // 5. Chức năng quản lý lớp học (Classes)
         Route::get('/private/v1/classes', [LopController::class, 'layDanhSach']);
+        Route::get('/private/v1/classes-metadata', [LopController::class, 'layMetadata']);
         Route::get('/private/v1/classes/{id}', [LopController::class, 'xemChiTiet']);
         Route::post('/private/v1/classes', [LopController::class, 'themMoi']);
         Route::patch('/private/v1/classes/{id}', [LopController::class, 'capNhat']);

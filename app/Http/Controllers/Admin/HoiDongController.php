@@ -18,7 +18,7 @@ class HoiDongController extends Controller
 
     public function layDanhSach(Request $request)
     {
-        $councils = HoiDong::with(['giangViens', 'nhoms.members', 'nhoms.deTai'])->get();
+        $councils = HoiDong::orderBy('hoi_dong_id', 'desc')->with(['giangViens', 'nhoms.members', 'nhoms.deTai'])->get();
 
         $rows = $councils->map(function ($hd) {
             return $this->transformCouncil($hd);
@@ -284,7 +284,7 @@ class HoiDongController extends Controller
         $member = [];
         foreach ($hd->giangViens as $gv) {
             $role = $gv->pivot->vai_tro;
-            $nameWithTitle = ($gv->hoc_vi ? $gv->hoc_vi.' ' : 'ThS. ').$gv->ho_ten;
+            $nameWithTitle = ($gv->hoc_vi ? $gv->hoc_vi.' ' : '').$gv->ho_ten;
             if ($role === 'CHU_TICH') {
                 $chair[] = $nameWithTitle;
             } elseif ($role === 'PHAN_BIEN') {
@@ -347,7 +347,7 @@ class HoiDongController extends Controller
                         foreach ($rawEx as $eid) {
                             $exGv = $lecturers->get($eid);
                             if ($exGv) {
-                                $examinerIds[] = ($exGv->hoc_vi ? $exGv->hoc_vi.' ' : 'ThS. ').$exGv->ho_ten;
+                                $examinerIds[] = ($exGv->hoc_vi ? $exGv->hoc_vi.' ' : '').$exGv->ho_ten;
                             }
                         }
 
@@ -356,7 +356,7 @@ class HoiDongController extends Controller
                         foreach ($rawExt as $eid) {
                             $extGv = $lecturers->get($eid);
                             if ($extGv) {
-                                $externalExaminers[] = ($extGv->hoc_vi ? $extGv->hoc_vi.' ' : 'ThS. ').$extGv->ho_ten;
+                                $externalExaminers[] = ($extGv->hoc_vi ? $extGv->hoc_vi.' ' : '').$extGv->ho_ten;
                             } else {
                                 $externalExaminers[] = $eid;
                             }
@@ -369,7 +369,7 @@ class HoiDongController extends Controller
             if ($reviewerId) {
                 $revGv = $lecturers->get($reviewerId);
                 if ($revGv) {
-                    $reviewerName = ($revGv->hoc_vi ? $revGv->hoc_vi.' ' : 'ThS. ').$revGv->ho_ten;
+                    $reviewerName = ($revGv->hoc_vi ? $revGv->hoc_vi.' ' : '').$revGv->ho_ten;
                 }
             }
 
@@ -385,7 +385,7 @@ class HoiDongController extends Controller
                 'topicName' => $title,
                 'members' => $studentsList,
                 'advisorId' => ($nhom->deTai && $nhom->deTai->giangVien) ? (string) $nhom->deTai->giangVien->giang_vien_id : '—',
-                'advisorName' => ($nhom->deTai && $nhom->deTai->giangVien) ? (($nhom->deTai->giangVien->hoc_vi ? $nhom->deTai->giangVien->hoc_vi.' ' : 'ThS. ').$nhom->deTai->giangVien->ho_ten) : '—',
+                'advisorName' => ($nhom->deTai && $nhom->deTai->giangVien) ? (($nhom->deTai->giangVien->hoc_vi ? $nhom->deTai->giangVien->hoc_vi.' ' : '').$nhom->deTai->giangVien->ho_ten) : '—',
                 'minutes' => $minutes,
                 'reviewerId' => (string) $reviewerId,
                 'reviewer' => $reviewerName,
