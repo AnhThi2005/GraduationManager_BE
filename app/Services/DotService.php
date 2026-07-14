@@ -110,9 +110,17 @@ class DotService
         $insertData['ngay_bat_dau_dang_ky'] = $this->parseDate($data['regOpenDate'] ?? null)
             ?? $insertData['ngay_bat_dau'];
         $insertData['han_nop_bao_cao'] = $this->parseDate($data['reportDeadline'] ?? null)
-            ?? Carbon::parse($insertData['ngay_ket_thuc'])->subDays(3)->format('Y-m-d');
+            ?? Carbon::parse($insertData['ngay_ket_thuc'])->subDays(7)->format('Y-m-d');
+        $insertData['ngay_bat_dau_phan_bien'] = $this->parseDate($data['reviewStartDate'] ?? null)
+            ?? Carbon::parse($insertData['han_nop_bao_cao'])->addDay()->format('Y-m-d');
+        $insertData['ngay_ket_thuc_phan_bien'] = $this->parseDate($data['reviewEndDate'] ?? null)
+            ?? Carbon::parse($insertData['ngay_bat_dau_phan_bien'])->addDay()->format('Y-m-d');
+        $insertData['ngay_bat_dau_bao_ve'] = $this->parseDate($data['defenseStartDate'] ?? null)
+            ?? Carbon::parse($insertData['ngay_ket_thuc_phan_bien'])->addDay()->format('Y-m-d');
+        $insertData['ngay_ket_thuc_bao_ve'] = $this->parseDate($data['defenseEndDate'] ?? null)
+            ?? Carbon::parse($insertData['ngay_bat_dau_bao_ve'])->addDay()->format('Y-m-d');
         $insertData['ngay_bat_dau_cham_diem'] = $this->parseDate($data['gradingStartDate'] ?? null)
-            ?? Carbon::parse($insertData['ngay_ket_thuc'])->subDays(2)->format('Y-m-d');
+            ?? Carbon::parse($insertData['ngay_ket_thuc_bao_ve'])->addDay()->format('Y-m-d');
         $insertData['ngay_ket_thuc_cham_diem'] = $this->parseDate($data['gradingEndDate'] ?? null)
             ?? Carbon::parse($insertData['ngay_ket_thuc'])->subDays(1)->format('Y-m-d');
 
@@ -207,6 +215,18 @@ class DotService
         if (isset($data['gradingEndDate'])) {
             $updateData['ngay_ket_thuc_cham_diem'] = $this->parseDate($data['gradingEndDate']);
         }
+        if (isset($data['reviewStartDate'])) {
+            $updateData['ngay_bat_dau_phan_bien'] = $this->parseDate($data['reviewStartDate']);
+        }
+        if (isset($data['reviewEndDate'])) {
+            $updateData['ngay_ket_thuc_phan_bien'] = $this->parseDate($data['reviewEndDate']);
+        }
+        if (isset($data['defenseStartDate'])) {
+            $updateData['ngay_bat_dau_bao_ve'] = $this->parseDate($data['defenseStartDate']);
+        }
+        if (isset($data['defenseEndDate'])) {
+            $updateData['ngay_ket_thuc_bao_ve'] = $this->parseDate($data['defenseEndDate']);
+        }
         if (isset($data['semester'])) {
             $updateData['hoc_ky'] = $data['semester'];
         }
@@ -268,11 +288,14 @@ class DotService
      */
     private function assertKhongTrungDotDangHoatDong($loaiDot, $trangThaiMoi, $excludeDotId = null)
     {
-        if ($trangThaiMoi === 'DA_DONG') {
-            return;
-        }
+        $now = Carbon::now('Asia/Ho_Chi_Minh')->format('Y-m-d');
 
-        $query = Dot::where('loai_dot', $loaiDot)->where('trang_thai', '!=', 'DA_DONG');
+        $query = Dot::where('loai_dot', $loaiDot)
+            ->where(function($q) use ($now) {
+                $q->whereNull('ngay_ket_thuc_cham_diem')
+                  ->orWhere('ngay_ket_thuc_cham_diem', '>=', $now);
+            });
+
         if ($excludeDotId) {
             $query->where('dot_id', '!=', $excludeDotId);
         }
@@ -281,7 +304,7 @@ class DotService
         if ($dangHoatDong) {
             $tenLoai = $loaiDot === 'DATN' ? 'ĐATN' : 'TTTN';
             throw new \InvalidArgumentException(
-                "Đợt \"{$dangHoatDong->ten_dot}\" ({$tenLoai}) đang hoạt động (chưa đóng). Vui lòng đóng đợt đó trước khi mở/kích hoạt đợt này — mỗi loại đợt chỉ được có 1 đợt hoạt động cùng lúc."
+                "Đợt \"{$dangHoatDong->ten_dot}\" ({$tenLoai}) đang hoạt động (ngày kết thúc chấm điểm {$dangHoatDong->ngay_ket_thuc_cham_diem} chưa qua). Mỗi loại đợt chỉ được có tối đa 1 đợt hoạt động cùng lúc."
             );
         }
     }
@@ -524,6 +547,10 @@ class DotService
         $regOpenDate = $this->parseDate($data['regOpenDate'] ?? ($existingDot ? $existingDot->ngay_bat_dau_dang_ky : null));
         $regDeadline = $this->parseDate($data['regDeadline'] ?? ($existingDot ? $existingDot->han_dang_ky : null));
         $reportDeadline = $this->parseDate($data['reportDeadline'] ?? ($existingDot ? $existingDot->han_nop_bao_cao : null));
+        $reviewStartDate = $this->parseDate($data['reviewStartDate'] ?? ($existingDot ? $existingDot->ngay_bat_dau_phan_bien : null));
+        $reviewEndDate = $this->parseDate($data['reviewEndDate'] ?? ($existingDot ? $existingDot->ngay_ket_thuc_phan_bien : null));
+        $defenseStartDate = $this->parseDate($data['defenseStartDate'] ?? ($existingDot ? $existingDot->ngay_bat_dau_bao_ve : null));
+        $defenseEndDate = $this->parseDate($data['defenseEndDate'] ?? ($existingDot ? $existingDot->ngay_ket_thuc_bao_ve : null));
         $gradingStartDate = $this->parseDate($data['gradingStartDate'] ?? ($existingDot ? $existingDot->ngay_bat_dau_cham_diem : null));
         $gradingEndDate = $this->parseDate($data['gradingEndDate'] ?? ($existingDot ? $existingDot->ngay_ket_thuc_cham_diem : null));
 
@@ -543,8 +570,24 @@ class DotService
             throw new \InvalidArgumentException('Hạn nộp báo cáo tiến độ phải sau hạn đăng ký!');
         }
 
-        if ($reportDeadline && $gradingStartDate && Carbon::parse($gradingStartDate)->lte(Carbon::parse($reportDeadline))) {
-            throw new \InvalidArgumentException('Ngày bắt đầu chấm điểm phải sau hạn nộp báo cáo tiến độ!');
+        if ($reportDeadline && $reviewStartDate && Carbon::parse($reviewStartDate)->lte(Carbon::parse($reportDeadline))) {
+            throw new \InvalidArgumentException('Ngày bắt đầu phản biện phải sau hạn nộp báo cáo!');
+        }
+
+        if ($reviewStartDate && $reviewEndDate && Carbon::parse($reviewEndDate)->lte(Carbon::parse($reviewStartDate))) {
+            throw new \InvalidArgumentException('Ngày kết thúc phản biện phải sau ngày bắt đầu phản biện!');
+        }
+
+        if ($reviewEndDate && $defenseStartDate && Carbon::parse($defenseStartDate)->lte(Carbon::parse($reviewEndDate))) {
+            throw new \InvalidArgumentException('Ngày bắt đầu bảo vệ phải sau ngày kết thúc phản biện!');
+        }
+
+        if ($defenseStartDate && $defenseEndDate && Carbon::parse($defenseEndDate)->lte(Carbon::parse($defenseStartDate))) {
+            throw new \InvalidArgumentException('Ngày kết thúc bảo vệ phải sau ngày bắt đầu bảo vệ!');
+        }
+
+        if ($defenseEndDate && $gradingStartDate && Carbon::parse($gradingStartDate)->lte(Carbon::parse($defenseEndDate))) {
+            throw new \InvalidArgumentException('Ngày bắt đầu chấm điểm phải sau ngày kết thúc bảo vệ!');
         }
 
         if ($gradingStartDate && $gradingEndDate && Carbon::parse($gradingEndDate)->lte(Carbon::parse($gradingStartDate))) {
@@ -553,6 +596,10 @@ class DotService
 
         if ($reportDeadline && $endDate && Carbon::parse($reportDeadline)->gte(Carbon::parse($endDate))) {
             throw new \InvalidArgumentException('Hạn nộp báo cáo tiến độ phải trước ngày kết thúc đợt học!');
+        }
+
+        if ($defenseEndDate && $endDate && Carbon::parse($defenseEndDate)->gte(Carbon::parse($endDate))) {
+            throw new \InvalidArgumentException('Ngày kết thúc bảo vệ phải trước ngày kết thúc đợt học!');
         }
 
         if ($gradingEndDate && $endDate && Carbon::parse($gradingEndDate)->gte(Carbon::parse($endDate))) {

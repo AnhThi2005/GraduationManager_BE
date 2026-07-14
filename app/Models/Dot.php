@@ -93,6 +93,47 @@ class Dot extends Model
     /**
      * Đợt đã đóng: KHÔNG AI được sửa gì nữa — kể cả admin. Chỉ xem.
      */
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::saving(function ($dot) {
+            $dot->trang_thai = $dot->tinhTrangThaiTheoThoiGian();
+        });
+    }
+
+    public function tinhTrangThaiTheoThoiGian(): string
+    {
+        $now = Carbon::now('Asia/Ho_Chi_Minh')->format('Y-m-d');
+        
+        $regOpen = $this->ngay_bat_dau_dang_ky;
+        $gradingStart = $this->ngay_bat_dau_cham_diem;
+        $gradingEnd = $this->ngay_ket_thuc_cham_diem;
+
+        if ($regOpen && $now < $regOpen) {
+            return 'DA_CONG_BO';
+        }
+        if ($regOpen && $gradingStart && $now >= $regOpen && $now < $gradingStart) {
+            return 'DANG_MO';
+        }
+        if ($gradingStart && $gradingEnd && $now >= $gradingStart && $now < $gradingEnd) {
+            return 'CHAM_DIEM';
+        }
+        if ($gradingEnd && $now >= $gradingEnd) {
+            return 'DA_DONG';
+        }
+
+        return 'DA_DONG';
+    }
+
+    public function getTrangThaiAttribute()
+    {
+        return $this->tinhTrangThaiTheoThoiGian();
+    }
+
+    /**
+     * Đợt đã đóng: KHÔNG AI được sửa gì nữa — kể cả admin. Chỉ xem.
+     */
     public function daKhoaHoanToan(): bool
     {
         return $this->trang_thai === 'DA_DONG';
