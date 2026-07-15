@@ -94,9 +94,16 @@ class NhomController extends Controller
                 $reports = [];
                 $w = 1;
                 $latestReportWeek = 0;
+                $reportText = '—';
+                $statusVal = 'Chưa nộp';
+                $dateText = '—';
+                $comment = '';
 
                 while (true) {
-                    $startOfWeek = Carbon::parse($activePeriod->ngay_bat_dau, 'Asia/Ho_Chi_Minh')->addWeeks($w - 1);
+                    $reportStart = $activePeriod->ngay_bat_dau_nop_bao_cao
+                        ? Carbon::parse($activePeriod->ngay_bat_dau_nop_bao_cao, 'Asia/Ho_Chi_Minh')
+                        : Carbon::parse($activePeriod->ngay_bat_dau, 'Asia/Ho_Chi_Minh');
+                    $startOfWeek = $reportStart->copy()->addWeeks($w - 1);
                     if ($startOfWeek->gt($end)) {
                         break;
                     }
@@ -106,7 +113,7 @@ class NhomController extends Controller
                         break;
                     }
 
-                    $appliedDeadline = Carbon::parse($activePeriod->ngay_bat_dau, 'Asia/Ho_Chi_Minh')->addWeeks($w)->endOfDay();
+                    $appliedDeadline = $reportStart->copy()->addWeeks($w)->endOfDay();
 
                     if ($rep) {
                         $commentRecord = DB::table('nhanxetbaocao')
@@ -228,9 +235,16 @@ class NhomController extends Controller
                 $reports = [];
                 $w = 1;
                 $latestReportWeek = 0;
+                $latestText = '—';
+                $statusVal = 'Chưa nộp';
+                $dateText = '—';
+                $comment = '';
 
                 while (true) {
-                    $startOfWeek = Carbon::parse($activePeriod->ngay_bat_dau, 'Asia/Ho_Chi_Minh')->addWeeks($w - 1);
+                    $reportStart = $activePeriod->ngay_bat_dau_nop_bao_cao
+                        ? Carbon::parse($activePeriod->ngay_bat_dau_nop_bao_cao, 'Asia/Ho_Chi_Minh')
+                        : Carbon::parse($activePeriod->ngay_bat_dau, 'Asia/Ho_Chi_Minh');
+                    $startOfWeek = $reportStart->copy()->addWeeks($w - 1);
                     if ($startOfWeek->gt($end)) {
                         break;
                     }
@@ -240,7 +254,7 @@ class NhomController extends Controller
                         break;
                     }
 
-                    $appliedDeadline = Carbon::parse($activePeriod->ngay_bat_dau, 'Asia/Ho_Chi_Minh')->addWeeks($w)->endOfDay();
+                    $appliedDeadline = $reportStart->copy()->addWeeks($w)->endOfDay();
 
                     if ($rep) {
                         $commentRecord = DB::table('nhanxetbaocao')
@@ -388,19 +402,35 @@ class NhomController extends Controller
                     'updatedAt' => date('d/m/Y'),
                     'status' => $statusText,
                     'evaluation' => $eval,
+                    'reviewerEvaluation' => $g->ket_qua_phan_bien,
                     'note' => $g->nhan_xet_phan_bien ?? '',
                 ];
             })
             ->all();
 
         // 2. Review Groups
-        $myCouncilIds = DB::table('thanhvienhoidong')
-            ->where('giang_vien_id', $teacherId)
-            ->pluck('hoi_dong_id');
+        $myReviewGroupIds = DB::table('lichbaove')
+            ->where('giang_vien_pb_id', $teacherId)
+            ->pluck('nhom_id')
+            ->all();
 
-        $reviewGroups = Nhom::whereIn('hoi_dong_id', $myCouncilIds)
+        // Fallback kiểm tra thêm trong ghi_chu JSON (nếu có)
+        $allLich = DB::table('lichbaove')->whereNotNull('ghi_chu')->get();
+        foreach ($allLich as $l) {
+            $decoded = json_decode($l->ghi_chu, true);
+            if (isset($decoded['reviewer_id']) && (string) $decoded['reviewer_id'] === (string) $teacherId) {
+                if (!in_array($l->nhom_id, $myReviewGroupIds)) {
+                    $myReviewGroupIds[] = $l->nhom_id;
+                }
+            }
+        }
+
+        $reviewGroups = Nhom::whereIn('nhom_id', $myReviewGroupIds)
             ->where('dot_id', $dotId)
             ->where('ket_qua_huong_dan', 'DAT')
+            ->whereHas('deTai', function ($q) use ($teacherId) {
+                $q->where('giang_vien_id', '!=', $teacherId);
+            })
             ->with(['members.lop', 'deTai.giangVien'])
             ->get()
             ->map(function ($g) {
@@ -466,6 +496,12 @@ class NhomController extends Controller
 
         $segment = 'Nhóm phản biện';
         if ($g->deTai && $g->deTai->giang_vien_id == $teacherId) {
+            if ($g->ket_qua_phan_bien !== null) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Không thể đánh giá nhóm này vì giảng viên phản biện đã đánh giá trước đó!'
+                ], 422);
+            }
             $g->ket_qua_huong_dan = $eval;
             $segment = 'Nhóm hướng dẫn';
         } else {
@@ -498,6 +534,7 @@ class NhomController extends Controller
             'updatedAt' => date('d/m/Y'),
             'status' => 'reviewed',
             'evaluation' => $action === 'accept' ? 'dat' : 'khongdat',
+            'reviewerEvaluation' => $g->ket_qua_phan_bien,
             'note' => $g->nhan_xet_phan_bien ?? '',
         ];
 

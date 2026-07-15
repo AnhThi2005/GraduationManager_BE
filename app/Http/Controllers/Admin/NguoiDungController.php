@@ -272,28 +272,53 @@ class NguoiDungController extends Controller
      */
     public function xemChiTiet(Request $request, $id)
     {
-        // Tìm sinh viên trước
-        $sv = SinhVien::where('ma_so_sinh_vien', $id)
-            ->orWhere('sinh_vien_id', $id)
-            ->first();
-        if ($sv) {
-            return response()->json([
-                'code' => 200,
-                'results' => [
-                    'object' => $this->transformStudent($sv),
-                ],
-            ], 200);
-        }
+        $role = $request->query('role');
 
-        // Tìm giảng viên
-        $gv = GiangVien::where('giang_vien_id', $id)->first();
-        if ($gv) {
-            return response()->json([
-                'code' => 200,
-                'results' => [
-                    'object' => $this->transformTeacher($gv),
-                ],
-            ], 200);
+        if ($role === 'teacher' || $role === 'admin') {
+            $gv = GiangVien::where('giang_vien_id', $id)->first();
+            if ($gv) {
+                return response()->json([
+                    'code' => 200,
+                    'results' => [
+                        'object' => $this->transformTeacher($gv),
+                    ],
+                ], 200);
+            }
+        } elseif ($role === 'student') {
+            $sv = SinhVien::where('ma_so_sinh_vien', $id)
+                ->orWhere('sinh_vien_id', $id)
+                ->first();
+            if ($sv) {
+                return response()->json([
+                    'code' => 200,
+                    'results' => [
+                        'object' => $this->transformStudent($sv),
+                    ],
+                ], 200);
+            }
+        } else {
+            // Fallback nếu không truyền role
+            $sv = SinhVien::where('ma_so_sinh_vien', $id)
+                ->orWhere('sinh_vien_id', $id)
+                ->first();
+            if ($sv) {
+                return response()->json([
+                    'code' => 200,
+                    'results' => [
+                        'object' => $this->transformStudent($sv),
+                    ],
+                ], 200);
+            }
+
+            $gv = GiangVien::where('giang_vien_id', $id)->first();
+            if ($gv) {
+                return response()->json([
+                    'code' => 200,
+                    'results' => [
+                        'object' => $this->transformTeacher($gv),
+                    ],
+                ], 200);
+            }
         }
 
         return response()->json([
@@ -333,9 +358,18 @@ class NguoiDungController extends Controller
      */
     public function capNhat(CapNhatNguoiDungRequest $request, $id)
     {
-        // Xác định vai trò
-        $isTeacher = GiangVien::where('giang_vien_id', $id)->exists();
+        $role = $request->query('role') ?? $request->input('role');
         $data = $request->toServiceData();
+
+        $isTeacher = false;
+        if ($role === 'teacher' || $role === 'admin') {
+            $isTeacher = true;
+        } elseif ($role === 'student') {
+            $isTeacher = false;
+        } else {
+            // Fallback nếu không truyền role
+            $isTeacher = GiangVien::where('giang_vien_id', $id)->exists();
+        }
 
         if ($isTeacher) {
             $gv = $this->nguoiDungService->capNhatGiangVien($id, $data);
@@ -374,27 +408,49 @@ class NguoiDungController extends Controller
      */
     public function xoaNguoiDung(Request $request, $id)
     {
-        $sv = SinhVien::where('ma_so_sinh_vien', $id)
-            ->orWhere('sinh_vien_id', $id)
-            ->first();
+        $role = $request->query('role') ?? $request->input('role');
 
-        if ($sv) {
-            $this->nguoiDungService->doiTrangThaiSinhVien($sv->sinh_vien_id, 0);
+        if ($role === 'teacher' || $role === 'admin') {
+            $gv = GiangVien::where('giang_vien_id', $id)->first();
+            if ($gv) {
+                $this->nguoiDungService->doiTrangThaiGiangVien($gv->giang_vien_id, 0);
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Khóa tài khoản giảng viên thành công!',
+                ], 200);
+            }
+        } elseif ($role === 'student') {
+            $sv = SinhVien::where('ma_so_sinh_vien', $id)
+                ->orWhere('sinh_vien_id', $id)
+                ->first();
+            if ($sv) {
+                $this->nguoiDungService->doiTrangThaiSinhVien($sv->sinh_vien_id, 0);
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Khóa tài khoản sinh viên thành công!',
+                ], 200);
+            }
+        } else {
+            // Fallback nếu không truyền role
+            $sv = SinhVien::where('ma_so_sinh_vien', $id)
+                ->orWhere('sinh_vien_id', $id)
+                ->first();
+            if ($sv) {
+                $this->nguoiDungService->doiTrangThaiSinhVien($sv->sinh_vien_id, 0);
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Khóa tài khoản sinh viên thành công!',
+                ], 200);
+            }
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Khóa tài khoản sinh viên thành công!',
-            ], 200);
-        }
-
-        $gv = GiangVien::where('giang_vien_id', $id)->first();
-        if ($gv) {
-            $this->nguoiDungService->doiTrangThaiGiangVien($gv->giang_vien_id, 0);
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Khóa tài khoản giảng viên thành công!',
-            ], 200);
+            $gv = GiangVien::where('giang_vien_id', $id)->first();
+            if ($gv) {
+                $this->nguoiDungService->doiTrangThaiGiangVien($gv->giang_vien_id, 0);
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Khóa tài khoản giảng viên thành công!',
+                ], 200);
+            }
         }
 
         return response()->json([

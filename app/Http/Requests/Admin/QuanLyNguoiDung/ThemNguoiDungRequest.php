@@ -19,7 +19,7 @@ class ThemNguoiDungRequest extends FormRequest
             return [
                 'role' => 'required|string|in:student,teacher,admin',
                 'name' => 'required|string|max:255',
-                'email' => 'required|email|unique:giangvien,email|regex:/^[a-z]+@caothang\.edu\.vn$/',
+                'email' => 'required|email|unique:giangvien,email',
                 'phone' => 'nullable|string|regex:/^([0-9]*)$/|size:10',
                 'gender' => 'nullable|in:Nam,Nu,Khac',
                 'dateOfBirth' => 'nullable|date|before_or_equal:today',

@@ -130,7 +130,7 @@ class ThucTapController extends Controller
             'position' => 'required|string|max:255',
             'address' => 'nullable|string|max:255',
             'mentor' => 'nullable|string|max:255',
-            'phone' => 'required|string|regex:/^(0|\+84)[3|5|7|8|9][0-9]{8}$/',
+            'phone' => ['required', 'string', 'regex:/^(0|\+84)[35789][0-9]{8}$/'],
             'email' => 'required|string|email|max:255',
             'duration' => 'required|string|max:255',
             'confirmPaper' => 'nullable|boolean',
