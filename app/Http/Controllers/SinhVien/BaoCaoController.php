@@ -387,7 +387,9 @@ class BaoCaoController extends Controller
             ]);
         }
 
-        $start = Carbon::parse($activePeriod->ngay_bat_dau, 'Asia/Ho_Chi_Minh');
+        $start = $activePeriod->ngay_bat_dau_nop_bao_cao
+            ? Carbon::parse($activePeriod->ngay_bat_dau_nop_bao_cao, 'Asia/Ho_Chi_Minh')
+            : Carbon::parse($activePeriod->ngay_bat_dau, 'Asia/Ho_Chi_Minh');
         $now = Carbon::now();
 
         // Lấy danh sách ID của tất cả thành viên trong nhóm
@@ -564,7 +566,10 @@ class BaoCaoController extends Controller
         }
 
         // Chặn nộp trước các tuần ở tương lai
-        $startOfWeek = Carbon::parse($activePeriod->ngay_bat_dau, 'Asia/Ho_Chi_Minh')->addWeeks($week - 1);
+        $reportStart = $activePeriod->ngay_bat_dau_nop_bao_cao
+            ? Carbon::parse($activePeriod->ngay_bat_dau_nop_bao_cao, 'Asia/Ho_Chi_Minh')
+            : Carbon::parse($activePeriod->ngay_bat_dau, 'Asia/Ho_Chi_Minh');
+        $startOfWeek = $reportStart->copy()->addWeeks($week - 1);
         if (Carbon::now()->lt($startOfWeek)) {
             return response()->json([
                 'success' => false,

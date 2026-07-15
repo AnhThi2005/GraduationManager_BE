@@ -96,7 +96,10 @@ class NhomController extends Controller
                 $latestReportWeek = 0;
 
                 while (true) {
-                    $startOfWeek = Carbon::parse($activePeriod->ngay_bat_dau, 'Asia/Ho_Chi_Minh')->addWeeks($w - 1);
+                    $reportStart = $activePeriod->ngay_bat_dau_nop_bao_cao
+                        ? Carbon::parse($activePeriod->ngay_bat_dau_nop_bao_cao, 'Asia/Ho_Chi_Minh')
+                        : Carbon::parse($activePeriod->ngay_bat_dau, 'Asia/Ho_Chi_Minh');
+                    $startOfWeek = $reportStart->copy()->addWeeks($w - 1);
                     if ($startOfWeek->gt($end)) {
                         break;
                     }
@@ -106,7 +109,7 @@ class NhomController extends Controller
                         break;
                     }
 
-                    $appliedDeadline = Carbon::parse($activePeriod->ngay_bat_dau, 'Asia/Ho_Chi_Minh')->addWeeks($w)->endOfDay();
+                    $appliedDeadline = $reportStart->copy()->addWeeks($w)->endOfDay();
 
                     if ($rep) {
                         $commentRecord = DB::table('nhanxetbaocao')
@@ -230,7 +233,10 @@ class NhomController extends Controller
                 $latestReportWeek = 0;
 
                 while (true) {
-                    $startOfWeek = Carbon::parse($activePeriod->ngay_bat_dau, 'Asia/Ho_Chi_Minh')->addWeeks($w - 1);
+                    $reportStart = $activePeriod->ngay_bat_dau_nop_bao_cao
+                        ? Carbon::parse($activePeriod->ngay_bat_dau_nop_bao_cao, 'Asia/Ho_Chi_Minh')
+                        : Carbon::parse($activePeriod->ngay_bat_dau, 'Asia/Ho_Chi_Minh');
+                    $startOfWeek = $reportStart->copy()->addWeeks($w - 1);
                     if ($startOfWeek->gt($end)) {
                         break;
                     }
@@ -240,7 +246,7 @@ class NhomController extends Controller
                         break;
                     }
 
-                    $appliedDeadline = Carbon::parse($activePeriod->ngay_bat_dau, 'Asia/Ho_Chi_Minh')->addWeeks($w)->endOfDay();
+                    $appliedDeadline = $reportStart->copy()->addWeeks($w)->endOfDay();
 
                     if ($rep) {
                         $commentRecord = DB::table('nhanxetbaocao')
