@@ -578,7 +578,8 @@ class LopService
         }
 
         try {
-            $cell = $worksheet->getCellByColumnAndRow($colIndex + 1, $rowIndex + 1);
+            $colLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($colIndex + 1);
+            $cell = $worksheet->getCell($colLetter . ($rowIndex + 1));
             if (\PhpOffice\PhpSpreadsheet\Shared\Date::isDateTime($cell)) {
                 $dateTime = \PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject($cell->getValue());
                 return $dateTime->format('Y-m-d');

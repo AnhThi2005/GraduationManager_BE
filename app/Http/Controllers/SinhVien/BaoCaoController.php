@@ -26,18 +26,34 @@ class BaoCaoController extends Controller
 
         // Lấy đợt TTTN đang diễn ra của sinh viên: ưu tiên đợt chưa đóng (hoạt động), fallback lấy đợt gần nhất
         $lopId = $sinhVien->lop_id;
+        $sinhVienId = $sinhVien->sinh_vien_id;
         $activePeriod = Dot::where('loai_dot', 'TTTN')
-            ->whereHas('lops', function ($q) use ($lopId) {
-                $q->where('lop.lop_id', $lopId);
+            ->where(function ($query) use ($lopId, $sinhVienId) {
+                if ($lopId) {
+                    $query->whereHas('lops', function ($q) use ($lopId) {
+                        $q->where('lop.lop_id', $lopId);
+                    });
+                }
+                $query->orWhereHas('sinhViens', function ($q) use ($sinhVienId) {
+                    $q->where('sinhvien.sinh_vien_id', $sinhVienId);
+                });
             })
             ->where('trang_thai', '!=', 'DA_DONG')
             ->orderBy('dot_id', 'desc')
             ->first();
         if (! $activePeriod) {
             $activePeriod = Dot::where('loai_dot', 'TTTN')
-                ->whereHas('lops', function ($q) use ($lopId) {
-                    $q->where('lop.lop_id', $lopId);
-                })->orderBy('dot_id', 'desc')->first();
+                ->where(function ($query) use ($lopId, $sinhVienId) {
+                    if ($lopId) {
+                        $query->whereHas('lops', function ($q) use ($lopId) {
+                            $q->where('lop.lop_id', $lopId);
+                        });
+                    }
+                    $query->orWhereHas('sinhViens', function ($q) use ($sinhVienId) {
+                        $q->where('sinhvien.sinh_vien_id', $sinhVienId);
+                    });
+                })
+                ->orderBy('dot_id', 'desc')->first();
         }
 
         if (! $activePeriod) {
@@ -188,18 +204,34 @@ class BaoCaoController extends Controller
 
         // Lấy đợt TTTN đang diễn ra của sinh viên: ưu tiên đợt chưa đóng (hoạt động), fallback lấy đợt gần nhất
         $lopId = $sinhVien->lop_id;
+        $sinhVienId = $sinhVien->sinh_vien_id;
         $activePeriod = Dot::where('loai_dot', 'TTTN')
-            ->whereHas('lops', function ($q) use ($lopId) {
-                $q->where('lop.lop_id', $lopId);
+            ->where(function ($query) use ($lopId, $sinhVienId) {
+                if ($lopId) {
+                    $query->whereHas('lops', function ($q) use ($lopId) {
+                        $q->where('lop.lop_id', $lopId);
+                    });
+                }
+                $query->orWhereHas('sinhViens', function ($q) use ($sinhVienId) {
+                    $q->where('sinhvien.sinh_vien_id', $sinhVienId);
+                });
             })
             ->where('trang_thai', '!=', 'DA_DONG')
             ->orderBy('dot_id', 'desc')
             ->first();
         if (! $activePeriod) {
             $activePeriod = Dot::where('loai_dot', 'TTTN')
-                ->whereHas('lops', function ($q) use ($lopId) {
-                    $q->where('lop.lop_id', $lopId);
-                })->orderBy('dot_id', 'desc')->first();
+                ->where(function ($query) use ($lopId, $sinhVienId) {
+                    if ($lopId) {
+                        $query->whereHas('lops', function ($q) use ($lopId) {
+                            $q->where('lop.lop_id', $lopId);
+                        });
+                    }
+                    $query->orWhereHas('sinhViens', function ($q) use ($sinhVienId) {
+                        $q->where('sinhvien.sinh_vien_id', $sinhVienId);
+                    });
+                })
+                ->orderBy('dot_id', 'desc')->first();
         }
 
         if (! $activePeriod) {
