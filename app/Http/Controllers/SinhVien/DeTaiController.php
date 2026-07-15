@@ -39,20 +39,42 @@ class DeTaiController extends Controller
         }
 
         $lopId = $sinhVien->lop_id;
+        $sinhVienId = $sinhVien->sinh_vien_id;
 
-        return Dot::where('loai_dot', 'DATN')
-            ->whereHas('lops', function ($q) use ($lopId) {
-                $q->where('lop.lop_id', $lopId);
-            })
+        // Tìm đợt ĐATN đang mở (DANG_MO) mà sinh viên được gán trực tiếp hoặc qua lớp
+        $openPeriod = Dot::where('loai_dot', 'DATN')
             ->where('trang_thai', 'DANG_MO')
+            ->where(function ($q) use ($lopId, $sinhVienId) {
+                if ($lopId) {
+                    $q->whereHas('lops', function ($ql) use ($lopId) {
+                        $ql->where('lop.lop_id', $lopId);
+                    });
+                }
+                $q->orWhereHas('sinhViens', function ($qs) use ($sinhVienId) {
+                    $qs->where('sinhvien.sinh_vien_id', $sinhVienId);
+                });
+            })
             ->orderBy('dot_id', 'desc')
-            ->first()
-            ?? Dot::where('loai_dot', 'DATN')
-                ->whereHas('lops', function ($q) use ($lopId) {
-                    $q->where('lop.lop_id', $lopId);
-                })
-                ->orderBy('dot_id', 'desc')
-                ->first();
+            ->first();
+
+        if ($openPeriod) {
+            return $openPeriod;
+        }
+
+        // Fallback: Tìm đợt ĐATN mới nhất mà sinh viên thuộc về
+        return Dot::where('loai_dot', 'DATN')
+            ->where(function ($q) use ($lopId, $sinhVienId) {
+                if ($lopId) {
+                    $q->whereHas('lops', function ($ql) use ($lopId) {
+                        $ql->where('lop.lop_id', $lopId);
+                    });
+                }
+                $q->orWhereHas('sinhViens', function ($qs) use ($sinhVienId) {
+                    $qs->where('sinhvien.sinh_vien_id', $sinhVienId);
+                });
+            })
+            ->orderBy('dot_id', 'desc')
+            ->first();
     }
 
     /**

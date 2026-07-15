@@ -446,6 +446,44 @@ class DeTaiController extends Controller
             $worksheet = $spreadsheet->getActiveSheet();
             $rows = $worksheet->toArray();
 
+            $errors = [];
+            $seenNames = [];
+
+            // Phase 1: Validate all rows for duplicate topic names
+            foreach ($rows as $index => $row) {
+                if ($index === 0) {
+                    continue;
+                } // Skip header
+
+                $tenDeTai = trim($row[0] ?? '');
+                if (empty($tenDeTai)) {
+                    continue;
+                }
+
+                $lowerName = mb_strtolower($tenDeTai);
+
+                // Check internal duplicate in Excel file
+                if (in_array($lowerName, $seenNames)) {
+                    $errors[] = "Dòng " . ($index + 1) . ": Tên đề tài \"{$tenDeTai}\" bị trùng lặp trong file Excel.";
+                    continue;
+                }
+                $seenNames[] = $lowerName;
+
+                // Check duplicate in database
+                if (DeTai::where('ten_de_tai', $tenDeTai)->exists()) {
+                    $errors[] = "Dòng " . ($index + 1) . ": Tên đề tài \"{$tenDeTai}\" đã tồn tại trên hệ thống.";
+                }
+            }
+
+            if (! empty($errors)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Lỗi dữ liệu import trùng lặp:',
+                    'errors' => $errors,
+                ], 422);
+            }
+
+            // Phase 2: Create topics since validation passed
             $importedCount = 0;
 
             foreach ($rows as $index => $row) {

@@ -167,6 +167,8 @@ class DotService
             return null;
         }
 
+        $loaiDot = isset($data['type']) ? strtoupper($data['type']) : $dot->loai_dot;
+
         $this->validatePeriodDatesAndSchoolYear($data, $dot);
 
         if ($dot->daKhoaHoanToan()) {
@@ -207,8 +209,7 @@ class DotService
         }
         if (isset($data['status'])) {
             $trangThaiMoi = $this->mapFrontendStatusToBackend($data['status']);
-            $loaiDotForCheck = isset($data['type']) ? strtoupper($data['type']) : $dot->loai_dot;
-            $this->assertKhongTrungDotDangHoatDong($loaiDotForCheck, $trangThaiMoi, $dot->dot_id);
+            $this->assertKhongTrungDotDangHoatDong($loaiDot, $trangThaiMoi, $dot->dot_id);
             $updateData['trang_thai'] = $trangThaiMoi;
         }
         if (isset($data['startDate'])) {
@@ -628,12 +629,14 @@ class DotService
             throw new \InvalidArgumentException('Ngày kết thúc đợt học phải sau ngày bắt đầu!');
         }
 
-        if ($startDate && $regOpenDate && Carbon::parse($regOpenDate)->lt(Carbon::parse($startDate))) {
-            throw new \InvalidArgumentException('Mở đăng ký không được trước Bắt đầu!');
-        }
+        if ($loaiDot === 'DATN') {
+            if ($startDate && $regOpenDate && Carbon::parse($regOpenDate)->lt(Carbon::parse($startDate))) {
+                throw new \InvalidArgumentException('Mở đăng ký không được trước Bắt đầu!');
+            }
 
-        if ($regOpenDate && $regDeadline && Carbon::parse($regDeadline)->lte(Carbon::parse($regOpenDate))) {
-            throw new \InvalidArgumentException('Hạn đăng ký phải sau ngày mở đăng ký!');
+            if ($regOpenDate && $regDeadline && Carbon::parse($regDeadline)->lte(Carbon::parse($regOpenDate))) {
+                throw new \InvalidArgumentException('Hạn đăng ký phải sau ngày mở đăng ký!');
+            }
         }
 
         if ($loaiDot === 'DATN' && $regDeadline && $reportDeadline && Carbon::parse($reportDeadline)->lte(Carbon::parse($regDeadline))) {

@@ -264,13 +264,9 @@ class DeTaiService
         $yearPart = substr($m[1], 2, 2);
         $semesterPart = $dot->hoc_ky ?: '1';
 
-        $rank = DeTai::where('dot_id', $dot->dot_id)
-            ->where('de_tai_id', '<=', $deTai->de_tai_id)
-            ->count();
-
         $maxSlots = $deTai->so_luong_sv_toi_da ?? 4;
 
-        return 'DT'.$yearPart.$semesterPart.'-'.str_pad($rank, 2, '0', STR_PAD_LEFT).'-'.$maxSlots;
+        return 'DT'.$yearPart.$semesterPart.'-'.str_pad($deTai->de_tai_id, 2, '0', STR_PAD_LEFT).'-'.$maxSlots;
     }
 
     /**

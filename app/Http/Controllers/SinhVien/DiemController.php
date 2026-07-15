@@ -41,6 +41,7 @@ class DiemController extends Controller
                 ->where('diemthuctap.sinh_vien_id', $sinhVienId)
                 ->where('dot.trang_thai', '!=', 'DA_DONG')
                 ->select('diemthuctap.*')
+                ->orderBy('dot.dot_id', 'desc')
                 ->first();
         } else {
             // Nếu không có đợt hoạt động nào, mới lấy điểm của đợt cũ gần nhất
@@ -70,6 +71,7 @@ class DiemController extends Controller
                 ->where('diemtongketdatn.sinh_vien_id', $sinhVienId)
                 ->where('dot.trang_thai', '!=', 'DA_DONG')
                 ->select('diemtongketdatn.*')
+                ->orderBy('nhomsvda.dot_id', 'desc')
                 ->first();
         } else {
             // Nếu không có đợt hoạt động nào, mới lấy điểm của đợt cũ gần nhất
@@ -81,24 +83,28 @@ class DiemController extends Controller
                 ->first();
         }
 
+        // Hiển thị điểm ngay lập tức (không cần chờ thời gian công bố)
+        $showTttnScore = true;
+        $showDatnScore = true;
+
         // 1. Dữ liệu TTTN
-        $tttnFinal = $diemTttn && $diemTttn->diem_so !== null ? (string) round($diemTttn->diem_so, 2) : 'Chưa chấm';
-        $tttnBaoCao = 'Chưa chấm';
-        $tttnHuongDan = $diemTttn && $diemTttn->diem_so !== null ? (string) round($diemTttn->diem_so, 2) : 'Chưa chấm';
-        $tttnStatus = $diemTttn ? 'Hoàn thành' : 'Đang tổng hợp';
-        $tttnNote = $diemTttn ? 'Sinh viên đã hoàn tất quá trình thực tập và được giảng viên chấm điểm.' : 'Đang trong quá trình tổng hợp kết quả báo cáo thực tập.';
+        $tttnFinal = ($showTttnScore && $diemTttn && $diemTttn->diem_so !== null) ? (string) round($diemTttn->diem_so, 2) : 'Chưa chấm';
+        $tttnBaoCao = $diemTttn ? 'Hoàn thành' : 'Chưa chấm';
+        $tttnHuongDan = ($showTttnScore && $diemTttn && $diemTttn->diem_so !== null) ? (string) round($diemTttn->diem_so, 2) : 'Chưa chấm';
+        $tttnStatus = $diemTttn ? 'Hoàn thành' : 'Đang chấm';
+        $tttnNote = $diemTttn ? 'Sinh viên đã hoàn tất quá trình thực tập và được giảng viên chấm điểm.' : 'Kết quả thực tập đang được tổng hợp và chấm điểm.';
 
         // 2. Dữ liệu ĐATN
-        $datnReport = $diemDatn && $diemDatn->diem_bao_cao_chung !== null ? (string) round($diemDatn->diem_bao_cao_chung, 2) : 'Chưa chấm';
-        $datnFinal = $diemDatn && $diemDatn->diem_tong_ket !== null ? (string) round($diemDatn->diem_tong_ket, 2) : 'Chưa chấm';
-        $datnDefense = $diemDatn && $diemDatn->diem_bao_ve_rieng !== null ? (string) round($diemDatn->diem_bao_ve_rieng, 2) : 'Chưa chấm';
-        $datnStatus = $diemDatn && $diemDatn->diem_tong_ket >= 5.0 ? 'ĐẠT' : ($diemDatn ? 'KHÔNG ĐẠT' : 'Đang chấm');
+        $datnReport = ($showDatnScore && $diemDatn && $diemDatn->diem_bao_cao_chung !== null) ? (string) round($diemDatn->diem_bao_cao_chung, 2) : 'Chưa chấm';
+        $datnFinal = ($showDatnScore && $diemDatn && $diemDatn->diem_tong_ket !== null) ? (string) round($diemDatn->diem_tong_ket, 2) : 'Chưa chấm';
+        $datnDefense = ($showDatnScore && $diemDatn && $diemDatn->diem_bao_ve_rieng !== null) ? (string) round($diemDatn->diem_bao_ve_rieng, 2) : 'Chưa chấm';
+        $datnStatus = $showDatnScore ? ($diemDatn && $diemDatn->diem_tong_ket >= 5.0 ? 'ĐẠT' : ($diemDatn ? 'KHÔNG ĐẠT' : 'Chưa chấm')) : 'Chưa chấm';
 
-        // 3. Quy đổi xếp loại dựa trên điểm ĐATN
+        // 3. Quy đổi xếp loại dựa trên điểm ĐATN/TTTN
         $classification = 'Chưa xếp loại';
-        if ($diemDatn && $diemDatn->diem_tong_ket !== null) {
+        if ($showDatnScore && $diemDatn && $diemDatn->diem_tong_ket !== null) {
             $classification = $this->layXepLoai($diemDatn->diem_tong_ket);
-        } elseif ($diemTttn && $diemTttn->diem_so !== null) {
+        } elseif ($showTttnScore && $diemTttn && $diemTttn->diem_so !== null) {
             $classification = $this->layXepLoai($diemTttn->diem_so);
         }
 

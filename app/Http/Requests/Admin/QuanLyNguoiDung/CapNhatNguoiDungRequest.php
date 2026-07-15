@@ -13,18 +13,28 @@ class CapNhatNguoiDungRequest extends FormRequest
         return auth()->check() && auth()->user()->tokenCan('ADMIN');
     }
 
+    private function checkIfTeacher(): bool
+    {
+        $id = $this->route('id');
+        $role = $this->query('role') ?? $this->input('role');
+        if ($role === 'teacher' || $role === 'admin') {
+            return true;
+        } elseif ($role === 'student') {
+            return false;
+        }
+        return GiangVien::where('giang_vien_id', $id)->exists();
+    }
+
     public function rules(): array
     {
         $id = $this->route('id');
-
-        // Xác định vai trò từ cơ sở dữ liệu dựa trên id được truyền lên
-        $isTeacher = GiangVien::where('giang_vien_id', $id)->exists();
+        $isTeacher = $this->checkIfTeacher();
 
         if ($isTeacher) {
             return [
                 'role' => 'nullable|string|in:student,teacher,admin',
                 'name' => 'nullable|string|max:255',
-                'email' => 'nullable|email|unique:giangvien,email,'.$id.',giang_vien_id|regex:/^[a-z]+@caothang\.edu\.vn$/',
+                'email' => 'nullable|email|unique:giangvien,email,'.$id.',giang_vien_id',
                 'phone' => 'nullable|string|regex:/^([0-9]*)$/|size:10',
                 'gender' => 'nullable|in:Nam,Nu,Khac',
                 'dateOfBirth' => 'nullable|date|before_or_equal:today',
@@ -54,15 +64,14 @@ class CapNhatNguoiDungRequest extends FormRequest
 
     public function messages(): array
     {
-        $id = $this->route('id');
-        $isTeacher = GiangVien::where('giang_vien_id', $id)->exists();
+        $isTeacher = $this->checkIfTeacher();
 
         return [
             'name.string' => 'Họ và tên phải là chuỗi.',
             'name.max' => 'Họ và tên không được vượt quá 255 ký tự.',
             'email.email' => 'Email không đúng định dạng.',
             'email.regex' => $isTeacher
-                ? 'Email giảng viên không hợp lệ (phải đúng định dạng tên@caothang.edu.vn)!'
+                ? 'Email giảng viên không hợp lệ!'
                 : 'Email sinh viên không hợp lệ (phải có 10 chữ số bắt đầu bằng 0 và đuôi @caothang.edu.vn)!',
             'email.unique' => 'Email này đã tồn tại trên hệ thống.',
             'phone.regex' => 'Số điện thoại chỉ được chứa các chữ số!',
@@ -78,8 +87,7 @@ class CapNhatNguoiDungRequest extends FormRequest
 
     public function toServiceData(): array
     {
-        $id = $this->route('id');
-        $isTeacher = GiangVien::where('giang_vien_id', $id)->exists();
+        $isTeacher = $this->checkIfTeacher();
         $updateData = [];
 
         if ($this->has('name')) {

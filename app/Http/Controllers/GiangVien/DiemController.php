@@ -267,13 +267,13 @@ class DiemController extends Controller
             return response()->json(['success' => false, 'message' => 'Group not found.'], 404);
         }
 
-        // Kiểm tra xem giảng viên đang đăng nhập có phải là Chủ tịch hội đồng của nhóm này không
+        // Kiểm tra xem giảng viên đang đăng nhập có phải là Chủ tịch hoặc Thư ký hội đồng của nhóm này không
         $isChair = false;
         if ($group->hoi_dong_id) {
             $isChair = DB::table('thanhvienhoidong')
                 ->where('hoi_dong_id', $group->hoi_dong_id)
                 ->where('giang_vien_id', $teacherId)
-                ->where('vai_tro', 'CHU_TICH')
+                ->whereIn('vai_tro', ['CHU_TICH', 'THU_KY'])
                 ->exists();
         }
 
@@ -312,19 +312,87 @@ class DiemController extends Controller
         // Fetch council members list
         $councilMembers = [];
         if ($group->hoi_dong_id) {
+            $gvpbIdFromLich = $gvpbId;
+            $examinerIdsFromLich = [];
+            if ($lich) {
+                if ($lich->giang_vien_cham_id) {
+                    $decodedEx = json_decode($lich->giang_vien_cham_id, true);
+                    if (is_array($decodedEx)) {
+                        $examinerIdsFromLich = array_map('strval', $decodedEx);
+                    } else {
+                        $examinerIdsFromLich = [strval($lich->giang_vien_cham_id)];
+                    }
+                }
+            }
+
             $councilMembers = DB::table('thanhvienhoidong')
                 ->join('giangvien', 'thanhvienhoidong.giang_vien_id', '=', 'giangvien.giang_vien_id')
                 ->where('thanhvienhoidong.hoi_dong_id', $group->hoi_dong_id)
                 ->select('giangvien.giang_vien_id as id', 'giangvien.ho_ten as name', 'thanhvienhoidong.vai_tro as role')
                 ->get()
-                ->map(function ($m) {
+                ->map(function ($m) use ($gvpbIdFromLich, $examinerIdsFromLich) {
+                    $memberIdStr = (string)$m->id;
+                    $displayRole = 'Ủy viên';
+
+                    if ($gvpbIdFromLich && (string)$gvpbIdFromLich === $memberIdStr) {
+                        $displayRole = 'Ủy viên phản biên';
+                    } elseif (in_array($memberIdStr, $examinerIdsFromLich)) {
+                        $displayRole = 'Ủy viên';
+                    } elseif ($m->role === 'CHU_TICH') {
+                        $displayRole = 'Chủ tịch';
+                    } else {
+                        $displayRole = $m->role === 'PHAN_BIEN' ? 'Ủy viên phản biên' : ($m->role === 'THU_KY' ? 'Thư ký' : 'Ủy viên');
+                    }
+
                     return [
-                        'id' => (string) $m->id,
+                        'id' => $memberIdStr,
                         'name' => $m->name,
-                        'role' => $m->role === 'CHU_TICH' ? 'Chủ tịch' : ($m->role === 'PHAN_BIEN' ? 'Ủy viên phản biên' : 'Ủy viên'),
+                        'role' => $displayRole,
                     ];
                 })
                 ->all();
+        }
+
+        // GVHD và GVPB là mặc định được chấm cả điểm báo cáo và điểm bảo vệ hội đồng
+        // Nếu họ chưa có trong danh sách councilMembers, tự động thêm vào
+        if ($gvhdId) {
+            $hasGvhd = false;
+            foreach ($councilMembers as $m) {
+                if ((string)$m['id'] === (string)$gvhdId) {
+                    $hasGvhd = true;
+                    break;
+                }
+            }
+            if (!$hasGvhd) {
+                $gv = DB::table('giangvien')->where('giang_vien_id', $gvhdId)->first();
+                if ($gv) {
+                    $councilMembers[] = [
+                        'id' => (string)$gvhdId,
+                        'name' => $gv->ho_ten,
+                        'role' => 'Giảng viên hướng dẫn',
+                    ];
+                }
+            }
+        }
+
+        if ($gvpbId) {
+            $hasGvpb = false;
+            foreach ($councilMembers as $m) {
+                if ((string)$m['id'] === (string)$gvpbId) {
+                    $hasGvpb = true;
+                    break;
+                }
+            }
+            if (!$hasGvpb) {
+                $gv = DB::table('giangvien')->where('giang_vien_id', $gvpbId)->first();
+                if ($gv) {
+                    $councilMembers[] = [
+                        'id' => (string)$gvpbId,
+                        'name' => $gv->ho_ten,
+                        'role' => 'Ủy viên phản biên',
+                    ];
+                }
+            }
         }
 
         $rows = [];
@@ -412,6 +480,8 @@ class DiemController extends Controller
                 'lecturerScores' => $lecturerScores,
                 'isAdvisor' => ($teacherId == $gvhdId),
                 'isReviewer' => ($teacherId == $gvpbId),
+                'advisorId' => $gvhdId ? (string) $gvhdId : null,
+                'reviewerId' => $gvpbId ? (string) $gvpbId : null,
                 'hasReport' => ($teacherId == $gvhdId ? $diemGvhd !== null : ($teacherId == $gvpbId ? $diemGvpb !== null : false)),
                 'hasDefense' => ($hdbv !== null),
                 'member' => $hdbv ? (string) $hdbv->diem_bao_ve : '',
@@ -467,6 +537,8 @@ class DiemController extends Controller
                 $reviewerId = $decoded['reviewer_id'] ?? null;
             }
         }
+
+
 
         // Chỉ GVHD, GVPB được phân công, hoặc thành viên hội đồng của nhóm mới được phép chấm điểm nhóm này
         $isCouncilMember = $hoiDongId ? DB::table('thanhvienhoidong')
@@ -537,11 +609,13 @@ class DiemController extends Controller
                     );
 
                     // B. Điểm Bảo vệ (80%) — chỉ ghi khi người chấm thực sự là thành viên hội đồng
+                    // hoặc là GVHD / GVPB được mặc định quyền,
                     // và đã thực sự nhập ít nhất 1 thành phần điểm cho sinh viên này.
                     // Tránh: (1) GVHD/GVPB không thuộc hội đồng vô tình ghi đè bằng điểm 0;
                     // (2) payload gửi cả nhóm mỗi lần Lưu khiến các sinh viên CHƯA được chấm
                     // cũng bị tạo bản ghi rác (điểm 0) chỉ vì đứng chung nhóm với người vừa được chấm.
-                    if ($isCouncilMember && ($presentation !== null || $demo !== null || $qna !== null)) {
+                    $canGradeDefense = $isCouncilMember || ($teacherId == $gvhdId) || ($teacherId == $reviewerId);
+                    if ($canGradeDefense && ($presentation !== null || $demo !== null || $qna !== null)) {
                         // 1. Tính điểm bảo vệ của từng giảng viên: diem_bao_ve = diem_thuyet_trinh + diem_demo + diem_van_dap
                         $diemBaoVeGv = round(($presentation ?? 0) + ($demo ?? 0) + ($qna ?? 0), 2);
 

@@ -112,9 +112,15 @@ class PhanCongHdttController extends Controller
                 ->where('nhomsvda.dot_id', $dotId)
                 ->pluck('thanhviennhom.sinh_vien_id');
 
+            // Lấy danh sách sinh viên được gán thủ công vào đợt này (dot_sinhvien)
+            $studentIdsInDotSinhvien = DB::table('dot_sinhvien')
+                ->where('dot_id', $dotId)
+                ->pluck('sinh_vien_id');
+
             // Gộp các nguồn ID sinh viên đồ án tốt nghiệp
             $studentIds = collect()
                 ->concat($groupStudentIds)
+                ->concat($studentIdsInDotSinhvien)
                 ->unique();
 
             // Danh sách sinh viên có hoạt động nhóm ở các đợt khác mà đợt đó chưa đóng (đang hoạt động)

@@ -63,6 +63,9 @@ class HoiDongController extends Controller
         if ($resp = $this->chanNeuDotDaDong($dot)) {
             return $resp;
         }
+        if ($resp = $this->chanNeuDaToiNgayBaoVe($dot)) {
+            return $resp;
+        }
 
         // Validate defense date range constraint
         if ($dot) {
@@ -121,6 +124,7 @@ class HoiDongController extends Controller
             $otherCouncilChair = DB::table('thanhvienhoidong')
                 ->join('hoidong', 'thanhvienhoidong.hoi_dong_id', '=', 'hoidong.hoi_dong_id')
                 ->join('giangvien', 'thanhvienhoidong.giang_vien_id', '=', 'giangvien.giang_vien_id')
+                ->where('hoidong.dot_id', $dotId)
                 ->where('thanhvienhoidong.vai_tro', 'CHU_TICH')
                 ->where('thanhvienhoidong.giang_vien_id', $chairId)
                 ->select('hoidong.ten_hoi_dong', 'giangvien.ho_ten')
@@ -135,10 +139,10 @@ class HoiDongController extends Controller
         }
 
         // Auto-generate name: "Hội đồng <số thứ tự>"
-        $title = $request->title;
+        $title = $request->title ?? $request->input('title');
         if (empty($title) || !preg_match('/^Hội\s+đồng\s+(\d+)$/ui', $title)) {
             $maxNum = 0;
-            $existingCouncils = HoiDong::all();
+            $existingCouncils = HoiDong::where('dot_id', $dotId)->get();
             foreach ($existingCouncils as $exHd) {
                 if (preg_match('/^Hội\s+đồng\s+(\d+)$/ui', $exHd->ten_hoi_dong, $matches)) {
                     $num = (int)$matches[1];
@@ -147,6 +151,7 @@ class HoiDongController extends Controller
                     }
                 }
             }
+            $title = 'Hội đồng ' . ($maxNum + 1);
         }
 
         try {
@@ -154,7 +159,8 @@ class HoiDongController extends Controller
                 $title,
                 $request->input('room'),
                 $request->input('date'),
-                $request->input('time')
+                $request->input('time'),
+                $dotId
             );
         } catch (\Throwable $e) {
             return response()->json([
@@ -274,6 +280,9 @@ class HoiDongController extends Controller
         if ($resp = $this->chanNeuDotDaDong($dot)) {
             return $resp;
         }
+        if ($resp = $this->chanNeuDaToiNgayBaoVe($dot)) {
+            return $resp;
+        }
 
         // Validate defense date range constraint
         if ($dot) {
@@ -333,6 +342,7 @@ class HoiDongController extends Controller
                 $otherCouncilChair = DB::table('thanhvienhoidong')
                     ->join('hoidong', 'thanhvienhoidong.hoi_dong_id', '=', 'hoidong.hoi_dong_id')
                     ->join('giangvien', 'thanhvienhoidong.giang_vien_id', '=', 'giangvien.giang_vien_id')
+                    ->where('hoidong.dot_id', $hd->dot_id)
                     ->where('thanhvienhoidong.vai_tro', 'CHU_TICH')
                     ->where('thanhvienhoidong.giang_vien_id', $chairId)
                     ->where('thanhvienhoidong.hoi_dong_id', '!=', $id)
@@ -363,6 +373,7 @@ class HoiDongController extends Controller
                 $request->input('room', $hd->phong_bao_ve),
                 $request->input('date', $hd->ngay_bao_ve),
                 $request->input('time', $hd->gio_bao_ve),
+                $hd->dot_id,
                 $hd->hoi_dong_id
             );
         } catch (\Throwable $e) {
@@ -490,6 +501,9 @@ class HoiDongController extends Controller
         if ($resp = $this->chanNeuDotDaDong($hd->dot)) {
             return $resp;
         }
+        if ($resp = $this->chanNeuDaToiNgayBaoVe($hd->dot)) {
+            return $resp;
+        }
 
         $dot = $hd->dot;
         if ($dot) {
@@ -600,11 +614,12 @@ class HoiDongController extends Controller
         return ($start1 < $end2 && $start2 < $end1);
     }
 
-    private function validateNameAndRoomConflicts($title, $room, $date, $time, $excludeId = null)
+    private function validateNameAndRoomConflicts($title, $room, $date, $time, $dotId, $excludeId = null)
     {
-        // 1. Check duplicate name (case-insensitive)
+        // 1. Check duplicate name (case-insensitive) in the same period
         if ($title) {
-            $query = HoiDong::whereRaw('LOWER(ten_hoi_dong) = ?', [strtolower($title)]);
+            $query = HoiDong::where('dot_id', $dotId)
+                ->whereRaw('LOWER(ten_hoi_dong) = ?', [strtolower($title)]);
             if ($excludeId) {
                 $query->where('hoi_dong_id', '!=', $excludeId);
             }

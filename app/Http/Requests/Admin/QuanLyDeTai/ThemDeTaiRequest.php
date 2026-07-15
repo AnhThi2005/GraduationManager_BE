@@ -14,7 +14,7 @@ class ThemDeTaiRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'name' => 'required|string|max:255',
+            'name' => 'required|string|max:255|unique:detai,ten_de_tai',
             'teacher' => 'required|string',
             'slots' => 'required|string',
             'status' => 'sometimes|string|in:pending,approved,rejected',
@@ -28,6 +28,7 @@ class ThemDeTaiRequest extends FormRequest
             'name.required' => 'Tên đề tài không được để trống.',
             'name.string' => 'Tên đề tài phải là chuỗi.',
             'name.max' => 'Tên đề tài không được vượt quá 255 ký tự.',
+            'name.unique' => 'Tên đề tài này đã tồn tại trên hệ thống.',
             'teacher.required' => 'Tên giảng viên không được để trống.',
             'slots.required' => 'Số lượng thành viên tối đa không được để trống.',
             'status.in' => 'Trạng thái không hợp lệ (hợp lệ: pending, approved, rejected).',
