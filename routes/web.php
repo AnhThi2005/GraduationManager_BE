@@ -76,6 +76,7 @@ Route::middleware([
     Route::delete('/private/v1/groups/{id}', [NhomController::class, 'xoa']);
     Route::post('/private/v1/groups/{id}/approve', [NhomController::class, 'approveGroup']);
     Route::post('/private/v1/groups/{id}/reject', [NhomController::class, 'rejectGroup']);
+    Route::post('/private/v1/groups/swap-members', [NhomController::class, 'swapMembers']);
 
     // 9. Chức năng phân công hướng dẫn (Assignments)
     Route::get('/private/v1/assignments', [PhanCongHdttController::class, 'layDanhSach']);
@@ -84,6 +85,7 @@ Route::middleware([
     Route::patch('/private/v1/assignments/{id}', [PhanCongHdttController::class, 'capNhat']);
     Route::delete('/private/v1/assignments/{id}', [PhanCongHdttController::class, 'xoa']);
     Route::get('/private/v1/teachers', [PhanCongHdttController::class, 'getTeachers']);
+    Route::patch('/private/v1/students/{studentId}/eligibility', [PhanCongHdttController::class, 'capNhatDieuKienLamDoAn']);
 
     // 10. Chức năng quản lý hội đồng (Councils)
     Route::get('/private/v1/councils', [HoiDongController::class, 'layDanhSach']);
@@ -112,11 +114,13 @@ Route::middleware([
     Route::post('/private/v1/student/thesis/invitations/{id}/accept', [App\Http\Controllers\SinhVien\DeTaiController::class, 'chapNhanLoiMoi']);
     Route::post('/private/v1/student/thesis/invitations/{id}/reject', [App\Http\Controllers\SinhVien\DeTaiController::class, 'tuChoiLoiMoi']);
     Route::post('/private/v1/student/thesis/invitations/{id}/cancel', [App\Http\Controllers\SinhVien\DeTaiController::class, 'huyLoiMoiNhom']);
+    Route::get('/private/v1/student/students/search', [App\Http\Controllers\SinhVien\DeTaiController::class, 'timKiemSinhVien']);
     Route::get('/private/v1/student/reports/tttn', [BaoCaoController::class, 'layDanhSachBaoCaoTttn']);
     Route::post('/private/v1/student/reports/tttn', [BaoCaoController::class, 'nopBaoCaoTttn']);
     Route::get('/private/v1/student/reports/datn', [BaoCaoController::class, 'layDanhSachBaoCaoDatn']);
     Route::post('/private/v1/student/reports/datn', [BaoCaoController::class, 'nopBaoCaoDatn']);
     Route::get('/private/v1/student/results', [DiemController::class, 'layKetQuaHocTap']);
+    Route::get('/private/v1/student/history', [\App\Http\Controllers\HistoryController::class, 'getStudentHistory']);
 });
 
 Route::middleware([
@@ -141,6 +145,7 @@ Route::middleware([
     Route::post('/private/v1/teacher/topics/import', [App\Http\Controllers\GiangVien\DeTaiController::class, 'import']);
     Route::get('/private/v1/teacher/students', [App\Http\Controllers\GiangVien\NhomController::class, 'layDanhSachSinhVien']);
     Route::post('/private/v1/teacher/report-comment', [App\Http\Controllers\GiangVien\NhomController::class, 'saveReportComment']);
+    Route::get('/private/v1/teacher/history', [\App\Http\Controllers\HistoryController::class, 'getTeacherHistory']);
 
     // Nhóm route Tiếng Việt chuẩn hóa cho Giảng viên (kebab-case)
     Route::prefix('giang-vien')->group(function () {
@@ -199,6 +204,7 @@ Route::middleware([
     Route::post('/v1/file-upload/upload', [TaiLenController::class, 'upload']);
     Route::post('/private/v1/upload', [TaiLenController::class, 'upload']);
 
+    Route::get('/private/v1/topic-directions', [DeTaiController::class, 'layDanhSachHuong']);
     Route::get('/private/v1/topics', [DeTaiController::class, 'layDanhSach']);
     Route::get('/private/v1/topics/{id}', [DeTaiController::class, 'xemChiTiet']);
     Route::post('/private/v1/topics', [DeTaiController::class, 'themMoi']);

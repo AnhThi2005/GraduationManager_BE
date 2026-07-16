@@ -35,6 +35,24 @@ class DeTaiService
             $query->where('dot_id', $filters['periodId']);
         }
 
+        // Lọc theo hướng đề tài
+        if (! empty($filters['direction']) && $filters['direction'] !== 'all') {
+            $dir = $filters['direction'];
+            $query->whereHas('huongDeTais', function ($sub) use ($dir) {
+                if (is_numeric($dir)) {
+                    $sub->where('huongdetai.huong_de_tai_id', (int)$dir);
+                } elseif ($dir === 'MANG_MAY_TINH') {
+                    $sub->where('huongdetai.ten_huong_de_tai', 'like', '%mạng%')
+                        ->orWhere('huongdetai.ten_huong_de_tai', 'like', '%network%');
+                } elseif ($dir === 'PHAN_MEM') {
+                    $sub->where('huongdetai.ten_huong_de_tai', 'not like', '%mạng%')
+                        ->where('huongdetai.ten_huong_de_tai', 'not like', '%network%');
+                } else {
+                    $sub->where('huongdetai.ten_huong_de_tai', 'like', '%' . $dir . '%');
+                }
+            });
+        }
+
         // Lọc theo trạng thái duyệt
         if (! empty($filters['status']) && $filters['status'] !== 'all') {
             $query->where('trang_thai', $this->mapFrontendStatusToBackend($filters['status']));
@@ -337,51 +355,52 @@ class DeTaiService
         }
     }
 
-    private function mapFrontendDirectionToBackend($direction)
+    public function syncDirections($deTai, $directionInput)
     {
-        $directionUpper = mb_strtoupper($direction);
-        if (str_contains($directionUpper, 'MẠNG') || str_contains($directionUpper, 'MANG') || str_contains($directionUpper, 'NETWORK')) {
-            return 'MANG_MAY_TINH';
-        }
-
-        return 'PHAN_MEM';
-    }
-
-    private function syncDirections(DeTai $deTai, $directionData)
-    {
-        if (empty($directionData)) {
+        if (empty($directionInput)) {
+            $deTai->huongDeTais()->detach();
             return;
         }
 
         $ids = [];
-        if (is_array($directionData)) {
-            foreach ($directionData as $item) {
-                if (is_numeric($item)) {
-                    $ids[] = (int) $item;
-                } else {
-                    $id = DB::table('huongdetai')->where('ten_huong_de_tai', 'like', '%'.$item.'%')->value('huong_de_tai_id');
-                    if ($id) {
-                        $ids[] = $id;
-                    }
-                }
+
+        // Nếu input là chuỗi, có thể là "1, 2" hoặc "Lập trình Web, Lập trình di động"
+        if (is_string($directionInput)) {
+            if (preg_match('/^[\d,\s]+$/', $directionInput)) {
+                $directionInput = array_map('intval', explode(',', $directionInput));
+            } else {
+                $directionInput = array_map('trim', explode(',', $directionInput));
             }
-        } else if (is_string($directionData)) {
-            $items = explode(',', $directionData);
-            foreach ($items as $item) {
-                $item = trim($item);
+        }
+
+        if (is_array($directionInput)) {
+            foreach ($directionInput as $item) {
                 if (is_numeric($item)) {
-                    $ids[] = (int) $item;
-                } else {
-                    $id = DB::table('huongdetai')->where('ten_huong_de_tai', 'like', '%'.$item.'%')->value('huong_de_tai_id');
-                    if ($id) {
-                        $ids[] = $id;
+                    $ids[] = (int)$item;
+                } elseif (is_string($item)) {
+                    $item = trim($item);
+                    if (empty($item)) continue;
+
+                    // Tìm hoặc tạo hướng đề tài
+                    $huong = \App\Models\HuongDeTai::where('ten_huong_de_tai', 'like', $item)
+                        ->orWhere('ten_huong_de_tai', 'like', '%' . $item . '%')
+                        ->first();
+                    if ($huong) {
+                        $ids[] = $huong->huong_de_tai_id;
+                    } else {
+                        // Tạo mới nếu chưa tồn tại
+                        $newHuong = \App\Models\HuongDeTai::create([
+                            'ten_huong_de_tai' => $item,
+                            'trang_thai_hd' => 1
+                        ]);
+                        $ids[] = $newHuong->huong_de_tai_id;
                     }
                 }
             }
         }
 
-        if (! empty($ids)) {
-            $deTai->huongDeTais()->sync($ids);
-        }
+        $deTai->huongDeTais()->sync(array_unique($ids));
     }
+
+
 }

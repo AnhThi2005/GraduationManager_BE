@@ -22,6 +22,19 @@ trait KiemTraTrangThaiDot
     protected function chanNeuDotDaDong(?Dot $dot): ?JsonResponse
     {
         if ($dot && $dot->daKhoaHoanToan()) {
+            $user = request()->user();
+
+            // Nếu là Admin, cho phép gia hạn thêm 1 tuần (7 ngày) kể từ ngày kết thúc đợt
+            if ($user && ($user->vai_tro === 'ADMIN' || (method_exists($user, 'hasRole') && $user->hasRole('admin')))) {
+                $endDateStr = $dot->ngay_ket_thuc;
+                if ($endDateStr) {
+                    $gracePeriodEnd = \Carbon\Carbon::parse($endDateStr)->endOfDay()->addDays(7);
+                    if (\Carbon\Carbon::now('Asia/Ho_Chi_Minh')->lte($gracePeriodEnd)) {
+                        return null; // Trong vòng 1 tuần gia hạn -> cho phép Admin thao tác
+                    }
+                }
+            }
+
             return response()->json([
                 'success' => false,
                 'message' => "Đợt \"{$dot->ten_dot}\" đã đóng, không thể chỉnh sửa dữ liệu của đợt này nữa.",

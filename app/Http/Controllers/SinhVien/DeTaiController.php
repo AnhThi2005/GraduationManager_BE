@@ -9,6 +9,7 @@ use App\Models\Dot;
 use App\Models\LoiMoiNhom;
 use App\Models\Nhom;
 use App\Models\SinhVien;
+use App\Models\LichSuHoatDong;
 use App\Services\RealtimeService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -144,10 +145,12 @@ class DeTaiController extends Controller
                     'status' => $status,
                     'note' => $note,
                     'instructor' => ($nhom->deTai && $nhom->deTai->giangVien) ? $nhom->deTai->giangVien->ho_ten : null,
-                    'members' => $nhom->members->map(function ($sv) {
+                    'members' => $nhom->members->map(function ($sv) use ($sinhVien) {
                         return [
                             'studentCode' => $sv->ma_so_sinh_vien,
                             'name' => $sv->ho_ten,
+                            'isLeader' => $sv->pivot->la_truong_nhom == 1,
+                            'isCurrent' => $sv->sinh_vien_id === $sinhVien->sinh_vien_id,
                         ];
                     })->values(),
                 ],
@@ -239,6 +242,17 @@ class DeTaiController extends Controller
                 'ngay_dang_ky' => date('Y-m-d H:i:s'),
                 'ly_do_tu_choi' => null,
             ]);
+
+            LichSuHoatDong::ghiLog(
+                'DANG_KY_DE_TAI',
+                "Nhóm #{$nhom->nhom_id} (Trưởng nhóm {$sinhVien->ho_ten}) đã đăng ký đề tài: {$deTai->ten_de_tai}.",
+                $sinhVien->sinh_vien_id,
+                $sinhVien->ma_so_sinh_vien,
+                $nhom->nhom_id,
+                'sinh_vien',
+                $sinhVien->ho_ten,
+                ['topic_id' => $deTai->de_tai_id, 'topic_title' => $deTai->ten_de_tai]
+            );
 
             // Broadcast real-time event when a student registers a topic
             RealtimeService::broadcast('slot_updated', [
@@ -355,6 +369,17 @@ class DeTaiController extends Controller
                 'de_tai_id' => null,
                 'trang_thai_duyet' => 'CHO_DUYET',
             ]);
+
+            LichSuHoatDong::ghiLog(
+                'HUY_DANG_KY_DE_TAI',
+                "Nhóm #{$nhom->nhom_id} (Trưởng nhóm {$sinhVien->ho_ten}) đã hủy đăng ký đề tài.",
+                $sinhVien->sinh_vien_id,
+                $sinhVien->ma_so_sinh_vien,
+                $nhom->nhom_id,
+                'sinh_vien',
+                $sinhVien->ho_ten,
+                ['nhom_id' => $nhom->nhom_id]
+            );
 
             RealtimeService::broadcast('slot_updated', [
                 'type' => 'student_cancelled_registration',
@@ -482,6 +507,30 @@ class DeTaiController extends Controller
             return $resp;
         }
 
+        // Kiểm tra điều kiện làm đồ án của sinh viên hiện tại trong đợt này
+        $senderRecord = DB::table('dot_sinhvien')
+            ->where('dot_id', $activePeriod->dot_id)
+            ->where('sinh_vien_id', $sinhVien->sinh_vien_id)
+            ->first();
+        if ($senderRecord && ($senderRecord->dieu_kien_lam_do_an ?? 'DAT') === 'CHUA_DAT') {
+            return response()->json(['success' => false, 'message' => 'Bạn không đủ điều kiện làm đồ án trong đợt này!'], 400);
+        }
+
+        // Tìm sinh viên được mời
+        $targetSv = SinhVien::where('ma_so_sinh_vien', $studentCode)->first();
+        if (!$targetSv) {
+            return response()->json(['success' => false, 'message' => 'Không tìm thấy sinh viên được mời.'], 400);
+        }
+
+        // Kiểm tra điều kiện làm đồ án của sinh viên được mời
+        $targetRecord = DB::table('dot_sinhvien')
+            ->where('dot_id', $activePeriod->dot_id)
+            ->where('sinh_vien_id', $targetSv->sinh_vien_id)
+            ->first();
+        if ($targetRecord && ($targetRecord->dieu_kien_lam_do_an ?? 'DAT') === 'CHUA_DAT') {
+            return response()->json(['success' => false, 'message' => 'Sinh viên được mời không đủ điều kiện làm đồ án trong đợt này!'], 400);
+        }
+
         // Tìm nhóm của sinh viên hiện tại trong đợt này
         $nhom = Nhom::where('dot_id', $activePeriod->dot_id)
             ->whereHas('members', function ($q) use ($sinhVien) {
@@ -531,6 +580,17 @@ class DeTaiController extends Controller
                     'la_truong_nhom' => 1,
                     'dieu_kien_lam_do_an' => 'DAT',
                 ]);
+
+                LichSuHoatDong::ghiLog(
+                    'TAO_NHOM',
+                    "Sinh viên {$sinhVien->ho_ten} đã tạo nhóm mới #{$nhom->nhom_id} trong đợt {$activePeriod->ten_dot}.",
+                    $sinhVien->sinh_vien_id,
+                    $sinhVien->ma_so_sinh_vien,
+                    $nhom->nhom_id,
+                    'sinh_vien',
+                    $sinhVien->ho_ten,
+                    ['period_id' => $activePeriod->dot_id]
+                );
 
                 // Nếu có chọn đề tài, lưu đăng ký vào bảng dangkydetai
                 if ($topicId) {
@@ -592,6 +652,17 @@ class DeTaiController extends Controller
                 ]
             );
 
+            LichSuHoatDong::ghiLog(
+                'GUI_LOI_MOI',
+                "Sinh viên {$sinhVien->ho_ten} đã gửi lời mời gia nhập nhóm đến sinh viên {$targetStudent->ho_ten} ({$targetStudent->ma_so_sinh_vien}).",
+                $sinhVien->sinh_vien_id,
+                $sinhVien->ma_so_sinh_vien,
+                $nhom->nhom_id,
+                'sinh_vien',
+                $sinhVien->ho_ten,
+                ['invited_student_id' => $targetStudent->sinh_vien_id, 'invited_student_code' => $targetStudent->ma_so_sinh_vien]
+            );
+
             DB::commit();
 
             return response()->json([
@@ -614,6 +685,49 @@ class DeTaiController extends Controller
                 'message' => 'Lỗi hệ thống khi gửi lời mời: '.$e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * Tìm kiếm sinh viên theo mã số hoặc họ tên để mời vào nhóm đồ án tốt nghiệp.
+     * Gõ tới đâu tìm tới đó (giống cơ chế tìm kiếm ở trang Quản lý đề tài bên admin).
+     */
+    public function timKiemSinhVien(Request $request)
+    {
+        $sinhVien = $request->user();
+        if (! $sinhVien) {
+            return response()->json(['success' => false, 'message' => 'Bạn chưa đăng nhập.'], 401);
+        }
+
+        $keyword = trim((string) $request->input('keyword', ''));
+        if ($keyword === '') {
+            return response()->json(['code' => 200, 'results' => ['objects' => []]]);
+        }
+
+        $ketQua = SinhVien::with('lop')
+            ->where('dang_hoat_dong', 1)
+            ->where('sinh_vien_id', '!=', $sinhVien->sinh_vien_id)
+            ->where(function ($q) use ($keyword) {
+                $q->where('ma_so_sinh_vien', 'like', '%'.$keyword.'%')
+                    ->orWhere('ho_ten', 'like', '%'.$keyword.'%');
+            })
+            ->orderBy('ho_ten')
+            ->limit(10)
+            ->get();
+
+        $formatted = $ketQua->map(function ($sv) {
+            return [
+                'code' => $sv->ma_so_sinh_vien,
+                'name' => $sv->ho_ten,
+                'className' => $sv->lop->ten_lop ?? '',
+            ];
+        });
+
+        return response()->json([
+            'code' => 200,
+            'results' => [
+                'objects' => $formatted,
+            ],
+        ]);
     }
 
     /**
@@ -714,6 +828,15 @@ class DeTaiController extends Controller
             return $resp;
         }
 
+        // Kiểm tra điều kiện làm đồ án của sinh viên hiện tại trong đợt này
+        $eligibilityRecord = DB::table('dot_sinhvien')
+            ->where('dot_id', $nhom->dot_id)
+            ->where('sinh_vien_id', $sinhVien->sinh_vien_id)
+            ->first();
+        if ($eligibilityRecord && ($eligibilityRecord->dieu_kien_lam_do_an ?? 'DAT') === 'CHUA_DAT') {
+            return response()->json(['success' => false, 'message' => 'Bạn không đủ điều kiện làm đồ án trong đợt này!'], 400);
+        }
+
         if ($nhom->trang_thai_duyet === 'DA_DUYET') {
             return response()->json(['success' => false, 'message' => 'Nhóm này đã được duyệt đề tài tốt nghiệp, không thể tham gia thêm thành viên.'], 400);
         }
@@ -755,6 +878,17 @@ class DeTaiController extends Controller
             LoiMoiNhom::where('sinh_vien_duoc_moi_id', $sinhVien->sinh_vien_id)
                 ->where('trang_thai_xac_nhan', 'CHO_XAC_NHAN')
                 ->update(['trang_thai_xac_nhan' => 'TU_CHOI']);
+
+            LichSuHoatDong::ghiLog(
+                'CHAP_NHAN_LOI_MOI',
+                "Sinh viên {$sinhVien->ho_ten} đã chấp nhận lời mời gia nhập nhóm #{$nhom->nhom_id}.",
+                $sinhVien->sinh_vien_id,
+                $sinhVien->ma_so_sinh_vien,
+                $nhom->nhom_id,
+                'sinh_vien',
+                $sinhVien->ho_ten,
+                ['invite_id' => $id]
+            );
 
             RealtimeService::broadcast('slot_updated', [
                 'type' => 'group_member_joined',
@@ -809,6 +943,17 @@ class DeTaiController extends Controller
         try {
             $loiMoi->update(['trang_thai_xac_nhan' => 'TU_CHOI']);
 
+            LichSuHoatDong::ghiLog(
+                'TU_CHOI_LOI_MOI',
+                "Sinh viên {$sinhVien->ho_ten} đã từ chối lời mời gia nhập nhóm #{$nhom->nhom_id}.",
+                $sinhVien->sinh_vien_id,
+                $sinhVien->ma_so_sinh_vien,
+                $nhom->nhom_id,
+                'sinh_vien',
+                $sinhVien->ho_ten,
+                ['invite_id' => $id]
+            );
+
             return response()->json([
                 'success' => true,
                 'message' => 'Từ chối lời mời gia nhập nhóm thành công!',
@@ -861,6 +1006,19 @@ class DeTaiController extends Controller
 
         try {
             $loiMoi->delete();
+
+            $targetStudentName = $loiMoi->sinhVienDuocMoi ? $loiMoi->sinhVienDuocMoi->ho_ten : '';
+            $targetStudentCode = $loiMoi->sinhVienDuocMoi ? $loiMoi->sinhVienDuocMoi->ma_so_sinh_vien : '';
+            LichSuHoatDong::ghiLog(
+                'HUY_LOI_MOI',
+                "Trưởng nhóm {$sinhVien->ho_ten} đã hủy lời mời gia nhập nhóm gửi đến sinh viên {$targetStudentName} ({$targetStudentCode}).",
+                $sinhVien->sinh_vien_id,
+                $sinhVien->ma_so_sinh_vien,
+                $nhom->nhom_id,
+                'sinh_vien',
+                $sinhVien->ho_ten,
+                ['invite_id' => $id, 'target_student_id' => $loiMoi->sinh_vien_duoc_moi_id]
+            );
 
             RealtimeService::broadcast('slot_updated', [
                 'type' => 'group_invite_cancelled',
@@ -933,6 +1091,17 @@ class DeTaiController extends Controller
         DB::beginTransaction();
         try {
             if ($pivot && $pivot->la_truong_nhom == 1) {
+                LichSuHoatDong::ghiLog(
+                    'GIAI_TAN_NHOM',
+                    "Trưởng nhóm {$sinhVien->ho_ten} đã giải tán nhóm #{$nhom->nhom_id} và đề tài đăng ký.",
+                    $sinhVien->sinh_vien_id,
+                    $sinhVien->ma_so_sinh_vien,
+                    $nhom->nhom_id,
+                    'sinh_vien',
+                    $sinhVien->ho_ten,
+                    ['nhom_id' => $nhom->nhom_id]
+                );
+
                 // Xóa đăng ký đề tài tương ứng
                 DB::table('dangkydetai')->where('nhom_id', $nhom->nhom_id)->delete();
                 // Xóa tất cả thành viên và xóa nhóm
@@ -942,6 +1111,17 @@ class DeTaiController extends Controller
                 $nhom->delete();
                 $msg = 'Giải tán nhóm ĐATN thành công!';
             } else {
+                LichSuHoatDong::ghiLog(
+                    'ROI_NHOM',
+                    "Sinh viên {$sinhVien->ho_ten} đã rời khỏi nhóm #{$nhom->nhom_id}.",
+                    $sinhVien->sinh_vien_id,
+                    $sinhVien->ma_so_sinh_vien,
+                    $nhom->nhom_id,
+                    'sinh_vien',
+                    $sinhVien->ho_ten,
+                    ['nhom_id' => $nhom->nhom_id]
+                );
+
                 // Chỉ rời khỏi nhóm (xóa liên kết của chính sinh viên này)
                 DB::table('thanhviennhom')
                     ->where('nhom_id', $nhom->nhom_id)

@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\CongTy;
 use App\Models\DangKyThucTap;
 use App\Models\Dot;
+use App\Models\LichSuHoatDong;
 use App\Services\RealtimeService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -294,6 +295,17 @@ class ThucTapController extends Controller
             'trang_thai' => $trangThaiReg,
             'ngay_dang_ky' => now(),
         ]);
+
+        LichSuHoatDong::ghiLog(
+            'KHAI_BAO_TTTN',
+            "Sinh viên {$sinhVien->ho_ten} đã khai báo thực tập tại công ty {$company->ten_cong_ty} (vị trí: {$request->input('position')}).",
+            $sinhVien->sinh_vien_id,
+            $sinhVien->ma_so_sinh_vien,
+            null,
+            'sinh_vien',
+            $sinhVien->ho_ten,
+            ['company_name' => $company->ten_cong_ty, 'position' => $request->input('position')]
+        );
 
         // Broadcast thông báo realtime cho admin
         RealtimeService::broadcast('notification', [

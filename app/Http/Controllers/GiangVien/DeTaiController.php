@@ -8,6 +8,7 @@ use App\Http\Requests\GiangVien\CapNhatDeTaiRequest;
 use App\Http\Requests\GiangVien\ThemDeTaiRequest;
 use App\Models\DeTai;
 use App\Models\Dot;
+use App\Models\LichSuHoatDong;
 use App\Services\DeTaiService;
 use App\Services\RealtimeService;
 use Illuminate\Http\Request;
@@ -125,6 +126,17 @@ class DeTaiController extends Controller
                 $topic = $this->deTaiService->getTopicDetail($dbTopic->de_tai_id);
             }
         }
+
+        LichSuHoatDong::ghiLog(
+            'DE_XUAT_DE_TAI',
+            "Giảng viên {$teacher->ho_ten} đã đề xuất đề tài: ".($topic['name'] ?? '').'.',
+            null,
+            null,
+            null,
+            'giang_vien',
+            $teacher->ho_ten,
+            ['topic_id' => $topic['id'] ?? null]
+        );
 
         RealtimeService::broadcast('notification', [
             'title' => 'Đề tài mới được đề xuất',
@@ -351,12 +363,37 @@ class DeTaiController extends Controller
                 'de_tai_id' => $dangkydetai->de_tai_id,
                 'trang_thai_duyet' => 'DA_DUYET',
             ]);
+
+            $teacher = $request->user();
+            LichSuHoatDong::ghiLog(
+                'DUYET_DE_TAI',
+                "Giảng viên {$teacher->ho_ten} đã phê duyệt đề tài đăng ký cho nhóm #{$groupId}.",
+                null,
+                null,
+                $groupId,
+                'giang_vien',
+                $teacher->ho_ten,
+                ['topic_id' => $dangkydetai->de_tai_id]
+            );
         } else {
             DB::table('dangkydetai')->where('nhom_id', $groupId)->update(['trang_thai_duyet' => 'TU_CHOI']);
             DB::table('nhomsvda')->where('nhom_id', $groupId)->update([
                 'de_tai_id' => null,
                 'trang_thai_duyet' => 'TU_CHOI',
             ]);
+
+            $teacher = $request->user();
+            $lyDo = $request->input('note', '');
+            LichSuHoatDong::ghiLog(
+                'TU_CHOI_DE_TAI',
+                "Giảng viên {$teacher->ho_ten} đã từ chối đề tài đăng ký cho nhóm #{$groupId}." . ($lyDo ? " Lý do: {$lyDo}" : ""),
+                null,
+                null,
+                $groupId,
+                'giang_vien',
+                $teacher->ho_ten,
+                ['topic_id' => $dangkydetai->de_tai_id, 'reason' => $lyDo]
+            );
         }
 
         // Return updated group structure
@@ -505,12 +542,6 @@ class DeTaiController extends Controller
                     $maxSlots = (int) $slotsVal;
                 }
 
-                $huongDeTai = 'PHAN_MEM';
-                $huongUpper = mb_strtoupper($huongDeTaiVal);
-                if (str_contains($huongUpper, 'MẠNG') || str_contains($huongUpper, 'MANG') || str_contains($huongUpper, 'NETWORK')) {
-                    $huongDeTai = 'MANG_MAY_TINH';
-                }
-
                 $deTai = DeTai::create([
                     'dot_id' => $dotId,
                     'giang_vien_id' => $teacherId,
@@ -520,8 +551,8 @@ class DeTaiController extends Controller
                     'trang_thai' => 'CHO_DUYET',
                 ]);
 
-                $dirId = ($huongDeTai === 'MANG_MAY_TINH') ? 3 : 2;
-                $deTai->huongDeTais()->sync([$dirId]);
+                $huongInput = ! empty($huongDeTaiVal) ? $huongDeTaiVal : 'Phát triển phần mềm';
+                $this->deTaiService->syncDirections($deTai, $huongInput);
 
                 $importedCount++;
             }

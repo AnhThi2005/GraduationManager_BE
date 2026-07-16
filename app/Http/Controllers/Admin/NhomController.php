@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\DeTai;
 use App\Models\Dot;
 use App\Models\Nhom;
+use App\Models\LichSuHoatDong;
 use App\Models\SinhVien;
 use App\Services\RealtimeService;
 use Illuminate\Http\Request;
@@ -19,7 +20,7 @@ class NhomController extends Controller
 
     public function layDanhSach(Request $request)
     {
-        $groups = Nhom::orderBy('nhom_id', 'desc')->with(['deTai.giangVien', 'members.lop', 'dot'])
+        $groups = Nhom::orderBy('nhom_id', 'desc')->with(['deTai.giangVien', 'deTai.huongDeTais', 'members.lop', 'dot'])
             ->whereNotNull('de_tai_id')
             ->get();
 
@@ -40,7 +41,7 @@ class NhomController extends Controller
 
     public function xemChiTiet(Request $request, $id)
     {
-        $g = Nhom::with(['deTai.giangVien', 'members.lop', 'dot'])->find($id);
+        $g = Nhom::with(['deTai.giangVien', 'deTai.huongDeTais', 'members.lop', 'dot'])->find($id);
         if (! $g) {
             return response()->json([
                 'success' => false,
@@ -58,7 +59,7 @@ class NhomController extends Controller
 
     public function capNhat(Request $request, $id)
     {
-        $g = Nhom::with(['deTai.giangVien', 'members.lop', 'dot'])->find($id);
+        $g = Nhom::with(['deTai.giangVien', 'deTai.huongDeTais', 'members.lop', 'dot'])->find($id);
         if (! $g) {
             return response()->json([
                 'success' => false,
@@ -159,10 +160,9 @@ class NhomController extends Controller
             }
         }
 
-        $updated = Nhom::with(['deTai.giangVien', 'members.lop', 'dot'])->find($id);
+        $updated = Nhom::with(['deTai.giangVien', 'deTai.huongDeTais', 'members.lop', 'dot'])->find($id);
         $newGroup = $this->transformGroup($updated);
 
-        // Lưu vết quá trình cập nhật nhóm (Audit Log)
         Log::info(sprintf(
             'AUDIT LOG: [UPDATE GROUP] Group ID: %s, Old Status: %s, New Status: %s, Old Members: %s, New Members: %s, IP: %s',
             $id,
@@ -172,6 +172,18 @@ class NhomController extends Controller
             json_encode(collect($newGroup['members'])->map(fn ($m) => "{$m['code']}-{$m['name']}")->all(), JSON_UNESCAPED_UNICODE),
             $request->ip()
         ));
+
+        $admin = $request->user();
+        LichSuHoatDong::ghiLog(
+            'CAP_NHAT_NHOM',
+            "Admin " . ($admin ? $admin->ho_ten : 'Hệ thống') . " đã cập nhật thông tin nhóm #{$id}.",
+            null,
+            null,
+            $id,
+            'admin',
+            $admin ? $admin->ho_ten : 'Hệ thống',
+            ['old' => $oldGroup, 'new' => $newGroup]
+        );
 
         RealtimeService::broadcast('slot_updated', [
             'type' => 'group_updated',
@@ -252,7 +264,7 @@ class NhomController extends Controller
             }
         }
 
-        $newGroup = Nhom::with(['deTai.giangVien', 'members.lop', 'dot'])->find($g->nhom_id);
+        $newGroup = Nhom::with(['deTai.giangVien', 'deTai.huongDeTais', 'members.lop', 'dot'])->find($g->nhom_id);
 
         RealtimeService::broadcast('slot_updated', [
             'type' => 'group_created',
@@ -270,7 +282,7 @@ class NhomController extends Controller
 
     public function xoa(Request $request, $id)
     {
-        $g = Nhom::with(['deTai.giangVien', 'members.lop', 'dot'])->find($id);
+        $g = Nhom::with(['deTai.giangVien', 'deTai.huongDeTais', 'members.lop', 'dot'])->find($id);
         if (! $g) {
             return response()->json([
                 'success' => false,
@@ -301,6 +313,18 @@ class NhomController extends Controller
         DB::table('diembaocao')->where('nhom_id', $id)->delete();
         DB::table('diemtongketdatn')->where('nhom_id', $id)->delete();
         $g->delete();
+
+        $admin = $request->user();
+        LichSuHoatDong::ghiLog(
+            'XOA_NHOM',
+            "Admin " . ($admin ? $admin->ho_ten : 'Hệ thống') . " đã xóa nhóm #{$id}.",
+            null,
+            null,
+            $id,
+            'admin',
+            $admin ? $admin->ho_ten : 'Hệ thống',
+            ['group_id' => $id]
+        );
 
         RealtimeService::broadcast('slot_updated', [
             'type' => 'group_deleted',
@@ -353,7 +377,19 @@ class NhomController extends Controller
         $g->save();
         DB::table('dangkydetai')->where('nhom_id', $id)->update(['trang_thai_duyet' => 'DA_DUYET']);
 
-        $updated = Nhom::with(['deTai.giangVien', 'members.lop', 'dot'])->find($id);
+        $admin = $request->user();
+        LichSuHoatDong::ghiLog(
+            'DUYET_DE_TAI',
+            "Admin " . ($admin ? $admin->ho_ten : 'Hệ thống') . " đã phê duyệt đề tài đăng ký của nhóm #{$id}.",
+            null,
+            null,
+            $id,
+            'admin',
+            $admin ? $admin->ho_ten : 'Hệ thống',
+            ['group_id' => $id]
+        );
+
+        $updated = Nhom::with(['deTai.giangVien', 'deTai.huongDeTais', 'members.lop', 'dot'])->find($id);
 
         RealtimeService::broadcast('slot_updated', [
             'type' => 'group_approved',
@@ -387,7 +423,19 @@ class NhomController extends Controller
         $g->save();
         DB::table('dangkydetai')->where('nhom_id', $id)->update(['trang_thai_duyet' => 'TU_CHOI']);
 
-        $updated = Nhom::with(['deTai.giangVien', 'members.lop', 'dot'])->find($id);
+        $admin = $request->user();
+        LichSuHoatDong::ghiLog(
+            'TU_CHOI_DE_TAI',
+            "Admin " . ($admin ? $admin->ho_ten : 'Hệ thống') . " đã từ chối đề tài đăng ký của nhóm #{$id}.",
+            null,
+            null,
+            $id,
+            'admin',
+            $admin ? $admin->ho_ten : 'Hệ thống',
+            ['group_id' => $id]
+        );
+
+        $updated = Nhom::with(['deTai.giangVien', 'deTai.huongDeTais', 'members.lop', 'dot'])->find($id);
 
         RealtimeService::broadcast('slot_updated', [
             'type' => 'group_rejected',
@@ -406,21 +454,34 @@ class NhomController extends Controller
     public function transformGroup($g)
     {
         $hasIneligible = false;
-        $members = $g->members->map(function ($m) use (&$hasIneligible) {
-            $eligible = ($m->pivot->dieu_kien_lam_do_an ?? 'DAT') === 'DAT';
-            if (! $eligible) {
-                $hasIneligible = true;
-            }
+        $dotId = $g->dot_id;
 
-            return [
-                'id' => (string) $m->sinh_vien_id,
-                'name' => $m->ho_ten,
-                'code' => $m->ma_so_sinh_vien,
-                'class' => $m->lop ? $m->lop->ten_lop : '',
-                'eligible' => $eligible,
-                'reason' => $eligible ? '' : 'Chưa đủ điều kiện làm đồ án',
-            ];
-        })->all();
+        // Lấy danh sách ghi đè từ dot_sinhvien
+        $dotStudents = \DB::table('dot_sinhvien')
+            ->where('dot_id', $dotId)
+            ->whereIn('sinh_vien_id', $g->members->pluck('sinh_vien_id'))
+            ->get()
+            ->keyBy('sinh_vien_id');
+
+        $members = $g->members
+            ->map(function ($m) use (&$hasIneligible, $dotStudents) {
+                $eRecord = $dotStudents->get($m->sinh_vien_id);
+                $eligible = ($eRecord ? ($eRecord->dieu_kien_lam_do_an ?? 'DAT') : 'DAT') === 'DAT';
+                if (! $eligible) {
+                    $hasIneligible = true;
+                }
+
+                return [
+                    'id' => (string) $m->sinh_vien_id,
+                    'name' => $m->ho_ten,
+                    'code' => $m->ma_so_sinh_vien,
+                    'class' => $m->lop ? $m->lop->ten_lop : '',
+                    'eligible' => $eligible,
+                    'reason' => $eligible ? '' : 'Chưa đủ điều kiện làm đồ án',
+                ];
+            })
+            ->values()
+            ->all();
 
         $status = 'PENDING';
         if ($g->trang_thai_duyet === 'DA_DUYET') {
@@ -449,5 +510,98 @@ class NhomController extends Controller
             'ket_qua_phan_bien' => $g->ket_qua_phan_bien,
             'hoi_dong_id' => $g->hoi_dong_id,
         ];
+    }
+
+    public function swapMembers(Request $request)
+    {
+        $request->validate([
+            'studentIdA' => 'required',
+            'studentIdB' => 'required',
+        ]);
+
+        $studentIdA = $request->input('studentIdA');
+        $studentIdB = $request->input('studentIdB');
+
+        $svA = SinhVien::where('ma_so_sinh_vien', $studentIdA)->orWhere('sinh_vien_id', $studentIdA)->first();
+        $svB = SinhVien::where('ma_so_sinh_vien', $studentIdB)->orWhere('sinh_vien_id', $studentIdB)->first();
+
+        if (!$svA || !$svB) {
+            return response()->json(['success' => false, 'message' => 'Không tìm thấy sinh viên!'], 400);
+        }
+
+        // Tìm nhóm của hai sinh viên
+        $tvA = DB::table('thanhviennhom')->where('sinh_vien_id', $svA->sinh_vien_id)->first();
+        $tvB = DB::table('thanhviennhom')->where('sinh_vien_id', $svB->sinh_vien_id)->first();
+
+        // Kiểm tra điều kiện làm đồ án của svB trong đợt hiện tại
+        if ($tvA) {
+            $nhomA = DB::table('nhomsvda')->where('nhom_id', $tvA->nhom_id)->first();
+            $dotId = $nhomA ? $nhomA->dot_id : null;
+            if ($dotId) {
+                $eRecord = DB::table('dot_sinhvien')
+                    ->where('dot_id', $dotId)
+                    ->where('sinh_vien_id', $svB->sinh_vien_id)
+                    ->first();
+                $eligible = ($eRecord ? ($eRecord->dieu_kien_lam_do_an ?? 'DAT') : 'DAT') === 'DAT';
+                if (!$eligible) {
+                    return response()->json(['success' => false, 'message' => "Sinh viên {$svB->ho_ten} không đủ điều kiện làm đồ án!"], 400);
+                }
+            }
+        }
+
+        if (!$tvA || !$tvB) {
+            return response()->json(['success' => false, 'message' => 'Cả hai sinh viên phải đang ở trong một nhóm nào đó!'], 400);
+        }
+
+        $groupAId = $tvA->nhom_id;
+        $groupBId = $tvB->nhom_id;
+
+        if ($groupAId === $groupBId) {
+            return response()->json(['success' => false, 'message' => 'Hai sinh viên phải thuộc hai nhóm khác nhau!'], 400);
+        }
+
+        DB::beginTransaction();
+        try {
+            // Hoán đổi nhom_id của 2 thành viên
+            DB::table('thanhviennhom')->where('sinh_vien_id', $svA->sinh_vien_id)->update(['nhom_id' => $groupBId]);
+            DB::table('thanhviennhom')->where('sinh_vien_id', $svB->sinh_vien_id)->update(['nhom_id' => $groupAId]);
+
+            $admin = $request->user();
+            \App\Models\LichSuHoatDong::ghiLog(
+                'CAP_NHAT_NHOM',
+                "Admin " . ($admin ? $admin->ho_ten : 'Hệ thống') . " đã hoán đổi vị trí nhóm của sinh viên {$svA->ho_ten} (Nhóm #{$groupAId}) và sinh viên {$svB->ho_ten} (Nhóm #{$groupBId}).",
+                null,
+                null,
+                $groupAId,
+                'admin',
+                $admin ? $admin->ho_ten : 'Hệ thống',
+                ['studentIdA' => $svA->sinh_vien_id, 'studentIdB' => $svB->sinh_vien_id, 'groupAId' => $groupAId, 'groupBId' => $groupBId]
+            );
+
+            // Ghi log cho nhóm B nữa
+            \App\Models\LichSuHoatDong::ghiLog(
+                'CAP_NHAT_NHOM',
+                "Admin " . ($admin ? $admin->ho_ten : 'Hệ thống') . " đã hoán đổi vị trí nhóm của sinh viên {$svA->ho_ten} (Nhóm #{$groupAId}) và sinh viên {$svB->ho_ten} (Nhóm #{$groupBId}).",
+                null,
+                null,
+                $groupBId,
+                'admin',
+                $admin ? $admin->ho_ten : 'Hệ thống',
+                ['studentIdA' => $svA->sinh_vien_id, 'studentIdB' => $svB->sinh_vien_id, 'groupAId' => $groupAId, 'groupBId' => $groupBId]
+            );
+
+            DB::commit();
+
+            RealtimeService::broadcast('slot_updated', ['type' => 'group_updated', 'groupId' => $groupAId]);
+            RealtimeService::broadcast('slot_updated', ['type' => 'group_updated', 'groupId' => $groupBId]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Hoán đổi thành viên thành công!',
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json(['success' => false, 'message' => 'Lỗi hệ thống: ' . $e->getMessage()], 500);
+        }
     }
 }

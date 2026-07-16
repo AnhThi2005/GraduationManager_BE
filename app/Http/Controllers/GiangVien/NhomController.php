@@ -237,7 +237,7 @@ class NhomController extends Controller
             ->whereHas('deTai', function ($q) use ($teacherId) {
                 $q->where('giang_vien_id', $teacherId);
             })
-            ->with(['members.lop', 'deTai'])
+            ->with(['members.lop', 'deTai.huongDeTais'])
             ->get();
 
         $allMemberIds = $datnGroups->flatMap(function ($g) {
@@ -418,7 +418,7 @@ class NhomController extends Controller
             ->whereHas('deTai', function ($q) use ($teacherId) {
                 $q->where('giang_vien_id', $teacherId);
             })
-            ->with(['members.lop', 'deTai'])
+            ->with(['members.lop', 'deTai.huongDeTais'])
             ->get()
             ->map(function ($g) {
                 $statusText = $g->ket_qua_huong_dan !== null ? 'reviewed' : 'pending';
@@ -474,7 +474,7 @@ class NhomController extends Controller
             ->whereHas('deTai', function ($q) use ($teacherId) {
                 $q->where('giang_vien_id', '!=', $teacherId);
             })
-            ->with(['members.lop', 'deTai.giangVien'])
+            ->with(['members.lop', 'deTai.giangVien', 'deTai.huongDeTais'])
             ->get()
             ->map(function ($g) {
                 $statusText = $g->ket_qua_phan_bien !== null ? 'reviewed' : 'pending';
@@ -528,7 +528,7 @@ class NhomController extends Controller
         $action = $request->input('action');
         $eval = ($action === 'accept') ? 'DAT' : 'KHONG_DAT';
 
-        $g = Nhom::with(['deTai.giangVien', 'members.lop'])->find($groupId);
+        $g = Nhom::with(['deTai.giangVien', 'deTai.huongDeTais', 'members.lop'])->find($groupId);
         if (! $g) {
             return response()->json(['success' => false, 'message' => 'Không tìm thấy nhóm này!'], 404);
         }
