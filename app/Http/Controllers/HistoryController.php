@@ -34,6 +34,12 @@ class HistoryController extends Controller
                 }
             });
 
+        // Chuông thông báo chỉ cần vài dòng gần nhất nên truyền "limit" để không phải quét/tải
+        // toàn bộ lịch sử mỗi lần — trang "Lịch sử hoạt động" đầy đủ thì không truyền limit.
+        if ($request->filled('limit')) {
+            $query->limit((int) $request->input('limit'));
+        }
+
         $logs = $query->orderBy('created_at', 'desc')->get();
 
         return response()->json([
@@ -127,6 +133,12 @@ class HistoryController extends Controller
                     $q->orWhereIn('nhom_id', $groupIdsFromTopics);
                 }
             });
+
+        // Chuông thông báo chỉ cần vài dòng gần nhất nên truyền "limit" để không phải quét/tải
+        // toàn bộ lịch sử mỗi lần — trang "Lịch sử" đầy đủ thì không truyền limit.
+        if ($request->filled('limit')) {
+            $query->limit((int) $request->input('limit'));
+        }
 
         $logs = $query->orderBy('created_at', 'desc')->get();
 
