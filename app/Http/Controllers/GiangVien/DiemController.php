@@ -81,6 +81,27 @@ class DiemController extends Controller
         $councilGroups = [];
         $scoreRows = [];
 
+        // Gộp truy vấn lichbaove/diemhoidongbaove/diembaocao của TOÀN BỘ nhóm trong TẤT CẢ
+        // hội đồng của giảng viên này thành 3 query duy nhất (thay vì 1 query lichbaove/nhóm +
+        // 1 query diemhoidongbaove/thành viên + 1 query diembaocao/thành viên, lặp lại y hệt ở
+        // vòng lặp thứ 2 chỉ để đếm — vòng lặp thứ 2 được gộp luôn vào vòng lặp chính bên dưới).
+        $allNhomIds = $councils->flatMap(fn ($hd) => $hd->nhoms->pluck('nhom_id'))->unique()->values();
+        $lichByNhom = collect();
+        $diemHoiDongByMember = collect();
+        $diemBaoCaoByMember = collect();
+        if ($allNhomIds->isNotEmpty()) {
+            $lichByNhom = DB::table('lichbaove')->whereIn('nhom_id', $allNhomIds)->get()->keyBy('nhom_id');
+            $diemHoiDongByMember = DB::table('diemhoidongbaove')
+                ->whereIn('nhom_id', $allNhomIds)
+                ->where('giang_vien_id', $teacherId)
+                ->get()
+                ->keyBy(fn ($r) => $r->sinh_vien_id.'-'.$r->nhom_id);
+            $diemBaoCaoByMember = DB::table('diembaocao')
+                ->whereIn('nhom_id', $allNhomIds)
+                ->get()
+                ->keyBy(fn ($r) => $r->sinh_vien_id.'-'.$r->nhom_id);
+        }
+
         foreach ($councils as $hd) {
             $myPivot = $hd->giangViens->firstWhere('giang_vien_id', $teacherId);
             $roleText = 'Ủy viên';
@@ -101,6 +122,7 @@ class DiemController extends Controller
             })->all();
 
             $groups = [];
+            $done = 0;
             foreach ($hd->nhoms as $g) {
                 $studentsList = $g->members->map(function ($m) {
                     return [
@@ -110,7 +132,7 @@ class DiemController extends Controller
                     ];
                 })->all();
 
-                $lich = DB::table('lichbaove')->where('nhom_id', $g->nhom_id)->first();
+                $lich = $lichByNhom->get($g->nhom_id);
                 $reviewerId = null;
                 if ($lich) {
                     $reviewerId = $lich->giang_vien_pb_id;
@@ -135,17 +157,15 @@ class DiemController extends Controller
                     'students' => $studentsList,
                 ];
 
-                foreach ($g->members as $m) {
-                    $myScore = DB::table('diemhoidongbaove')
-                        ->where('sinh_vien_id', $m->sinh_vien_id)
-                        ->where('nhom_id', $g->nhom_id)
-                        ->where('giang_vien_id', $teacherId)
-                        ->first();
+                $isAdvisor = ($g->deTai && $g->deTai->giang_vien_id == $teacherId);
+                $isReviewer = ($reviewerId == $teacherId);
+                $hasAllScores = true;
 
-                    $dbc = DB::table('diembaocao')->where('sinh_vien_id', $m->sinh_vien_id)->where('nhom_id', $g->nhom_id)->first();
+                foreach ($g->members as $m) {
+                    $memberKey = $m->sinh_vien_id.'-'.$g->nhom_id;
+                    $myScore = $diemHoiDongByMember->get($memberKey);
+                    $dbc = $diemBaoCaoByMember->get($memberKey);
                     $report = null;
-                    $isAdvisor = ($g->deTai && $g->deTai->giang_vien_id == $teacherId);
-                    $isReviewer = ($reviewerId == $teacherId);
 
                     if ($isAdvisor) {
                         $report = $dbc ? ($dbc->diem_gvhd !== null ? floatval($dbc->diem_gvhd) : null) : null;
@@ -166,52 +186,24 @@ class DiemController extends Controller
                         'hasReport' => $report !== null,
                         'hasDefense' => $myScore !== null,
                     ];
-                }
-            }
 
-            $done = 0;
-            foreach ($hd->nhoms as $g) {
-                $lich = DB::table('lichbaove')->where('nhom_id', $g->nhom_id)->first();
-                $reviewerId = null;
-                if ($lich) {
-                    $reviewerId = $lich->giang_vien_pb_id;
-                    if (!$reviewerId && $lich->ghi_chu) {
-                        $decoded = json_decode($lich->ghi_chu, true);
-                        $reviewerId = $decoded['reviewer_id'] ?? null;
-                    }
-                }
-                $isAdvisor = ($g->deTai && $g->deTai->giang_vien_id == $teacherId);
-                $isReviewer = ($reviewerId == $teacherId);
-
-                $hasAllScores = true;
-                foreach ($g->members as $m) {
-                    $defenseExists = DB::table('diemhoidongbaove')
-                        ->where('sinh_vien_id', $m->sinh_vien_id)
-                        ->where('nhom_id', $g->nhom_id)
-                        ->where('giang_vien_id', $teacherId)
-                        ->exists();
-
+                    // Suy ra trực tiếp từ $myScore/$dbc đã lấy ở trên (cùng điều kiện lọc với
+                    // truy vấn ::exists() ở vòng lặp thứ 2 cũ) để tính "done" mà không cần
+                    // duyệt lại toàn bộ hội đồng/nhóm/thành viên một lần nữa.
+                    $defenseExists = $myScore !== null;
                     if ($isAdvisor) {
-                        $reportExists = DB::table('diembaocao')
-                            ->where('sinh_vien_id', $m->sinh_vien_id)
-                            ->where('nhom_id', $g->nhom_id)
-                            ->whereNotNull('diem_gvhd')
-                            ->exists();
+                        $reportExists = $dbc && $dbc->diem_gvhd !== null;
                     } elseif ($isReviewer) {
-                        $reportExists = DB::table('diembaocao')
-                            ->where('sinh_vien_id', $m->sinh_vien_id)
-                            ->where('nhom_id', $g->nhom_id)
-                            ->whereNotNull('diem_gvpb')
-                            ->exists();
+                        $reportExists = $dbc && $dbc->diem_gvpb !== null;
                     } else {
                         $reportExists = true;
                     }
 
                     if (! $defenseExists || ! $reportExists) {
                         $hasAllScores = false;
-                        break;
                     }
                 }
+
                 if ($hasAllScores && $g->members->count() > 0) {
                     $done++;
                 }

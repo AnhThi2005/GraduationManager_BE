@@ -73,8 +73,17 @@ class DeTaiService
 
         $paginator = $query->paginate($perPage);
 
-        $rows = collect($paginator->items())->map(function ($deTai) {
-            return $this->transformTopic($deTai);
+        // Gộp COUNT slot đã đăng ký/đã duyệt của cả trang thành 2 query duy nhất
+        // (group theo de_tai_id) thay vì 2 query riêng cho từng đề tài, tránh N+1.
+        $deTaiIds = collect($paginator->items())->pluck('de_tai_id');
+        [$occupiedByTopic, $approvedByTopic] = $this->getSlotCountsForTopics($deTaiIds);
+
+        $rows = collect($paginator->items())->map(function ($deTai) use ($occupiedByTopic, $approvedByTopic) {
+            return $this->transformTopic(
+                $deTai,
+                $occupiedByTopic[$deTai->de_tai_id] ?? 0,
+                $approvedByTopic[$deTai->de_tai_id] ?? 0
+            );
         })->all();
 
         return [
@@ -217,25 +226,64 @@ class DeTaiService
     // ==========================================================
 
     /**
-     * Map DeTai model sang cấu trúc JSON Frontend mong đợi
+     * Tính số slot đã đăng ký / đã duyệt cho một tập đề tài trong 1-2 query gộp
+     * (group theo de_tai_id), dùng cho danh sách để tránh N+1 (2 query/dòng).
+     *
+     * @return array{0: array<int,int>, 1: array<int,int>} [occupiedByTopic, approvedByTopic]
      */
-    private function transformTopic($deTai)
+    private function getSlotCountsForTopics($deTaiIds)
+    {
+        $deTaiIds = collect($deTaiIds)->filter()->values();
+        if ($deTaiIds->isEmpty()) {
+            return [[], []];
+        }
+
+        $occupiedByTopic = DB::table('thanhviennhom')
+            ->join('nhomsvda', 'thanhviennhom.nhom_id', '=', 'nhomsvda.nhom_id')
+            ->whereIn('nhomsvda.de_tai_id', $deTaiIds)
+            ->selectRaw('nhomsvda.de_tai_id as de_tai_id, count(*) as total')
+            ->groupBy('nhomsvda.de_tai_id')
+            ->pluck('total', 'de_tai_id');
+
+        $approvedByTopic = DB::table('thanhviennhom')
+            ->join('nhomsvda', 'thanhviennhom.nhom_id', '=', 'nhomsvda.nhom_id')
+            ->whereIn('nhomsvda.de_tai_id', $deTaiIds)
+            ->where('nhomsvda.trang_thai_duyet', 'DA_DUYET')
+            ->selectRaw('nhomsvda.de_tai_id as de_tai_id, count(*) as total')
+            ->groupBy('nhomsvda.de_tai_id')
+            ->pluck('total', 'de_tai_id');
+
+        return [$occupiedByTopic->all(), $approvedByTopic->all()];
+    }
+
+    /**
+     * Map DeTai model sang cấu trúc JSON Frontend mong đợi.
+     *
+     * $occupiedSlots/$approvedSlots có thể truyền sẵn (đã gộp query cho cả danh sách,
+     * xem getListTopic) — nếu không truyền (null), tự tính riêng cho 1 đề tài (dùng ở
+     * getTopicDetail, chỉ 1 dòng nên không phát sinh N+1).
+     */
+    private function transformTopic($deTai, $occupiedSlots = null, $approvedSlots = null)
     {
         // Tính số lượng SV hiện tại đã đăng ký đề tài này
-        $occupiedSlots = DB::table('thanhviennhom')
-            ->join('nhomsvda', 'thanhviennhom.nhom_id', '=', 'nhomsvda.nhom_id')
-            ->where('nhomsvda.de_tai_id', $deTai->de_tai_id)
-            ->count();
+        if ($occupiedSlots === null) {
+            $occupiedSlots = DB::table('thanhviennhom')
+                ->join('nhomsvda', 'thanhviennhom.nhom_id', '=', 'nhomsvda.nhom_id')
+                ->where('nhomsvda.de_tai_id', $deTai->de_tai_id)
+                ->count();
+        }
 
         $maxSlots = $deTai->so_luong_sv_toi_da ?? 4;
         $slotsStr = $occupiedSlots.'/'.$maxSlots;
 
         // Tính số lượng SV đã được duyệt vào đề tài này
-        $approvedSlots = DB::table('thanhviennhom')
-            ->join('nhomsvda', 'thanhviennhom.nhom_id', '=', 'nhomsvda.nhom_id')
-            ->where('nhomsvda.de_tai_id', $deTai->de_tai_id)
-            ->where('nhomsvda.trang_thai_duyet', 'DA_DUYET')
-            ->count();
+        if ($approvedSlots === null) {
+            $approvedSlots = DB::table('thanhviennhom')
+                ->join('nhomsvda', 'thanhviennhom.nhom_id', '=', 'nhomsvda.nhom_id')
+                ->where('nhomsvda.de_tai_id', $deTai->de_tai_id)
+                ->where('nhomsvda.trang_thai_duyet', 'DA_DUYET')
+                ->count();
+        }
 
         if ($approvedSlots > $maxSlots) {
             $approvedSlots = $maxSlots;

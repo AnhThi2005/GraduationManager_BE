@@ -516,11 +516,24 @@ class DeTaiController extends Controller
             return response()->json(['success' => false, 'message' => 'Bạn không đủ điều kiện làm đồ án trong đợt này!'], 400);
         }
 
-        // Tìm sinh viên được mời
-        $targetSv = SinhVien::where('ma_so_sinh_vien', $studentCode)->first();
-        if (!$targetSv) {
+        // Tìm sinh viên được mời (chấp nhận tìm theo mã số sinh viên hoặc họ tên)
+        $targetSvs = SinhVien::where('ma_so_sinh_vien', $studentCode)
+            ->orWhere('ho_ten', $studentCode)
+            ->get();
+
+        if ($targetSvs->isEmpty()) {
+            $targetSvs = SinhVien::where('ho_ten', 'like', '%'.$studentCode.'%')->get();
+        }
+
+        if ($targetSvs->isEmpty()) {
             return response()->json(['success' => false, 'message' => 'Không tìm thấy sinh viên được mời.'], 400);
         }
+
+        if ($targetSvs->count() > 1) {
+            return response()->json(['success' => false, 'message' => 'Tìm thấy nhiều sinh viên khớp với thông tin nhập. Vui lòng nhập Mã số sinh viên (MSSV) để mời chính xác.'], 400);
+        }
+
+        $targetSv = $targetSvs->first();
 
         // Kiểm tra điều kiện làm đồ án của sinh viên được mời
         $targetRecord = DB::table('dot_sinhvien')
@@ -604,10 +617,10 @@ class DeTaiController extends Controller
                 }
             }
 
-            // Tìm sinh viên cần mời theo mã số sinh viên
-            $targetStudent = SinhVien::where('ma_so_sinh_vien', $studentCode)->first();
+            // Tìm sinh viên cần mời theo sinh_vien_id đã được xác định trước đó
+            $targetStudent = SinhVien::find($targetSv->sinh_vien_id);
             if (! $targetStudent) {
-                return response()->json(['success' => false, 'message' => 'Không tìm thấy sinh viên có mã số '.$studentCode], 404);
+                return response()->json(['success' => false, 'message' => 'Không tìm thấy sinh viên có mã số '.$targetSv->ma_so_sinh_vien], 404);
             }
 
             // Kiểm tra xem sinh viên được mời có đang hoạt động không

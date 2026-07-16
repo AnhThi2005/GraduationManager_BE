@@ -20,6 +20,9 @@ class DiemSinhVienController extends Controller
      */
     public function layDanhSach(Request $request)
     {
+        $limit = $request->input('limit', 10);
+        $page = $request->input('page', 1);
+
         $filters = [
             'periodId' => $request->input('periodId'),
             'mode' => $request->input('mode', 'internship'),
@@ -28,7 +31,7 @@ class DiemSinhVienController extends Controller
             'status' => $request->input('status'),
         ];
 
-        $res = $this->diemSinhVienService->getScoresList($filters);
+        $res = $this->diemSinhVienService->getScoresList($filters, $limit, $page);
 
         return response()->json([
             'code' => 200,
@@ -37,6 +40,15 @@ class DiemSinhVienController extends Controller
                     'rows' => $res['rows'],
                     'total' => $res['total'],
                 ],
+            ],
+            'pagination' => [
+                'total' => $res['total'],
+                'totalPages' => $res['lastPage'],
+                'limit' => $res['perPage'],
+                'first' => $res['onFirstPage'],
+                'last' => ! $res['hasMorePages'],
+                'hasNext' => $res['hasMorePages'],
+                'hasPrevious' => ! $res['onFirstPage'],
             ],
         ], 200);
     }

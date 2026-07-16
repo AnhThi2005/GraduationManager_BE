@@ -82,13 +82,26 @@ class NhomController extends Controller
                 'congty.ma_so_thue',
                 'congty.email_lien_he',
             ])
+            ->get();
+
+        // Gộp truy vấn báo cáo tiến độ + nhận xét của TOÀN BỘ sinh viên trong danh sách
+        // thành 2 query duy nhất (thay vì 1 query báo cáo + 1 query nhận xét mỗi tuần đã
+        // nộp, lặp lại cho từng sinh viên) — tránh N+1 khi số sinh viên/tuần báo cáo tăng.
+        $tttnStudentIds = $tttnList->pluck('sinh_vien_id')->unique()->values();
+        $tttnReportsByStudent = DB::table('baocaotiendo')
+            ->whereIn('sinh_vien_id', $tttnStudentIds)
+            ->where('dot_id', $dotId)
+            ->where('loai_bao_cao', 'THUC_TAP')
             ->get()
-            ->map(function ($row) use ($dotId, $activePeriod, $end, $now, $batchDeadline) {
-                $dbReports = DB::table('baocaotiendo')
-                    ->where('sinh_vien_id', $row->sinh_vien_id)
-                    ->where('dot_id', $dotId)
-                    ->where('loai_bao_cao', 'THUC_TAP')
-                    ->get()
+            ->groupBy('sinh_vien_id');
+        $tttnCommentsByReport = DB::table('nhanxetbaocao')
+            ->whereIn('bao_cao_id', $tttnReportsByStudent->flatten()->pluck('bao_cao_id'))
+            ->get()
+            ->keyBy('bao_cao_id');
+
+        $tttnList = $tttnList
+            ->map(function ($row) use ($dotId, $activePeriod, $end, $now, $batchDeadline, $tttnReportsByStudent, $tttnCommentsByReport) {
+                $dbReports = ($tttnReportsByStudent->get($row->sinh_vien_id) ?? collect())
                     ->keyBy('tuan_so');
 
                 $reports = [];
@@ -116,9 +129,7 @@ class NhomController extends Controller
                     $appliedDeadline = $reportStart->copy()->addWeeks($w)->endOfDay();
 
                     if ($rep) {
-                        $commentRecord = DB::table('nhanxetbaocao')
-                            ->where('bao_cao_id', $rep->bao_cao_id)
-                            ->first();
+                        $commentRecord = $tttnCommentsByReport->get($rep->bao_cao_id);
 
                         $reports[] = [
                             'bao_cao_id' => $rep->bao_cao_id,
@@ -215,21 +226,39 @@ class NhomController extends Controller
             ->all();
 
         // 2. DATN List
-        $datnList = Nhom::where('dot_id', $dotId)
+        $datnGroups = Nhom::where('dot_id', $dotId)
             ->where('trang_thai_duyet', 'DA_DUYET')
             ->whereHas('deTai', function ($q) use ($teacherId) {
                 $q->where('giang_vien_id', $teacherId);
             })
             ->with(['members.lop', 'deTai.huongDeTais'])
+            ->get();
+
+        // Gộp truy vấn báo cáo tiến độ + nhận xét của TOÀN BỘ thành viên trong TOÀN BỘ
+        // nhóm thành 2 query duy nhất, thay vì 1 query báo cáo mỗi nhóm + 1 query nhận
+        // xét mỗi tuần đã nộp — tránh N+1 khi số nhóm/tuần báo cáo tăng.
+        $datnAllMemberIds = $datnGroups->flatMap(function ($g) {
+            return $g->members->pluck('sinh_vien_id');
+        })->unique()->values();
+        $datnReportsByStudent = DB::table('baocaotiendo')
+            ->whereIn('sinh_vien_id', $datnAllMemberIds)
+            ->where('dot_id', $dotId)
+            ->where('loai_bao_cao', 'DO_AN')
             ->get()
-            ->map(function ($g) use ($dotId, $activePeriod, $end, $now, $batchDeadline) {
+            ->groupBy('sinh_vien_id');
+        $datnCommentsByReport = DB::table('nhanxetbaocao')
+            ->whereIn('bao_cao_id', $datnReportsByStudent->flatten()->pluck('bao_cao_id'))
+            ->get()
+            ->keyBy('bao_cao_id');
+
+        $datnList = $datnGroups
+            ->map(function ($g) use ($dotId, $activePeriod, $end, $now, $batchDeadline, $datnReportsByStudent, $datnCommentsByReport) {
                 $memberIds = $g->members->pluck('sinh_vien_id');
 
-                $dbReports = DB::table('baocaotiendo')
-                    ->whereIn('sinh_vien_id', $memberIds)
-                    ->where('dot_id', $dotId)
-                    ->where('loai_bao_cao', 'DO_AN')
-                    ->get()
+                $dbReports = $memberIds
+                    ->flatMap(function ($sinhVienId) use ($datnReportsByStudent) {
+                        return $datnReportsByStudent->get($sinhVienId) ?? collect();
+                    })
                     ->keyBy('tuan_so');
 
                 $reports = [];
@@ -257,9 +286,7 @@ class NhomController extends Controller
                     $appliedDeadline = $reportStart->copy()->addWeeks($w)->endOfDay();
 
                     if ($rep) {
-                        $commentRecord = DB::table('nhanxetbaocao')
-                            ->where('bao_cao_id', $rep->bao_cao_id)
-                            ->first();
+                        $commentRecord = $datnCommentsByReport->get($rep->bao_cao_id);
 
                         $reports[] = [
                             'bao_cao_id' => $rep->bao_cao_id,

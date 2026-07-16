@@ -18,10 +18,15 @@ class HoiDongController extends Controller
 
     public function layDanhSach(Request $request)
     {
-        $councils = HoiDong::orderBy('hoi_dong_id', 'desc')->with(['giangViens', 'nhoms.members', 'nhoms.deTai'])->get();
+        $councils = HoiDong::orderBy('hoi_dong_id', 'desc')->with(['giangViens', 'nhoms.members', 'nhoms.deTai.giangVien'])->get();
 
-        $rows = $councils->map(function ($hd) {
-            return $this->transformCouncil($hd);
+        // Tải danh sách giảng viên MỘT LẦN cho cả trang thay vì tải lại toàn bộ bảng
+        // giảng viên cho từng hội đồng (tránh N+1: trước đây transformCouncil() tự
+        // GiangVien::all() bên trong, chạy lại y hệt cho mỗi hội đồng trong danh sách).
+        $lecturers = GiangVien::all()->keyBy('giang_vien_id');
+
+        $rows = $councils->map(function ($hd) use ($lecturers) {
+            return $this->transformCouncil($hd, $lecturers);
         })->all();
 
         return response()->json([
@@ -34,7 +39,7 @@ class HoiDongController extends Controller
 
     public function xemChiTiet(Request $request, $id)
     {
-        $hd = HoiDong::with(['giangViens', 'nhoms.members', 'nhoms.deTai'])->find($id);
+        $hd = HoiDong::with(['giangViens', 'nhoms.members', 'nhoms.deTai.giangVien'])->find($id);
         if (! $hd) {
             return response()->json([
                 'success' => false,
@@ -42,10 +47,12 @@ class HoiDongController extends Controller
             ], 404);
         }
 
+        $lecturers = GiangVien::all()->keyBy('giang_vien_id');
+
         return response()->json([
             'code' => 200,
             'results' => [
-                'object' => $this->transformCouncil($hd),
+                'object' => $this->transformCouncil($hd, $lecturers),
             ],
         ], 200);
     }
@@ -255,7 +262,7 @@ class HoiDongController extends Controller
                 ]);
             }
 
-            $hdLoad = HoiDong::with(['giangViens', 'nhoms.members', 'nhoms.deTai'])->find($hd->hoi_dong_id);
+            $hdLoad = HoiDong::with(['giangViens', 'nhoms.members', 'nhoms.deTai.giangVien'])->find($hd->hoi_dong_id);
 
             return response()->json([
                 'code' => 200,
@@ -477,7 +484,7 @@ class HoiDongController extends Controller
                 }
             }
 
-            $hdLoad = HoiDong::with(['giangViens', 'nhoms.members', 'nhoms.deTai'])->find($hd->hoi_dong_id);
+            $hdLoad = HoiDong::with(['giangViens', 'nhoms.members', 'nhoms.deTai.giangVien'])->find($hd->hoi_dong_id);
 
             return response()->json([
                 'code' => 200,
@@ -652,8 +659,14 @@ class HoiDongController extends Controller
         }
     }
 
-    private function transformCouncil($hd)
+    private function transformCouncil($hd, $lecturers = null)
     {
+        // Cho phép gọi lẻ transformCouncil() mà không truyền $lecturers (không có ở đâu
+        // trong codebase hiện tại, nhưng giữ an toàn nếu sau này có chỗ gọi trực tiếp).
+        if ($lecturers === null) {
+            $lecturers = GiangVien::all()->keyBy('giang_vien_id');
+        }
+
         $chair = [];
         $reviewer = [];
         $member = [];
@@ -677,9 +690,6 @@ class HoiDongController extends Controller
             ->where('hoi_dong_id', $hd->hoi_dong_id)
             ->get()
             ->keyBy('nhom_id');
-
-        // Fetch all lecturers to look up names
-        $lecturers = GiangVien::all()->keyBy('giang_vien_id');
 
         $topics = [];
         $topicGroups = [];
@@ -763,13 +773,13 @@ class HoiDongController extends Controller
 
                 // Resolve name strings to numeric IDs for backward compatibility
                 if ($reviewerId && !is_numeric($reviewerId)) {
-                    $foundGv = GiangVien::where('ho_ten', $reviewerId)->first();
+                    $foundGv = $lecturers->firstWhere('ho_ten', $reviewerId);
                     if ($foundGv) {
                         $reviewerId = (string) $foundGv->giang_vien_id;
                     }
                 }
                 if ($examinerId && !is_numeric($examinerId)) {
-                    $foundGv = GiangVien::where('ho_ten', $examinerId)->first();
+                    $foundGv = $lecturers->firstWhere('ho_ten', $examinerId);
                     if ($foundGv) {
                         $examinerId = (string) $foundGv->giang_vien_id;
                     }
@@ -779,7 +789,7 @@ class HoiDongController extends Controller
                     if (is_numeric($exIdOrName)) {
                         $rawExMapped[] = (string) $exIdOrName;
                     } else {
-                        $foundGv = GiangVien::where('ho_ten', $exIdOrName)->first();
+                        $foundGv = $lecturers->firstWhere('ho_ten', $exIdOrName);
                         if ($foundGv) {
                             $rawExMapped[] = (string) $foundGv->giang_vien_id;
                         } else {
@@ -795,7 +805,7 @@ class HoiDongController extends Controller
                 $rawExMapped = [];
                 foreach ($rawEx as $eid) {
                     if ($eid && !is_numeric($eid)) {
-                        $foundGv = GiangVien::where('ho_ten', $eid)->first();
+                        $foundGv = $lecturers->firstWhere('ho_ten', $eid);
                         $eid = $foundGv ? (string) $foundGv->giang_vien_id : $eid;
                     }
                     $exGv = $lecturers->get($eid);
@@ -810,7 +820,7 @@ class HoiDongController extends Controller
                 $rawEx = $rawExMapped;
             } elseif ($examinerId) {
                 if ($examinerId && !is_numeric($examinerId)) {
-                    $foundGv = GiangVien::where('ho_ten', $examinerId)->first();
+                    $foundGv = $lecturers->firstWhere('ho_ten', $examinerId);
                     $examinerId = $foundGv ? (string) $foundGv->giang_vien_id : $examinerId;
                 }
                 $rawEx = [$examinerId];

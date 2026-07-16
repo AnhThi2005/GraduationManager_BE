@@ -9,7 +9,7 @@ class DiemSinhVienService
     /**
      * Lấy danh sách điểm tốt nghiệp/thực tập của sinh viên
      */
-    public function getScoresList(array $filters)
+    public function getScoresList(array $filters, $perPage = 10, $page = 1)
     {
         $dotId = $filters['periodId'] ?? null;
         $loai = isset($filters['mode']) && $filters['mode'] === 'project' ? 'DO_AN' : 'THUC_TAP';
@@ -56,6 +56,23 @@ class DiemSinhVienService
                 ]);
         } else {
             // Điểm đồ án tốt nghiệp (DATN)
+            // Gộp 3 correlated subquery/dòng (diem_thuyet_trinh, diem_demo, diem_van_dap) +
+            // 3 subquery đếm thanhvienhoidong lặp lại y hệt thành 2 bảng tổng hợp (SUM/COUNT
+            // theo GROUP BY) rồi LEFT JOIN 1 lần, thay vì để MySQL chạy lại subquery cho từng dòng.
+            $dhbvAgg = DB::table('diemhoidongbaove')
+                ->select(
+                    'sinh_vien_id',
+                    'nhom_id',
+                    DB::raw('SUM(diem_thuyet_trinh) as sum_thuyet_trinh'),
+                    DB::raw('SUM(diem_demo) as sum_demo'),
+                    DB::raw('SUM(diem_van_dap) as sum_van_dap')
+                )
+                ->groupBy('sinh_vien_id', 'nhom_id');
+
+            $thdAgg = DB::table('thanhvienhoidong')
+                ->select('hoi_dong_id', DB::raw('COUNT(*) as total_lecturers'))
+                ->groupBy('hoi_dong_id');
+
             $studentsQuery = DB::table('thanhviennhom')
                 ->join('nhomsvda', 'thanhviennhom.nhom_id', '=', 'nhomsvda.nhom_id')
                 ->where('nhomsvda.dot_id', $dotId)
@@ -67,6 +84,13 @@ class DiemSinhVienService
                     $join->on('sinhvien.sinh_vien_id', '=', 'diemtongketdatn.sinh_vien_id')
                         ->on('nhomsvda.nhom_id', '=', 'diemtongketdatn.nhom_id');
                 })
+                ->leftJoinSub($dhbvAgg, 'dhbv', function ($join) {
+                    $join->on('dhbv.sinh_vien_id', '=', 'sinhvien.sinh_vien_id')
+                        ->on('dhbv.nhom_id', '=', 'nhomsvda.nhom_id');
+                })
+                ->leftJoinSub($thdAgg, 'thd', function ($join) {
+                    $join->on('thd.hoi_dong_id', '=', 'nhomsvda.hoi_dong_id');
+                })
                 ->select([
                     'sinhvien.sinh_vien_id',
                     'sinhvien.ma_so_sinh_vien as studentId',
@@ -75,9 +99,9 @@ class DiemSinhVienService
                     'detai.ten_de_tai as topicName',
                     'giangvien.ho_ten as mentor',
                     'diemtongketdatn.tong_ket_id as id',
-                    DB::raw('(SELECT SUM(diem_thuyet_trinh) FROM diemhoidongbaove WHERE diemhoidongbaove.sinh_vien_id = sinhvien.sinh_vien_id AND diemhoidongbaove.nhom_id = nhomsvda.nhom_id) / COALESCE(NULLIF((SELECT COUNT(*) FROM thanhvienhoidong WHERE thanhvienhoidong.hoi_dong_id = nhomsvda.hoi_dong_id), 0), 1) as defenseScore'),
-                    DB::raw('(SELECT SUM(diem_demo) FROM diemhoidongbaove WHERE diemhoidongbaove.sinh_vien_id = sinhvien.sinh_vien_id AND diemhoidongbaove.nhom_id = nhomsvda.nhom_id) / COALESCE(NULLIF((SELECT COUNT(*) FROM thanhvienhoidong WHERE thanhvienhoidong.hoi_dong_id = nhomsvda.hoi_dong_id), 0), 1) as demoScore'),
-                    DB::raw('(SELECT SUM(diem_van_dap) FROM diemhoidongbaove WHERE diemhoidongbaove.sinh_vien_id = sinhvien.sinh_vien_id AND diemhoidongbaove.nhom_id = nhomsvda.nhom_id) / COALESCE(NULLIF((SELECT COUNT(*) FROM thanhvienhoidong WHERE thanhvienhoidong.hoi_dong_id = nhomsvda.hoi_dong_id), 0), 1) as qaScore'),
+                    DB::raw('dhbv.sum_thuyet_trinh / COALESCE(NULLIF(thd.total_lecturers, 0), 1) as defenseScore'),
+                    DB::raw('dhbv.sum_demo / COALESCE(NULLIF(thd.total_lecturers, 0), 1) as demoScore'),
+                    DB::raw('dhbv.sum_van_dap / COALESCE(NULLIF(thd.total_lecturers, 0), 1) as qaScore'),
                     'diemtongketdatn.diem_bao_cao_chung as reportScore',
                     'diemtongketdatn.diem_tong_ket as finalScore',
                     DB::raw("CASE WHEN diemtongketdatn.trang_thai IS NOT NULL THEN 'finalized' ELSE 'draft' END as status"),
@@ -141,8 +165,9 @@ class DiemSinhVienService
 
         $studentsQuery->orderBy('sinhvien.sinh_vien_id', 'desc');
 
-        $total = $studentsQuery->count();
-        $rows = $studentsQuery->get();
+        $paginator = $studentsQuery->paginate($perPage, ['*'], 'page', $page);
+        $total = $paginator->total();
+        $rows = collect($paginator->items());
 
         // Chuẩn hóa dữ liệu đầu ra cho frontend
         $rows = $rows->map(function ($row) use ($loai) {
@@ -163,6 +188,11 @@ class DiemSinhVienService
         return [
             'rows' => $rows->all(),
             'total' => $total,
+            'lastPage' => $paginator->lastPage(),
+            'perPage' => $paginator->perPage(),
+            'currentPage' => $paginator->currentPage(),
+            'onFirstPage' => $paginator->onFirstPage(),
+            'hasMorePages' => $paginator->hasMorePages(),
         ];
     }
 

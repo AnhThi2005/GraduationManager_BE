@@ -24,8 +24,23 @@ class NhomController extends Controller
             ->whereNotNull('de_tai_id')
             ->get();
 
-        $rows = $groups->map(function ($g) {
-            return $this->transformGroup($g);
+        // Gộp tra cứu dot_sinhvien (điều kiện làm đồ án theo từng đợt) của TOÀN BỘ nhóm
+        // trong danh sách thành 1 query duy nhất, thay vì 1 query/nhóm trong transformGroup
+        // — tránh N+1 khi số nhóm tăng.
+        $dotStudentPairs = $groups->flatMap(function ($g) {
+            return $g->members->map(fn ($m) => ['dot_id' => $g->dot_id, 'sinh_vien_id' => $m->sinh_vien_id]);
+        });
+        $dotStudentsAll = null;
+        if ($dotStudentPairs->isNotEmpty()) {
+            $dotStudentsAll = DB::table('dot_sinhvien')
+                ->whereIn('dot_id', $dotStudentPairs->pluck('dot_id')->unique()->values())
+                ->whereIn('sinh_vien_id', $dotStudentPairs->pluck('sinh_vien_id')->unique()->values())
+                ->get()
+                ->keyBy(fn ($row) => $row->dot_id.'-'.$row->sinh_vien_id);
+        }
+
+        $rows = $groups->map(function ($g) use ($dotStudentsAll) {
+            return $this->transformGroup($g, $dotStudentsAll);
         })->all();
 
         return response()->json([
@@ -451,21 +466,32 @@ class NhomController extends Controller
         ], 200);
     }
 
-    public function transformGroup($g)
+    /**
+     * $dotStudentsAll (tuỳ chọn): lookup dot_sinhvien đã gộp sẵn cho CẢ TRANG (key
+     * "dot_id-sinh_vien_id"), truyền từ layDanhSach() để tránh N+1. Không truyền thì tự
+     * query riêng cho nhóm này (dùng ở các chỗ gọi transformGroup() cho 1 nhóm đơn lẻ).
+     */
+    public function transformGroup($g, $dotStudentsAll = null)
     {
         $hasIneligible = false;
         $dotId = $g->dot_id;
 
-        // Lấy danh sách ghi đè từ dot_sinhvien
-        $dotStudents = \DB::table('dot_sinhvien')
-            ->where('dot_id', $dotId)
-            ->whereIn('sinh_vien_id', $g->members->pluck('sinh_vien_id'))
-            ->get()
-            ->keyBy('sinh_vien_id');
+        if ($dotStudentsAll !== null) {
+            $dotStudents = null;
+        } else {
+            // Lấy danh sách ghi đè từ dot_sinhvien
+            $dotStudents = \DB::table('dot_sinhvien')
+                ->where('dot_id', $dotId)
+                ->whereIn('sinh_vien_id', $g->members->pluck('sinh_vien_id'))
+                ->get()
+                ->keyBy('sinh_vien_id');
+        }
 
         $members = $g->members
-            ->map(function ($m) use (&$hasIneligible, $dotStudents) {
-                $eRecord = $dotStudents->get($m->sinh_vien_id);
+            ->map(function ($m) use (&$hasIneligible, $dotStudents, $dotStudentsAll, $dotId) {
+                $eRecord = $dotStudentsAll !== null
+                    ? $dotStudentsAll->get($dotId.'-'.$m->sinh_vien_id)
+                    : $dotStudents->get($m->sinh_vien_id);
                 $eligible = ($eRecord ? ($eRecord->dieu_kien_lam_do_an ?? 'DAT') : 'DAT') === 'DAT';
                 if (! $eligible) {
                     $hasIneligible = true;

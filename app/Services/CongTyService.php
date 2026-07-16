@@ -22,8 +22,33 @@ class CongTyService
     {
         $companies = CongTy::orderBy('cong_ty_id', 'desc')->get();
 
-        $rows = $companies->map(function ($company) {
-            return $this->transformCompany($company);
+        // Gộp 3 query/công ty (lĩnh vực, số SV, số đợt hợp tác) thành 3 query duy nhất cho
+        // cả danh sách, tránh N+1 khi số công ty tăng.
+        $companyIds = $companies->pluck('cong_ty_id');
+        $fieldsByCompany = null;
+        $studentsCountByCompany = null;
+        $partnersCountByCompany = null;
+        if ($companyIds->isNotEmpty()) {
+            $fieldsByCompany = DB::table('congtylinhvuc')
+                ->whereIn('cong_ty_id', $companyIds)
+                ->get()
+                ->groupBy('cong_ty_id')
+                ->map(fn ($rows) => $rows->pluck('ten_linh_vuc')->all());
+
+            $studentsCountByCompany = DangKyThucTap::whereIn('cong_ty_id', $companyIds)
+                ->whereIn('trang_thai', ['DA_DUYET', 'CHO_CAP_GIAY'])
+                ->selectRaw('cong_ty_id, count(*) as total')
+                ->groupBy('cong_ty_id')
+                ->pluck('total', 'cong_ty_id');
+
+            $partnersCountByCompany = DangKyThucTap::whereIn('cong_ty_id', $companyIds)
+                ->selectRaw('cong_ty_id, count(distinct dot_id) as total')
+                ->groupBy('cong_ty_id')
+                ->pluck('total', 'cong_ty_id');
+        }
+
+        $rows = $companies->map(function ($company) use ($fieldsByCompany, $studentsCountByCompany, $partnersCountByCompany) {
+            return $this->transformCompany($company, $fieldsByCompany, $studentsCountByCompany, $partnersCountByCompany);
         })->all();
 
         return [
@@ -216,9 +241,10 @@ class CongTyService
         }
 
         $registrations = $query->get();
+        $gvhdByStudentPeriod = $this->buildGvhdLookup($registrations);
 
-        $rows = $registrations->map(function ($reg) {
-            return $this->transformConfirmation($reg);
+        $rows = $registrations->map(function ($reg) use ($gvhdByStudentPeriod) {
+            return $this->transformConfirmation($reg, $gvhdByStudentPeriod);
         })->all();
 
         return [
@@ -242,9 +268,10 @@ class CongTyService
         }
 
         $registrations = $query->get();
+        $gvhdByStudentPeriod = $this->buildGvhdLookup($registrations);
 
-        $rows = $registrations->map(function ($reg) {
-            return $this->transformConfirmation($reg);
+        $rows = $registrations->map(function ($reg) use ($gvhdByStudentPeriod) {
+            return $this->transformConfirmation($reg, $gvhdByStudentPeriod);
         })->all();
 
         return [
@@ -545,22 +572,27 @@ class CongTyService
     // ==========================================================
 
     /**
-     * Map CongTy model sang Frontend structure
+     * Map CongTy model sang Frontend structure.
+     *
+     * $fieldsByCompany/$studentsCountByCompany/$partnersCountByCompany (tuỳ chọn): lookup đã
+     * gộp sẵn cho CẢ TRANG, truyền từ getListCompany() để tránh N+1. Không truyền thì tự
+     * query riêng cho công ty này (dùng ở getCompanyDetail, chỉ 1 dòng nên không N+1).
      */
-    private function transformCompany($company)
+    private function transformCompany($company, $fieldsByCompany = null, $studentsCountByCompany = null, $partnersCountByCompany = null)
     {
-        $fields = DB::table('congtylinhvuc')
-            ->where('cong_ty_id', $company->cong_ty_id)
-            ->pluck('ten_linh_vuc')
-            ->all();
+        $fields = $fieldsByCompany !== null
+            ? ($fieldsByCompany->get($company->cong_ty_id) ?? [])
+            : DB::table('congtylinhvuc')->where('cong_ty_id', $company->cong_ty_id)->pluck('ten_linh_vuc')->all();
 
-        $studentsCount = DangKyThucTap::where('cong_ty_id', $company->cong_ty_id)
-            ->whereIn('trang_thai', ['DA_DUYET', 'CHO_CAP_GIAY'])
-            ->count();
+        $studentsCount = $studentsCountByCompany !== null
+            ? ($studentsCountByCompany->get($company->cong_ty_id) ?? 0)
+            : DangKyThucTap::where('cong_ty_id', $company->cong_ty_id)
+                ->whereIn('trang_thai', ['DA_DUYET', 'CHO_CAP_GIAY'])
+                ->count();
 
-        $partnersCount = DangKyThucTap::where('cong_ty_id', $company->cong_ty_id)
-            ->distinct()
-            ->count('dot_id');
+        $partnersCount = $partnersCountByCompany !== null
+            ? ($partnersCountByCompany->get($company->cong_ty_id) ?? 0)
+            : DangKyThucTap::where('cong_ty_id', $company->cong_ty_id)->distinct()->count('dot_id');
 
         $status = 'active';
         $reviewStatus = 'approved';
@@ -590,9 +622,38 @@ class CongTyService
     }
 
     /**
-     * Map DangKyThucTap model sang ConfirmationRequest frontend structure
+     * Gộp tra cứu GVHD (phanconghdtt) của TOÀN BỘ danh sách đăng ký thành 1 query duy nhất
+     * (key "sinh_vien_id-dot_id"), thay vì 1 query/dòng trong transformConfirmation.
      */
-    private function transformConfirmation($reg)
+    private function buildGvhdLookup($registrations)
+    {
+        $pairs = $registrations->filter(fn ($reg) => $reg->sinhVien)->map(function ($reg) {
+            return ['sinh_vien_id' => $reg->sinhVien->sinh_vien_id, 'dot_id' => $reg->dot_id];
+        });
+        if ($pairs->isEmpty()) {
+            return collect();
+        }
+
+        return DB::table('phanconghdtt')
+            ->join('giangvien', 'phanconghdtt.giang_vien_id', '=', 'giangvien.giang_vien_id')
+            ->whereIn('phanconghdtt.sinh_vien_id', $pairs->pluck('sinh_vien_id')->unique()->values())
+            ->whereIn('phanconghdtt.dot_id', $pairs->pluck('dot_id')->unique()->values())
+            ->where('phanconghdtt.da_cong_bo', true)
+            ->whereNull('phanconghdtt.deleted_at')
+            ->select('phanconghdtt.sinh_vien_id', 'phanconghdtt.dot_id', 'giangvien.ho_ten', 'giangvien.hoc_vi')
+            ->get()
+            ->keyBy(fn ($row) => $row->sinh_vien_id.'-'.$row->dot_id);
+    }
+
+    /**
+     * Map DangKyThucTap model sang ConfirmationRequest frontend structure.
+     *
+     * $gvhdByStudentPeriod (tuỳ chọn): lookup GVHD đã gộp sẵn cho CẢ TRANG (xem
+     * buildGvhdLookup()), truyền từ getListConfirmationRequest()/getListDeclarations() để
+     * tránh N+1. Không truyền thì tự query riêng cho dòng này (dùng ở
+     * getConfirmationRequestDetail, chỉ 1 dòng nên không N+1).
+     */
+    private function transformConfirmation($reg, $gvhdByStudentPeriod = null)
     {
         $status = 'pending';
         if ($reg->trang_thai === 'DA_DUYET') {
@@ -607,14 +668,16 @@ class CongTyService
         // dùng để in vào giấy giới thiệu, khác với "mentor" (người hướng dẫn phía công ty).
         $gvhdName = '';
         if ($reg->sinhVien) {
-            $phanCong = DB::table('phanconghdtt')
-                ->join('giangvien', 'phanconghdtt.giang_vien_id', '=', 'giangvien.giang_vien_id')
-                ->where('phanconghdtt.sinh_vien_id', $reg->sinhVien->sinh_vien_id)
-                ->where('phanconghdtt.dot_id', $reg->dot_id)
-                ->where('phanconghdtt.da_cong_bo', true)
-                ->whereNull('phanconghdtt.deleted_at')
-                ->select('giangvien.ho_ten', 'giangvien.hoc_vi')
-                ->first();
+            $phanCong = $gvhdByStudentPeriod !== null
+                ? $gvhdByStudentPeriod->get($reg->sinhVien->sinh_vien_id.'-'.$reg->dot_id)
+                : DB::table('phanconghdtt')
+                    ->join('giangvien', 'phanconghdtt.giang_vien_id', '=', 'giangvien.giang_vien_id')
+                    ->where('phanconghdtt.sinh_vien_id', $reg->sinhVien->sinh_vien_id)
+                    ->where('phanconghdtt.dot_id', $reg->dot_id)
+                    ->where('phanconghdtt.da_cong_bo', true)
+                    ->whereNull('phanconghdtt.deleted_at')
+                    ->select('giangvien.ho_ten', 'giangvien.hoc_vi')
+                    ->first();
             if ($phanCong) {
                 $gvhdName = $phanCong->ho_ten;
             }
