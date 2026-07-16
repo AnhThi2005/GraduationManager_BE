@@ -76,6 +76,7 @@ Route::middleware([
     Route::delete('/private/v1/groups/{id}', [NhomController::class, 'xoa']);
     Route::post('/private/v1/groups/{id}/approve', [NhomController::class, 'approveGroup']);
     Route::post('/private/v1/groups/{id}/reject', [NhomController::class, 'rejectGroup']);
+    Route::post('/private/v1/groups/swap-members', [NhomController::class, 'swapMembers']);
 
     // 9. Chức năng phân công hướng dẫn (Assignments)
     Route::get('/private/v1/assignments', [PhanCongHdttController::class, 'layDanhSach']);
@@ -84,6 +85,7 @@ Route::middleware([
     Route::patch('/private/v1/assignments/{id}', [PhanCongHdttController::class, 'capNhat']);
     Route::delete('/private/v1/assignments/{id}', [PhanCongHdttController::class, 'xoa']);
     Route::get('/private/v1/teachers', [PhanCongHdttController::class, 'getTeachers']);
+    Route::patch('/private/v1/students/{studentId}/eligibility', [PhanCongHdttController::class, 'capNhatDieuKienLamDoAn']);
 
     // 10. Chức năng quản lý hội đồng (Councils)
     Route::get('/private/v1/councils', [HoiDongController::class, 'layDanhSach']);

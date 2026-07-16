@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\QuanLyDot\ThemDotRequest;
 use App\Services\DotService;
+use App\Services\RealtimeService;
 use Illuminate\Http\Request;
 
 class DotController extends Controller
@@ -78,6 +79,7 @@ class DotController extends Controller
     {
         try {
             $period = $this->dotService->createPeriod($request->all());
+            RealtimeService::broadcast('period_updated', ['type' => 'period_created', 'id' => $period['id']]);
         } catch (\InvalidArgumentException $e) {
             return response()->json([
                 'success' => false,
@@ -114,6 +116,8 @@ class DotController extends Controller
             ], 404);
         }
 
+        RealtimeService::broadcast('period_updated', ['type' => 'period_updated', 'id' => $id]);
+
         return response()->json([
             'code' => 200,
             'results' => [
@@ -143,6 +147,8 @@ class DotController extends Controller
             ], 404);
         }
 
+        RealtimeService::broadcast('period_updated', ['type' => 'period_deleted', 'id' => $id]);
+
         return response()->json([
             'success' => true,
             'message' => 'Xóa đợt đăng ký tốt nghiệp thành công!',
@@ -171,6 +177,7 @@ class DotController extends Controller
                     'message' => 'Không tìm thấy sinh viên hoặc đợt hợp lệ!',
                 ], 400);
             }
+            RealtimeService::broadcast('period_updated', ['type' => 'period_students_updated', 'studentId' => $studentId]);
         } catch (\InvalidArgumentException $e) {
             return response()->json([
                 'success' => false,

@@ -9,6 +9,7 @@ use App\Models\Dot;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 
 class BaoCaoController extends Controller
 {
@@ -684,12 +685,32 @@ class BaoCaoController extends Controller
         if (! $path || $path === '—') {
             return null;
         }
-        if (str_starts_with($path, 'http')) {
-            $parsedPath = parse_url($path, PHP_URL_PATH);
 
-            return rtrim(request()->schemeAndHttpHost(), '/').$parsedPath;
+        // Nếu là URL tuyệt đối từ bên ngoài (ví dụ S3 bucket, không phải host hiện tại)
+        if (str_starts_with($path, 'http')) {
+            $currentHost = request()->getHost();
+            $urlHost = parse_url($path, PHP_URL_HOST);
+
+            // Nếu URL chứa host hiện tại (hoặc localhost), ta viết lại host cho đúng host của request
+            if ($urlHost === $currentHost || str_contains($urlHost, 'localhost') || str_contains($urlHost, '127.0.0.1')) {
+                $parsedPath = parse_url($path, PHP_URL_PATH);
+                return rtrim(request()->schemeAndHttpHost(), '/').$parsedPath;
+            }
+
+            // Ngược lại nếu là link S3/Cloudfront từ xa thì giữ nguyên URL để download trực tiếp
+            return $path;
         }
 
-        return rtrim(request()->schemeAndHttpHost(), '/').'/storage/'.$path;
+        // Nếu là đường dẫn tương đối, lấy URL qua Storage Facade
+        $disk = env('FILESYSTEM_DISK', 'public');
+        if ($disk === 'local') {
+            $disk = 'public';
+        }
+
+        try {
+            return Storage::disk($disk)->url($path);
+        } catch (\Exception $e) {
+            return rtrim(request()->schemeAndHttpHost(), '/').'/storage/'.$path;
+        }
     }
 }

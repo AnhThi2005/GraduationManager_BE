@@ -148,6 +148,10 @@ class NguoiDungService
             unset($data['className']);
         }
 
+        if (isset($data['email']) && $data['email'] !== $sinhVien->email) {
+            $data['google_id'] = null;
+        }
+
         $sinhVien->update($data);
 
         return $sinhVien->fresh();
@@ -164,6 +168,10 @@ class NguoiDungService
         if (array_key_exists('className', $data)) {
             $data['chuyen_mon'] = $data['className'];
             unset($data['className']);
+        }
+
+        if (isset($data['email']) && $data['email'] !== $giangVien->email) {
+            $data['google_id'] = null;
         }
 
         $giangVien->update($data);

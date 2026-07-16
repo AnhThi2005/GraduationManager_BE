@@ -40,6 +40,7 @@ class DeTaiController extends Controller
             'status' => $status,
             'periodId' => $request->input('periodId'),
             'teacher' => $request->input('teacher'),
+            'direction' => $request->input('direction'),
         ];
 
         $res = $this->deTaiService->getListTopic($filters, $limit);

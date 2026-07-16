@@ -101,6 +101,7 @@ class PhanCongHdttController extends Controller
                     'assignedAt' => $assign && $assign->ngay_phan_cong ? $assign->ngay_phan_cong->format('d/m/Y H:i') : null,
                     'published' => $assign ? (bool) $assign->da_cong_bo : false,
                     'status' => $assign ? 'assigned' : 'unassigned',
+                    'dieuKienLamDoAn' => $sv->dieu_kien_lam_do_an ?? 'DAT',
                 ];
             })->all();
 
@@ -171,7 +172,13 @@ class PhanCongHdttController extends Controller
                 ->get()
                 ->groupBy('nhom_id');
 
-            $rows = $students->map(function ($sv) use ($studentGroupMap, $groupRegistrations) {
+            // Lấy danh sách ghi đè từ dot_sinhvien
+            $dotStudents = DB::table('dot_sinhvien')
+                ->where('dot_id', $dotId)
+                ->get()
+                ->keyBy('sinh_vien_id');
+
+            $rows = $students->map(function ($sv) use ($studentGroupMap, $groupRegistrations, $dotStudents) {
                 $groupId = null;
                 $groupCode = null;
                 $groupStatus = 'no_group';
@@ -189,7 +196,8 @@ class PhanCongHdttController extends Controller
 
                     // Check eligibility of members
                     foreach ($group->members as $m) {
-                        $eligible = ($m->pivot->dieu_kien_lam_do_an ?? 'DAT') === 'DAT';
+                        $eRecord = $dotStudents->get($m->sinh_vien_id);
+                        $eligible = ($eRecord ? ($eRecord->dieu_kien_lam_do_an ?? 'DAT') : 'DAT') === 'DAT';
                         if (! $eligible) {
                             $hasIneligibleMember = true;
                         }
@@ -257,6 +265,12 @@ class PhanCongHdttController extends Controller
                     }
                 }
 
+                $dieuKienVal = 'DAT';
+                $eRecord = $dotStudents->get($sv->sinh_vien_id);
+                if ($eRecord) {
+                    $dieuKienVal = $eRecord->dieu_kien_lam_do_an ?? 'DAT';
+                }
+
                 return [
                     'id' => (string) $sv->ma_so_sinh_vien,
                     'studentId' => (string) $sv->ma_so_sinh_vien,
@@ -267,6 +281,7 @@ class PhanCongHdttController extends Controller
                     'supervisor' => $supervisor,
                     'assignedAt' => $assignedAtDate,
                     'status' => $supervisor ? 'assigned' : 'unassigned',
+                    'dieuKienLamDoAn' => $dieuKienVal,
 
                     // Group details
                     'groupId' => $groupId,
@@ -616,5 +631,135 @@ class PhanCongHdttController extends Controller
                 'objects' => $rows,
             ],
         ], 200);
+    }
+
+    public function capNhatDieuKienLamDoAn(Request $request, $studentId)
+    {
+        $sinhVien = SinhVien::where('ma_so_sinh_vien', $studentId)
+            ->orWhere('sinh_vien_id', $studentId)
+            ->first();
+
+        if (!$sinhVien) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Không tìm thấy sinh viên!',
+            ], 404);
+        }
+
+        $request->validate([
+            'dieuKienLamDoAn' => 'required|string|in:DAT,CHUA_DAT',
+        ]);
+
+        $dieuKien = $request->input('dieuKienLamDoAn');
+
+        // Tìm đợt hiện tại
+        $dotId = $request->input('periodId') ?? $request->input('period_id');
+        if (empty($dotId)) {
+            $activePeriod = Dot::orderBy('dot_id', 'desc')->first();
+            $dotId = $activePeriod ? $activePeriod->dot_id : null;
+        }
+
+        if (empty($dotId)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Không xác định được đợt học hiện tại!',
+            ], 400);
+        }
+
+        DB::beginTransaction();
+        try {
+            // Cập nhật hoặc chèn mới trạng thái dieu_kien_lam_do_an trong bảng dot_sinhvien
+            DB::table('dot_sinhvien')->updateOrInsert(
+                ['dot_id' => $dotId, 'sinh_vien_id' => $sinhVien->sinh_vien_id],
+                ['dieu_kien_lam_do_an' => $dieuKien]
+            );
+
+            // Ghi log hoạt động cập nhật điều kiện
+            $admin = $request->user();
+            \App\Models\LichSuHoatDong::ghiLog(
+                'CAP_NHAT_NHOM',
+                "Admin " . ($admin ? $admin->ho_ten : 'Hệ thống') . " đã cập nhật điều kiện làm đồ án của sinh viên {$sinhVien->ho_ten} thành " . ($dieuKien === 'DAT' ? 'Đạt' : 'Không đạt') . " trong đợt học #{$dotId}.",
+                $sinhVien->sinh_vien_id,
+                $sinhVien->ma_so_sinh_vien,
+                null,
+                'admin',
+                $admin ? $admin->ho_ten : 'Hệ thống'
+            );
+
+            // Nếu thay đổi thành CHUA_DAT (Không đạt), tiến hành kích ra khỏi nhóm vật lý
+            if ($dieuKien === 'CHUA_DAT') {
+                // Tìm nhóm mà sinh viên này đang tham gia trong đợt hiện tại
+                $nhom = Nhom::whereHas('members', function ($q) use ($sinhVien) {
+                    $q->where('sinhvien.sinh_vien_id', $sinhVien->sinh_vien_id);
+                })->where('dot_id', $dotId)->first();
+
+                if ($nhom) {
+                    // Xem sinh viên này có phải trưởng nhóm không
+                    $pivot = DB::table('thanhviennhom')
+                        ->where('nhom_id', $nhom->nhom_id)
+                        ->where('sinh_vien_id', $sinhVien->sinh_vien_id)
+                        ->first();
+
+                    // Xóa sinh viên khỏi bảng thanhviennhom
+                    DB::table('thanhviennhom')
+                        ->where('nhom_id', $nhom->nhom_id)
+                        ->where('sinh_vien_id', $sinhVien->sinh_vien_id)
+                        ->delete();
+
+                    // Tìm thành viên còn lại của nhóm
+                    $remainingMember = DB::table('thanhviennhom')
+                        ->where('nhom_id', $nhom->nhom_id)
+                        ->first();
+
+                    if ($remainingMember) {
+                        // Nếu trưởng nhóm bị kích, bổ nhiệm thành viên còn lại làm trưởng nhóm
+                        if ($pivot && $pivot->la_truong_nhom == 1) {
+                            DB::table('thanhviennhom')
+                                ->where('thanh_vien_id', $remainingMember->thanh_vien_id)
+                                ->update(['la_truong_nhom' => 1]);
+                        }
+                    } else {
+                        // Nếu nhóm không còn thành viên nào, xóa nhóm
+                        DB::table('dangkydetai')->where('nhom_id', $nhom->nhom_id)->delete();
+                        DB::table('loimoinhom')->where('nhom_id', $nhom->nhom_id)->delete();
+                        $nhom->delete();
+                    }
+
+                    \App\Models\LichSuHoatDong::ghiLog(
+                        'ROI_NHOM',
+                        "Hệ thống đã kích sinh viên {$sinhVien->ho_ten} ra khỏi nhóm #{$nhom->nhom_id} do bị đánh giá không đủ điều kiện làm đồ án.",
+                        $sinhVien->sinh_vien_id,
+                        $sinhVien->ma_so_sinh_vien,
+                        $nhom->nhom_id,
+                        'admin',
+                        'Hệ thống'
+                    );
+
+                    RealtimeService::broadcast('slot_updated', [
+                        'type' => 'student_left_group',
+                        'nhomId' => $nhom->nhom_id,
+                    ]);
+                }
+            }
+
+            DB::commit();
+
+            RealtimeService::broadcast('slot_updated', [
+                'type' => 'student_eligibility_updated',
+                'studentId' => $sinhVien->ma_so_sinh_vien,
+                'dieuKienLamDoAn' => $dieuKien,
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Cập nhật điều kiện làm đồ án thành công!',
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'Lỗi cập nhật điều kiện: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 }

@@ -610,6 +610,14 @@ class DotService
             if ($year2 <= $year1) {
                 throw new \InvalidArgumentException('Năm học không hợp lệ: năm kết thúc phải lớn hơn năm bắt đầu!');
             }
+
+            // Khi tạo đợt mới, năm học phải từ năm học hiện tại trở về sau (chưa kết thúc so với thời gian hiện tại)
+            if (!$existingDot) {
+                $schoolYearEnd = Carbon::create($year2, 8, 31, 23, 59, 59)->endOfDay();
+                if ($schoolYearEnd->lt(Carbon::now('Asia/Ho_Chi_Minh'))) {
+                    throw new \InvalidArgumentException("Năm học {$schoolYear} đã kết thúc, vui lòng chọn năm học từ thời điểm hiện tại trở đi!");
+                }
+            }
         }
 
         // 2. Kiểm tra mốc thời gian
@@ -627,6 +635,14 @@ class DotService
 
         if ($startDate && $endDate && Carbon::parse($endDate)->lte(Carbon::parse($startDate))) {
             throw new \InvalidArgumentException('Ngày kết thúc đợt học phải sau ngày bắt đầu!');
+        }
+
+        // Khi tạo đợt mới, ngày kết thúc phải từ ngày hiện tại trở về sau
+        if (!$existingDot && $endDate) {
+            $today = Carbon::now('Asia/Ho_Chi_Minh')->startOfDay();
+            if (Carbon::parse($endDate)->startOfDay()->lt($today)) {
+                throw new \InvalidArgumentException('Ngày kết thúc đợt học phải từ ngày hiện tại trở về sau!');
+            }
         }
 
         if ($loaiDot === 'DATN') {
@@ -710,19 +726,43 @@ class DotService
             throw new \InvalidArgumentException('Ngày kết thúc chấm điểm phải trước ngày kết thúc đợt học!');
         }
 
-        // 3. Kiểm tra ngày bắt đầu/ngày kết thúc khớp với năm học
+        // 3. Kiểm tra tất cả các mốc thời gian phải nằm trong khoảng năm học (từ 01/09 của năm bắt đầu đến 31/08 của năm kết thúc)
         if ($schoolYear) {
             $match = [];
             if (preg_match('/^(\d{4})-(\d{4})$/', $schoolYear, $match)) {
                 $startYear = (int)$match[1];
                 $endYear = (int)$match[2];
 
-                if ($startDate && Carbon::parse($startDate)->year < $startYear) {
-                    throw new \InvalidArgumentException("Ngày bắt đầu phải từ năm học {$startYear} trở đi!");
+                $schoolYearStart = Carbon::create($startYear, 9, 1, 0, 0, 0)->startOfDay();
+                $schoolYearEnd = Carbon::create($endYear, 8, 31, 23, 59, 59)->endOfDay();
+
+                $datesToCheck = [
+                    'Ngày bắt đầu đợt' => $startDate,
+                    'Ngày kết thúc đợt' => $endDate,
+                    'Ngày mở đăng ký' => $regOpenDate,
+                    'Hạn đăng ký' => $regDeadline,
+                    'Ngày bắt đầu nộp báo cáo' => $reportStartDate,
+                    'Hạn nộp báo cáo' => $reportDeadline,
+                    'Ngày bắt đầu chấm điểm' => $gradingStartDate,
+                    'Ngày kết thúc chấm điểm' => $gradingEndDate,
+                ];
+
+                if ($loaiDot === 'DATN') {
+                    $datesToCheck['Ngày bắt đầu phản biện'] = $reviewStartDate;
+                    $datesToCheck['Ngày kết thúc phản biện'] = $reviewEndDate;
+                    $datesToCheck['Ngày bắt đầu bảo vệ'] = $defenseStartDate;
+                    $datesToCheck['Ngày kết thúc bảo vệ'] = $defenseEndDate;
                 }
 
-                if ($endDate && Carbon::parse($endDate)->year > $endYear) {
-                    throw new \InvalidArgumentException("Ngày kết thúc không được vượt quá năm học {$endYear}!");
+                foreach ($datesToCheck as $label => $dateValue) {
+                    if ($dateValue) {
+                        $parsedDate = Carbon::parse($dateValue);
+                        if ($parsedDate->lt($schoolYearStart) || $parsedDate->gt($schoolYearEnd)) {
+                            throw new \InvalidArgumentException(
+                                "{$label} ({$parsedDate->format('d/m/Y')}) phải nằm trong khoảng năm học {$schoolYear} (từ 01/09/{$startYear} đến 31/08/{$endYear})!"
+                            );
+                        }
+                    }
                 }
             }
         }

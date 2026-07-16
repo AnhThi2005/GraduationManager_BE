@@ -8,6 +8,7 @@ use App\Http\Requests\GiangVien\CapNhatDeTaiRequest;
 use App\Http\Requests\GiangVien\ThemDeTaiRequest;
 use App\Models\DeTai;
 use App\Models\Dot;
+use App\Models\LichSuHoatDong;
 use App\Services\DeTaiService;
 use App\Services\RealtimeService;
 use Illuminate\Http\Request;
@@ -351,12 +352,37 @@ class DeTaiController extends Controller
                 'de_tai_id' => $dangkydetai->de_tai_id,
                 'trang_thai_duyet' => 'DA_DUYET',
             ]);
+
+            $teacher = $request->user();
+            LichSuHoatDong::ghiLog(
+                'DUYET_DE_TAI',
+                "Giảng viên {$teacher->ho_ten} đã phê duyệt đề tài đăng ký cho nhóm #{$groupId}.",
+                null,
+                null,
+                $groupId,
+                'giang_vien',
+                $teacher->ho_ten,
+                ['topic_id' => $dangkydetai->de_tai_id]
+            );
         } else {
             DB::table('dangkydetai')->where('nhom_id', $groupId)->update(['trang_thai_duyet' => 'TU_CHOI']);
             DB::table('nhomsvda')->where('nhom_id', $groupId)->update([
                 'de_tai_id' => null,
                 'trang_thai_duyet' => 'TU_CHOI',
             ]);
+
+            $teacher = $request->user();
+            $lyDo = $request->input('note', '');
+            LichSuHoatDong::ghiLog(
+                'TU_CHOI_DE_TAI',
+                "Giảng viên {$teacher->ho_ten} đã từ chối đề tài đăng ký cho nhóm #{$groupId}." . ($lyDo ? " Lý do: {$lyDo}" : ""),
+                null,
+                null,
+                $groupId,
+                'giang_vien',
+                $teacher->ho_ten,
+                ['topic_id' => $dangkydetai->de_tai_id, 'reason' => $lyDo]
+            );
         }
 
         // Return updated group structure
@@ -505,21 +531,17 @@ class DeTaiController extends Controller
                     $maxSlots = (int) $slotsVal;
                 }
 
-                $huongDeTai = 'PHAN_MEM';
-                $huongUpper = mb_strtoupper($huongDeTaiVal);
-                if (str_contains($huongUpper, 'MẠNG') || str_contains($huongUpper, 'MANG') || str_contains($huongUpper, 'NETWORK')) {
-                    $huongDeTai = 'MANG_MAY_TINH';
-                }
-
-                DeTai::create([
+                $deTai = DeTai::create([
                     'dot_id' => $dotId,
                     'giang_vien_id' => $teacherId,
                     'ten_de_tai' => $tenDeTai,
                     'mo_ta' => $moTa,
                     'so_luong_sv_toi_da' => $maxSlots,
-                    'huong_de_tai' => $huongDeTai,
                     'trang_thai' => 'CHO_DUYET',
                 ]);
+
+                $huongInput = ! empty($huongDeTaiVal) ? $huongDeTaiVal : 'Phát triển phần mềm';
+                $this->deTaiService->syncDirections($deTai, $huongInput);
 
                 $importedCount++;
             }

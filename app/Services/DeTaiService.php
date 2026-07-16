@@ -15,7 +15,7 @@ class DeTaiService
      */
     public function getListTopic(array $filters, $perPage = 10)
     {
-        $query = DeTai::with(['giangVien', 'dot']);
+        $query = DeTai::with(['giangVien', 'dot', 'huongDeTais']);
 
         // Lọc theo giảng viên (theo ID, dùng nội bộ nếu có)
         if (! empty($filters['teacherId'])) {
@@ -33,6 +33,24 @@ class DeTaiService
         // Lọc theo đợt học
         if (! empty($filters['periodId'])) {
             $query->where('dot_id', $filters['periodId']);
+        }
+
+        // Lọc theo hướng đề tài
+        if (! empty($filters['direction']) && $filters['direction'] !== 'all') {
+            $dir = $filters['direction'];
+            $query->whereHas('huongDeTais', function ($sub) use ($dir) {
+                if (is_numeric($dir)) {
+                    $sub->where('huongdetai.huong_de_tai_id', (int)$dir);
+                } elseif ($dir === 'MANG_MAY_TINH') {
+                    $sub->where('huongdetai.ten_huong_de_tai', 'like', '%mạng%')
+                        ->orWhere('huongdetai.ten_huong_de_tai', 'like', '%network%');
+                } elseif ($dir === 'PHAN_MEM') {
+                    $sub->where('huongdetai.ten_huong_de_tai', 'not like', '%mạng%')
+                        ->where('huongdetai.ten_huong_de_tai', 'not like', '%network%');
+                } else {
+                    $sub->where('huongdetai.ten_huong_de_tai', 'like', '%' . $dir . '%');
+                }
+            });
         }
 
         // Lọc theo trạng thái duyệt
@@ -75,7 +93,7 @@ class DeTaiService
      */
     public function getTopicDetail($id)
     {
-        $deTai = DeTai::with(['giangVien', 'dot'])->find($id);
+        $deTai = DeTai::with(['giangVien', 'dot', 'huongDeTais'])->find($id);
         if (! $deTai) {
             return null;
         }
@@ -107,10 +125,13 @@ class DeTaiService
             'mo_ta' => $data['description'] ?? '',
             'file_mo_ta' => $data['fileUrl'] ?? null,
             'so_luong_sv_toi_da' => $maxSlots,
-            'huong_de_tai' => $this->mapFrontendDirectionToBackend($data['direction'] ?? ''),
             'trang_thai' => $status,
             'ly_do_tu_choi' => $rejectReason,
         ]);
+
+        if (isset($data['direction'])) {
+            $this->syncDirections($deTai, $data['direction']);
+        }
 
         return $this->getTopicDetail($deTai->de_tai_id);
     }
@@ -136,7 +157,7 @@ class DeTaiService
             $updateData['file_mo_ta'] = $data['fileUrl'];
         }
         if (isset($data['direction'])) {
-            $updateData['huong_de_tai'] = $this->mapFrontendDirectionToBackend($data['direction']);
+            $this->syncDirections($deTai, $data['direction']);
         }
 
         $newStatus = null;
@@ -238,7 +259,8 @@ class DeTaiService
             'rejectReason' => $deTai->ly_do_tu_choi ?? '',
             'status' => $this->mapBackendStatusToFrontend($deTai->trang_thai),
             'description' => $deTai->mo_ta ?? '',
-            'direction' => $deTai->huong_de_tai === 'MANG_MAY_TINH' ? 'Mạng máy tính' : 'Phát triển phần mềm',
+            'direction' => $deTai->huongDeTais->pluck('ten_huong_de_tai')->implode(', '),
+            'direction_ids' => $deTai->huongDeTais->pluck('huong_de_tai_id')->all(),
             'fileUrl' => $deTai->file_mo_ta ?? '',
             'period' => $deTai->dot ? $deTai->dot->ten_dot : '',
         ];
@@ -334,13 +356,50 @@ class DeTaiService
         }
     }
 
-    private function mapFrontendDirectionToBackend($direction)
+    public function syncDirections($deTai, $directionInput)
     {
-        $directionUpper = mb_strtoupper($direction);
-        if (str_contains($directionUpper, 'MẠNG') || str_contains($directionUpper, 'MANG') || str_contains($directionUpper, 'NETWORK')) {
-            return 'MANG_MAY_TINH';
+        if (empty($directionInput)) {
+            $deTai->huongDeTais()->detach();
+            return;
         }
 
-        return 'PHAN_MEM';
+        $ids = [];
+
+        // Nếu input là chuỗi, có thể là "1, 2" hoặc "Lập trình Web, Lập trình di động"
+        if (is_string($directionInput)) {
+            if (preg_match('/^[\d,\s]+$/', $directionInput)) {
+                $directionInput = array_map('intval', explode(',', $directionInput));
+            } else {
+                $directionInput = array_map('trim', explode(',', $directionInput));
+            }
+        }
+
+        if (is_array($directionInput)) {
+            foreach ($directionInput as $item) {
+                if (is_numeric($item)) {
+                    $ids[] = (int)$item;
+                } elseif (is_string($item)) {
+                    $item = trim($item);
+                    if (empty($item)) continue;
+
+                    // Tìm hoặc tạo hướng đề tài
+                    $huong = \App\Models\HuongDeTai::where('ten_huong_de_tai', 'like', $item)
+                        ->orWhere('ten_huong_de_tai', 'like', '%' . $item . '%')
+                        ->first();
+                    if ($huong) {
+                        $ids[] = $huong->huong_de_tai_id;
+                    } else {
+                        // Tạo mới nếu chưa tồn tại
+                        $newHuong = \App\Models\HuongDeTai::create([
+                            'ten_huong_de_tai' => $item,
+                            'trang_thai_hd' => 1
+                        ]);
+                        $ids[] = $newHuong->huong_de_tai_id;
+                    }
+                }
+            }
+        }
+
+        $deTai->huongDeTais()->sync(array_unique($ids));
     }
 }

@@ -8,6 +8,7 @@ use App\Http\Requests\Admin\QuanLySinhVienThucTap\ThemDoanhNghiepRequest;
 use App\Http\Requests\Admin\QuanLySinhVienThucTap\ThemMoiXacNhanRequest;
 use App\Models\DangKyThucTap;
 use App\Models\Dot;
+use App\Models\LichSuHoatDong;
 use App\Services\CongTyService;
 use App\Services\NguoiDungService;
 use App\Services\RealtimeService;
@@ -256,6 +257,18 @@ class CongTyController extends Controller
             ], 404);
         }
 
+        $admin = $request->user();
+        LichSuHoatDong::ghiLog(
+            'DUYET_TTTN',
+            "Admin " . ($admin ? $admin->ho_ten : 'Hệ thống') . " đã cập nhật trạng thái hồ sơ khai báo thực tập của sinh viên " . ($reg['studentName'] ?? '') . ".",
+            $existing->sinh_vien_id,
+            $reg['studentCode'] ?? null,
+            null,
+            'admin',
+            $admin ? $admin->ho_ten : 'Hệ thống',
+            ['old_status' => $existing->trang_thai, 'new_status' => $reg['status'] ?? null]
+        );
+
         RealtimeService::broadcast('notification', [
             'title' => 'Cập nhật yêu cầu thực tập',
             'message' => 'Hồ sơ thực tập của sinh viên '.($reg['studentName'] ?? '').' đã được cập nhật',
@@ -318,6 +331,18 @@ class CongTyController extends Controller
                 'message' => 'Không tìm thấy hồ sơ khai báo này để xóa!',
             ], 404);
         }
+
+        $admin = $request->user();
+        LichSuHoatDong::ghiLog(
+            'XOA_TTTN',
+            "Admin " . ($admin ? $admin->ho_ten : 'Hệ thống') . " đã xóa hồ sơ khai báo thực tập của sinh viên mang ID {$existing->sinh_vien_id}.",
+            $existing->sinh_vien_id,
+            null,
+            null,
+            'admin',
+            $admin ? $admin->ho_ten : 'Hệ thống',
+            ['internship_id' => $id]
+        );
 
         return response()->json([
             'success' => true,

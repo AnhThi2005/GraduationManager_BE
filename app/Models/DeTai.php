@@ -19,7 +19,6 @@ class DeTai extends Model
         'mo_ta',
         'file_mo_ta',
         'so_luong_sv_toi_da',
-        'huong_de_tai',
         'trang_thai',
         'ly_do_tu_choi',
     ];
@@ -32,5 +31,15 @@ class DeTai extends Model
     public function dot()
     {
         return $this->belongsTo(Dot::class, 'dot_id', 'dot_id');
+    }
+
+    public function huongDeTais()
+    {
+        return $this->belongsToMany(
+            HuongDeTai::class,
+            'chitiethuongdetai',
+            'de_tai_id',
+            'huong_de_tai_id'
+        );
     }
 }

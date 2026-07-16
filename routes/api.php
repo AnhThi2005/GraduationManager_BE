@@ -73,6 +73,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/private/v1/student/reports/datn', [BaoCaoController::class, 'layDanhSachBaoCaoDatn']);
         Route::post('/private/v1/student/reports/datn', [BaoCaoController::class, 'nopBaoCaoDatn']);
         Route::get('/private/v1/student/results', [DiemController::class, 'layKetQuaHocTap']);
+        Route::get('/private/v1/student/history', [\App\Http\Controllers\HistoryController::class, 'getStudentHistory']);
     });
 
     Route::middleware('quyen:GIANG_VIEN')->prefix('private/v1/teacher')->group(function () {
@@ -211,6 +212,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('/private/v1/groups/{id}', [NhomController::class, 'xoa']);
         Route::post('/private/v1/groups/{id}/approve', [NhomController::class, 'approveGroup']);
         Route::post('/private/v1/groups/{id}/reject', [NhomController::class, 'rejectGroup']);
+        Route::post('/private/v1/groups/swap-members', [NhomController::class, 'swapMembers']);
 
         // 9. Chức năng phân công hướng dẫn (Assignments)
         Route::get('/private/v1/assignments', [PhanCongHdttController::class, 'layDanhSach']);
@@ -219,6 +221,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::patch('/private/v1/assignments/{id}', [PhanCongHdttController::class, 'capNhat']);
         Route::delete('/private/v1/assignments/{id}', [PhanCongHdttController::class, 'xoa']);
         Route::get('/private/v1/teachers', [PhanCongHdttController::class, 'getTeachers']);
+        Route::patch('/private/v1/students/{studentId}/eligibility', [PhanCongHdttController::class, 'capNhatDieuKienLamDoAn']);
 
         // 10. Chức năng quản lý hội đồng (Councils)
         Route::get('/private/v1/councils', [HoiDongController::class, 'layDanhSach']);
@@ -226,5 +229,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/private/v1/councils', [HoiDongController::class, 'themMoi']);
         Route::patch('/private/v1/councils/{id}', [HoiDongController::class, 'capNhat']);
         Route::delete('/private/v1/councils/{id}', [HoiDongController::class, 'xoa']);
+
+        // 11. Chức năng xem lịch sử hoạt động (Activity Logs)
+        Route::get('/private/v1/admin/history', [\App\Http\Controllers\HistoryController::class, 'getAdminHistory']);
     });
 });
