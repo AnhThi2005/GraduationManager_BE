@@ -54,14 +54,25 @@ class TrangChuController extends Controller
             ->count();
 
         // 5. Topics list under charge
-        $topics = DeTai::where('giang_vien_id', $teacherId)
+        $topicsQuery = DeTai::where('giang_vien_id', $teacherId)
             ->where('dot_id', $dotId)
-            ->get()
-            ->map(function ($t) {
-                $occupied = DB::table('thanhviennhom')
-                    ->join('nhomsvda', 'thanhviennhom.nhom_id', '=', 'nhomsvda.nhom_id')
-                    ->where('nhomsvda.de_tai_id', $t->de_tai_id)
-                    ->count();
+            ->get();
+
+        $topicIds = $topicsQuery->pluck('de_tai_id')->toArray();
+        $occupiedCounts = [];
+        if (!empty($topicIds)) {
+            $occupiedCounts = DB::table('thanhviennhom')
+                ->join('nhomsvda', 'thanhviennhom.nhom_id', '=', 'nhomsvda.nhom_id')
+                ->whereIn('nhomsvda.de_tai_id', $topicIds)
+                ->select('nhomsvda.de_tai_id', DB::raw('count(*) as total'))
+                ->groupBy('nhomsvda.de_tai_id')
+                ->pluck('total', 'de_tai_id')
+                ->toArray();
+        }
+
+        $topics = $topicsQuery
+            ->map(function ($t) use ($occupiedCounts) {
+                $occupied = $occupiedCounts[$t->de_tai_id] ?? 0;
 
                 $statusVal = 'Chờ duyệt';
                 if ($t->trang_thai === 'DA_DUYET') {

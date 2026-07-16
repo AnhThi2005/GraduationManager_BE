@@ -78,6 +78,49 @@ class DiemController extends Controller
             ->with(['giangViens', 'nhoms.members.lop', 'nhoms.deTai.giangVien'])
             ->get();
 
+        $allGroupIds = [];
+        $allStudentIds = [];
+        foreach ($councils as $hd) {
+            foreach ($hd->nhoms as $g) {
+                $allGroupIds[] = $g->nhom_id;
+                foreach ($g->members as $m) {
+                    $allStudentIds[] = $m->sinh_vien_id;
+                }
+            }
+        }
+        $allGroupIds = array_unique($allGroupIds);
+        $allStudentIds = array_unique($allStudentIds);
+
+        $allLich = collect([]);
+        $allCouncilScores = collect([]);
+        $allReportScores = collect([]);
+
+        if (!empty($allGroupIds)) {
+            $allLich = DB::table('lichbaove')
+                ->whereIn('nhom_id', $allGroupIds)
+                ->get()
+                ->keyBy('nhom_id');
+        }
+
+        if (!empty($allStudentIds) && !empty($allGroupIds)) {
+            $allCouncilScores = DB::table('diemhoidongbaove')
+                ->whereIn('sinh_vien_id', $allStudentIds)
+                ->whereIn('nhom_id', $allGroupIds)
+                ->where('giang_vien_id', $teacherId)
+                ->get()
+                ->groupBy(function ($item) {
+                    return $item->sinh_vien_id . '-' . $item->nhom_id;
+                });
+
+            $allReportScores = DB::table('diembaocao')
+                ->whereIn('sinh_vien_id', $allStudentIds)
+                ->whereIn('nhom_id', $allGroupIds)
+                ->get()
+                ->groupBy(function ($item) {
+                    return $item->sinh_vien_id . '-' . $item->nhom_id;
+                });
+        }
+
         $councilGroups = [];
         $scoreRows = [];
 
@@ -110,7 +153,7 @@ class DiemController extends Controller
                     ];
                 })->all();
 
-                $lich = DB::table('lichbaove')->where('nhom_id', $g->nhom_id)->first();
+                $lich = $allLich->get($g->nhom_id);
                 $reviewerId = null;
                 if ($lich) {
                     $reviewerId = $lich->giang_vien_pb_id;
@@ -136,13 +179,10 @@ class DiemController extends Controller
                 ];
 
                 foreach ($g->members as $m) {
-                    $myScore = DB::table('diemhoidongbaove')
-                        ->where('sinh_vien_id', $m->sinh_vien_id)
-                        ->where('nhom_id', $g->nhom_id)
-                        ->where('giang_vien_id', $teacherId)
-                        ->first();
+                    $key = $m->sinh_vien_id . '-' . $g->nhom_id;
+                    $myScore = isset($allCouncilScores[$key]) ? $allCouncilScores[$key]->first() : null;
+                    $dbc = isset($allReportScores[$key]) ? $allReportScores[$key]->first() : null;
 
-                    $dbc = DB::table('diembaocao')->where('sinh_vien_id', $m->sinh_vien_id)->where('nhom_id', $g->nhom_id)->first();
                     $report = null;
                     $isAdvisor = ($g->deTai && $g->deTai->giang_vien_id == $teacherId);
                     $isReviewer = ($reviewerId == $teacherId);
@@ -171,7 +211,7 @@ class DiemController extends Controller
 
             $done = 0;
             foreach ($hd->nhoms as $g) {
-                $lich = DB::table('lichbaove')->where('nhom_id', $g->nhom_id)->first();
+                $lich = $allLich->get($g->nhom_id);
                 $reviewerId = null;
                 if ($lich) {
                     $reviewerId = $lich->giang_vien_pb_id;
@@ -185,24 +225,16 @@ class DiemController extends Controller
 
                 $hasAllScores = true;
                 foreach ($g->members as $m) {
-                    $defenseExists = DB::table('diemhoidongbaove')
-                        ->where('sinh_vien_id', $m->sinh_vien_id)
-                        ->where('nhom_id', $g->nhom_id)
-                        ->where('giang_vien_id', $teacherId)
-                        ->exists();
+                    $key = $m->sinh_vien_id . '-' . $g->nhom_id;
+                    $myScore = isset($allCouncilScores[$key]) ? $allCouncilScores[$key]->first() : null;
+                    $dbc = isset($allReportScores[$key]) ? $allReportScores[$key]->first() : null;
+
+                    $defenseExists = ($myScore !== null);
 
                     if ($isAdvisor) {
-                        $reportExists = DB::table('diembaocao')
-                            ->where('sinh_vien_id', $m->sinh_vien_id)
-                            ->where('nhom_id', $g->nhom_id)
-                            ->whereNotNull('diem_gvhd')
-                            ->exists();
+                        $reportExists = ($dbc && $dbc->diem_gvhd !== null);
                     } elseif ($isReviewer) {
-                        $reportExists = DB::table('diembaocao')
-                            ->where('sinh_vien_id', $m->sinh_vien_id)
-                            ->where('nhom_id', $g->nhom_id)
-                            ->whereNotNull('diem_gvpb')
-                            ->exists();
+                        $reportExists = ($dbc && $dbc->diem_gvpb !== null);
                     } else {
                         $reportExists = true;
                     }
