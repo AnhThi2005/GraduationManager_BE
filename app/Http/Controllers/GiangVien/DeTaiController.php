@@ -511,15 +511,17 @@ class DeTaiController extends Controller
                     $huongDeTai = 'MANG_MAY_TINH';
                 }
 
-                DeTai::create([
+                $deTai = DeTai::create([
                     'dot_id' => $dotId,
                     'giang_vien_id' => $teacherId,
                     'ten_de_tai' => $tenDeTai,
                     'mo_ta' => $moTa,
                     'so_luong_sv_toi_da' => $maxSlots,
-                    'huong_de_tai' => $huongDeTai,
                     'trang_thai' => 'CHO_DUYET',
                 ]);
+
+                $dirId = ($huongDeTai === 'MANG_MAY_TINH') ? 3 : 2;
+                $deTai->huongDeTais()->sync([$dirId]);
 
                 $importedCount++;
             }

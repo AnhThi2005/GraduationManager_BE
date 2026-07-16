@@ -439,7 +439,7 @@ class NhomController extends Controller
             'id' => (string) $g->nhom_id,
             'code' => null,
             'title' => $g->deTai ? $g->deTai->ten_de_tai : '—',
-            'topicDirection' => $g->deTai ? $g->deTai->huong_de_tai : null,
+            'topicDirection' => $g->deTai ? $g->deTai->huongDeTais->pluck('ten_huong_de_tai')->implode(', ') : null,
             'supervisor' => ($g->deTai && $g->deTai->giangVien) ? $g->deTai->giangVien->ho_ten : '—',
             'members' => $members,
             'maxMembers' => $g->deTai ? ($g->deTai->so_luong_sv_toi_da ?? 2) : 2,

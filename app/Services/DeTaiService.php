@@ -15,7 +15,7 @@ class DeTaiService
      */
     public function getListTopic(array $filters, $perPage = 10)
     {
-        $query = DeTai::with(['giangVien', 'dot']);
+        $query = DeTai::with(['giangVien', 'dot', 'huongDeTais']);
 
         // Lọc theo giảng viên (theo ID, dùng nội bộ nếu có)
         if (! empty($filters['teacherId'])) {
@@ -75,7 +75,7 @@ class DeTaiService
      */
     public function getTopicDetail($id)
     {
-        $deTai = DeTai::with(['giangVien', 'dot'])->find($id);
+        $deTai = DeTai::with(['giangVien', 'dot', 'huongDeTais'])->find($id);
         if (! $deTai) {
             return null;
         }
@@ -107,10 +107,11 @@ class DeTaiService
             'mo_ta' => $data['description'] ?? '',
             'file_mo_ta' => $data['fileUrl'] ?? null,
             'so_luong_sv_toi_da' => $maxSlots,
-            'huong_de_tai' => $this->mapFrontendDirectionToBackend($data['direction'] ?? ''),
             'trang_thai' => $status,
             'ly_do_tu_choi' => $rejectReason,
         ]);
+
+        $this->syncDirections($deTai, $data['direction'] ?? $data['directionIds'] ?? null);
 
         return $this->getTopicDetail($deTai->de_tai_id);
     }
@@ -134,9 +135,6 @@ class DeTaiService
         }
         if (isset($data['fileUrl'])) {
             $updateData['file_mo_ta'] = $data['fileUrl'];
-        }
-        if (isset($data['direction'])) {
-            $updateData['huong_de_tai'] = $this->mapFrontendDirectionToBackend($data['direction']);
         }
 
         $newStatus = null;
@@ -166,6 +164,10 @@ class DeTaiService
         }
 
         $deTai->update($updateData);
+
+        if (isset($data['direction']) || isset($data['directionIds'])) {
+            $this->syncDirections($deTai, $data['direction'] ?? $data['directionIds']);
+        }
 
         return $this->getTopicDetail($id);
     }
@@ -238,7 +240,8 @@ class DeTaiService
             'rejectReason' => $deTai->ly_do_tu_choi ?? '',
             'status' => $this->mapBackendStatusToFrontend($deTai->trang_thai),
             'description' => $deTai->mo_ta ?? '',
-            'direction' => $deTai->huong_de_tai === 'MANG_MAY_TINH' ? 'Mạng máy tính' : 'Phát triển phần mềm',
+            'direction' => $deTai->huongDeTais->pluck('ten_huong_de_tai')->implode(', ') ?: 'Chưa xác định',
+            'direction_ids' => $deTai->huongDeTais->pluck('huong_de_tai_id')->map(fn($id) => (string)$id)->all(),
             'fileUrl' => $deTai->file_mo_ta ?? '',
             'period' => $deTai->dot ? $deTai->dot->ten_dot : '',
         ];
@@ -342,5 +345,43 @@ class DeTaiService
         }
 
         return 'PHAN_MEM';
+    }
+
+    private function syncDirections(DeTai $deTai, $directionData)
+    {
+        if (empty($directionData)) {
+            return;
+        }
+
+        $ids = [];
+        if (is_array($directionData)) {
+            foreach ($directionData as $item) {
+                if (is_numeric($item)) {
+                    $ids[] = (int) $item;
+                } else {
+                    $id = DB::table('huongdetai')->where('ten_huong_de_tai', 'like', '%'.$item.'%')->value('huong_de_tai_id');
+                    if ($id) {
+                        $ids[] = $id;
+                    }
+                }
+            }
+        } else if (is_string($directionData)) {
+            $items = explode(',', $directionData);
+            foreach ($items as $item) {
+                $item = trim($item);
+                if (is_numeric($item)) {
+                    $ids[] = (int) $item;
+                } else {
+                    $id = DB::table('huongdetai')->where('ten_huong_de_tai', 'like', '%'.$item.'%')->value('huong_de_tai_id');
+                    if ($id) {
+                        $ids[] = $id;
+                    }
+                }
+            }
+        }
+
+        if (! empty($ids)) {
+            $deTai->huongDeTais()->sync($ids);
+        }
     }
 }

@@ -327,7 +327,7 @@ class NhomController extends Controller
 
                 $topicDetails = $g->deTai ? [
                     'name' => $g->deTai->ten_de_tai,
-                    'huong_de_tai' => $g->deTai->huong_de_tai === 'MANG_MAY_TINH' ? 'Mạng máy tính' : ($g->deTai->huong_de_tai === 'PHAN_MEM' ? 'Phát triển phần mềm' : ($g->deTai->huong_de_tai ?? '—')),
+                    'huong_de_tai' => $g->deTai->huongDeTais->pluck('ten_huong_de_tai')->implode(', ') ?: '—',
                     'limit' => $g->deTai->so_luong_sv_toi_da ?? 0,
                 ] : null;
 
