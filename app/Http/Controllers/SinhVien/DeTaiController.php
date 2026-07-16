@@ -688,6 +688,49 @@ class DeTaiController extends Controller
     }
 
     /**
+     * Tìm kiếm sinh viên theo mã số hoặc họ tên để mời vào nhóm đồ án tốt nghiệp.
+     * Gõ tới đâu tìm tới đó (giống cơ chế tìm kiếm ở trang Quản lý đề tài bên admin).
+     */
+    public function timKiemSinhVien(Request $request)
+    {
+        $sinhVien = $request->user();
+        if (! $sinhVien) {
+            return response()->json(['success' => false, 'message' => 'Bạn chưa đăng nhập.'], 401);
+        }
+
+        $keyword = trim((string) $request->input('keyword', ''));
+        if ($keyword === '') {
+            return response()->json(['code' => 200, 'results' => ['objects' => []]]);
+        }
+
+        $ketQua = SinhVien::with('lop')
+            ->where('dang_hoat_dong', 1)
+            ->where('sinh_vien_id', '!=', $sinhVien->sinh_vien_id)
+            ->where(function ($q) use ($keyword) {
+                $q->where('ma_so_sinh_vien', 'like', '%'.$keyword.'%')
+                    ->orWhere('ho_ten', 'like', '%'.$keyword.'%');
+            })
+            ->orderBy('ho_ten')
+            ->limit(10)
+            ->get();
+
+        $formatted = $ketQua->map(function ($sv) {
+            return [
+                'code' => $sv->ma_so_sinh_vien,
+                'name' => $sv->ho_ten,
+                'className' => $sv->lop->ten_lop ?? '',
+            ];
+        });
+
+        return response()->json([
+            'code' => 200,
+            'results' => [
+                'objects' => $formatted,
+            ],
+        ]);
+    }
+
+    /**
      * Lấy danh sách lời mời gia nhập nhóm nhận được
      */
     public function xemLoiMoiNhanDuoc(Request $request)

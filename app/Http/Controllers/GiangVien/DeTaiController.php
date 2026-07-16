@@ -127,6 +127,17 @@ class DeTaiController extends Controller
             }
         }
 
+        LichSuHoatDong::ghiLog(
+            'DE_XUAT_DE_TAI',
+            "Giảng viên {$teacher->ho_ten} đã đề xuất đề tài: ".($topic['name'] ?? '').'.',
+            null,
+            null,
+            null,
+            'giang_vien',
+            $teacher->ho_ten,
+            ['topic_id' => $topic['id'] ?? null]
+        );
+
         RealtimeService::broadcast('notification', [
             'title' => 'Đề tài mới được đề xuất',
             'message' => 'Giảng viên '.($teacher->ho_ten).' vừa đề xuất đề tài: '.($topic['name'] ?? ''),

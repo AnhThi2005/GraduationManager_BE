@@ -43,6 +43,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/private/v1/upload', [TaiLenController::class, 'upload']);
 
     // Quản lý đề tài (Topics) - Mở cho mọi vai trò (Admin duyệt, GVHD đề xuất, SV xem đăng ký)
+    Route::get('/private/v1/topic-directions', [DeTaiController::class, 'layDanhSachHuong']);
     Route::get('/private/v1/topics', [DeTaiController::class, 'layDanhSach']);
     Route::get('/private/v1/topics/{id}', [DeTaiController::class, 'xemChiTiet']);
     Route::post('/private/v1/topics', [DeTaiController::class, 'themMoi']);
@@ -68,6 +69,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/private/v1/student/thesis/invitations/{id}/accept', [App\Http\Controllers\SinhVien\DeTaiController::class, 'chapNhanLoiMoi']);
         Route::post('/private/v1/student/thesis/invitations/{id}/reject', [App\Http\Controllers\SinhVien\DeTaiController::class, 'tuChoiLoiMoi']);
         Route::post('/private/v1/student/thesis/invitations/{id}/cancel', [App\Http\Controllers\SinhVien\DeTaiController::class, 'huyLoiMoiNhom']);
+        Route::get('/private/v1/student/students/search', [App\Http\Controllers\SinhVien\DeTaiController::class, 'timKiemSinhVien']);
         Route::get('/private/v1/student/reports/tttn', [BaoCaoController::class, 'layDanhSachBaoCaoTttn']);
         Route::post('/private/v1/student/reports/tttn', [BaoCaoController::class, 'nopBaoCaoTttn']);
         Route::get('/private/v1/student/reports/datn', [BaoCaoController::class, 'layDanhSachBaoCaoDatn']);
@@ -95,6 +97,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/topics/import', [App\Http\Controllers\GiangVien\DeTaiController::class, 'import']);
         Route::get('/students', [App\Http\Controllers\GiangVien\NhomController::class, 'layDanhSachSinhVien']);
         Route::post('/report-comment', [App\Http\Controllers\GiangVien\NhomController::class, 'saveReportComment']);
+        Route::get('/history', [\App\Http\Controllers\HistoryController::class, 'getTeacherHistory']);
     });
 
     // Nhóm route Tiếng Việt chuẩn hóa cho Giảng viên (kebab-case)
@@ -144,6 +147,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
         // 9. Báo cáo cá nhân
         Route::get('/bao-cao-ca-nhan', [App\Http\Controllers\GiangVien\TrangChuController::class, 'getDashboardData']);
+        Route::get('/lich-su', [\App\Http\Controllers\HistoryController::class, 'getTeacherHistory']);
     });
 
     Route::middleware('quyen:ADMIN')->group(function () {

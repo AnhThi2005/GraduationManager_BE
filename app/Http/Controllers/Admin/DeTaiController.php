@@ -66,6 +66,29 @@ class DeTaiController extends Controller
     }
 
     /**
+     * API Lấy danh sách hướng đề tài (dùng cho các bộ lọc "Hướng đề tài")
+     */
+    public function layDanhSachHuong(Request $request)
+    {
+        $rows = \App\Models\HuongDeTai::where('trang_thai_hd', 1)
+            ->orderBy('ten_huong_de_tai')
+            ->get(['huong_de_tai_id', 'ten_huong_de_tai'])
+            ->map(function ($h) {
+                return [
+                    'id' => (string) $h->huong_de_tai_id,
+                    'name' => $h->ten_huong_de_tai,
+                ];
+            });
+
+        return response()->json([
+            'code' => 200,
+            'results' => [
+                'objects' => $rows,
+            ],
+        ], 200);
+    }
+
+    /**
      * API Xem chi tiết đề tài
      */
     public function xemChiTiet(Request $request, $id)
