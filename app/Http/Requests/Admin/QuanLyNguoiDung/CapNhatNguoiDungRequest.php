@@ -95,7 +95,7 @@ class CapNhatNguoiDungRequest extends FormRequest
         if ($this->has('name')) {
             $updateData['ho_ten'] = $this->input('name');
         }
-        if ($this->has('email')) {
+        if ($this->has('email') && ($currentUser && $currentUser->giang_vien_id !== $id)) {
             $updateData['email'] = $this->input('email');
         }
         if ($this->has('phone')) {
