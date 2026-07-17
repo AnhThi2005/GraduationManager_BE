@@ -758,8 +758,12 @@ class DotService
                     if ($dateValue) {
                         $parsedDate = Carbon::parse($dateValue);
                         if ($parsedDate->lt($schoolYearStart) || $parsedDate->gt($schoolYearEnd)) {
+                            $suggestedStartYear = $parsedDate->month >= 9 ? $parsedDate->year : $parsedDate->year - 1;
+                            $suggestedSchoolYear = "{$suggestedStartYear}-" . ($suggestedStartYear + 1);
                             throw new \InvalidArgumentException(
-                                "{$label} ({$parsedDate->format('d/m/Y')}) phải nằm trong khoảng năm học {$schoolYear} (từ 01/09/{$startYear} đến 31/08/{$endYear})!"
+                                "{$label} ({$parsedDate->format('d/m/Y')}) không thuộc năm học {$schoolYear} (01/09/{$startYear} - 31/08/{$endYear})." .
+                                " Ngày này thuộc năm học {$suggestedSchoolYear} — hãy đổi lại \"{$label}\" cho khớp năm học {$schoolYear}," .
+                                " hoặc đổi \"Năm học\" thành {$suggestedSchoolYear}."
                             );
                         }
                     }
