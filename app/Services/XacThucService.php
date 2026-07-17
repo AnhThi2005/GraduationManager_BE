@@ -48,6 +48,34 @@ class XacThucService
         return $this->capToken($user, $quyen);
     }
 
+    /**
+     * Kiểm tra email/google_id có khớp một tài khoản đã bị khóa (dang_hoat_dong = 0)
+     * hay không — dùng để trả thông báo rõ ràng "tài khoản đã bị khóa" khi đăng nhập
+     * thất bại, thay vì báo chung chung "không tồn tại" khiến người dùng tưởng nhầm mã.
+     */
+    public function laTaiKhoanBiKhoa(string $email, ?string $googleId = null): bool
+    {
+        $khopGiangVien = GiangVien::where('dang_hoat_dong', 0)
+            ->where(function ($q) use ($email, $googleId) {
+                $q->where('email', $email);
+                if ($googleId) {
+                    $q->orWhere('google_id', $googleId);
+                }
+            })->exists();
+
+        if ($khopGiangVien) {
+            return true;
+        }
+
+        return SinhVien::where('dang_hoat_dong', 0)
+            ->where(function ($q) use ($email, $googleId) {
+                $q->where('email', $email);
+                if ($googleId) {
+                    $q->orWhere('google_id', $googleId);
+                }
+            })->exists();
+    }
+
     private function timTaiKhoanTheoEmail(string $email)
     {
         $giangVien = GiangVien::where('email', $email)->where('dang_hoat_dong', 1)->first();

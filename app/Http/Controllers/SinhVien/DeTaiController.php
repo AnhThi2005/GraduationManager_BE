@@ -676,6 +676,12 @@ class DeTaiController extends Controller
                 ['invited_student_id' => $targetStudent->sinh_vien_id, 'invited_student_code' => $targetStudent->ma_so_sinh_vien]
             );
 
+            RealtimeService::broadcast('slot_updated', [
+                'type' => 'group_invite_sent',
+                'nhomId' => $nhom->nhom_id,
+                'invitedStudentId' => $targetStudent->sinh_vien_id,
+            ]);
+
             DB::commit();
 
             return response()->json([
@@ -967,6 +973,12 @@ class DeTaiController extends Controller
                 ['invite_id' => $id]
             );
 
+            RealtimeService::broadcast('slot_updated', [
+                'type' => 'group_invite_rejected',
+                'nhomId' => $nhom->nhom_id,
+                'rejectedByStudentId' => $sinhVien->sinh_vien_id,
+            ]);
+
             return response()->json([
                 'success' => true,
                 'message' => 'Từ chối lời mời gia nhập nhóm thành công!',
@@ -1103,6 +1115,8 @@ class DeTaiController extends Controller
 
         DB::beginTransaction();
         try {
+            $broadcastType = 'group_member_left';
+
             if ($pivot && $pivot->la_truong_nhom == 1) {
                 LichSuHoatDong::ghiLog(
                     'GIAI_TAN_NHOM',
@@ -1123,6 +1137,7 @@ class DeTaiController extends Controller
                 DB::table('loimoinhom')->where('nhom_id', $nhom->nhom_id)->delete();
                 $nhom->delete();
                 $msg = 'Giải tán nhóm ĐATN thành công!';
+                $broadcastType = 'group_disbanded';
             } else {
                 LichSuHoatDong::ghiLog(
                     'ROI_NHOM',
@@ -1144,7 +1159,7 @@ class DeTaiController extends Controller
             }
 
             RealtimeService::broadcast('slot_updated', [
-                'type' => 'student_left_group',
+                'type' => $broadcastType,
                 'nhomId' => $nhom->nhom_id,
             ]);
 

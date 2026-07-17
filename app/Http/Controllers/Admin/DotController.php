@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\QuanLyDot\ThemDotRequest;
+use App\Models\SinhVien;
 use App\Services\DotService;
 use App\Services\RealtimeService;
 use Illuminate\Http\Request;
@@ -28,6 +29,14 @@ class DotController extends Controller
             'type' => $request->input('type'),
             'status' => $request->input('status'),
         ];
+
+        // Sinh viên chỉ được xem đợt mà mình thực sự tham gia (qua lớp hoặc gắn thủ
+        // công) — Admin/Giảng viên vẫn thấy toàn bộ đợt như trước để quản lý/chấm điểm.
+        $user = $request->user();
+        if ($user instanceof SinhVien) {
+            $filters['sinh_vien_id'] = $user->sinh_vien_id;
+            $filters['lop_id'] = $user->lop_id;
+        }
 
         $res = $this->dotService->getListPeriod($filters, $limit);
 

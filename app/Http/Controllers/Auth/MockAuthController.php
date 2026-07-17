@@ -27,6 +27,13 @@ class MockAuthController extends Controller
         $ketQua = $this->xacThucService->xuLyDangNhapBangEmail($request->email);
 
         if (! $ketQua) {
+            if ($this->xacThucService->laTaiKhoanBiKhoa($request->email)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Tài khoản của bạn đã bị khóa. Vui lòng liên hệ Admin để được hỗ trợ.',
+                ], 403);
+            }
+
             return response()->json([
                 'success' => false,
                 'message' => 'Tài khoản Email không tồn tại trong hệ thống dữ liệu mẫu!',
@@ -81,6 +88,13 @@ class MockAuthController extends Controller
         $ketQua = $this->xacThucService->xuLyDangNhapBangGoogle($googleId, $email);
 
         if (! $ketQua) {
+            if ($this->xacThucService->laTaiKhoanBiKhoa($email, $googleId)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Tài khoản của bạn đã bị khóa. Vui lòng liên hệ Admin để được hỗ trợ.',
+                ], 403);
+            }
+
             return response()->json([
                 'success' => false,
                 'message' => "Tài khoản Google ({$email}) chưa được đăng ký trong hệ thống.",

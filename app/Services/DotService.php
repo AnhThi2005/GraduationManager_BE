@@ -40,6 +40,25 @@ class DotService
             $query->where('trang_thai', $backendStatus);
         }
 
+        // 4. Sinh viên chỉ thấy đợt mà lớp mình được gắn vào (dot_lop) hoặc được thêm thủ
+        // công (dot_sinhvien) — tránh hiển thị đợt mà sinh viên không thực sự tham gia,
+        // gây hiểu lầm khi thanh đợt hoạt động cho thấy đợt nhưng thao tác lại báo lỗi
+        // "không tìm thấy đợt hiện tại" vì lớp không nằm trong đợt đó.
+        if (! empty($filters['sinh_vien_id'])) {
+            $sinhVienId = $filters['sinh_vien_id'];
+            $lopId = $filters['lop_id'] ?? null;
+            $query->where(function ($q) use ($lopId, $sinhVienId) {
+                $q->whereHas('sinhViens', function ($qs) use ($sinhVienId) {
+                    $qs->where('sinhvien.sinh_vien_id', $sinhVienId);
+                });
+                if ($lopId) {
+                    $q->orWhereHas('lops', function ($ql) use ($lopId) {
+                        $ql->where('lop.lop_id', $lopId);
+                    });
+                }
+            });
+        }
+
         // Sắp xếp đợt mới nhất lên đầu
         $query->orderBy('dot_id', 'desc');
 
