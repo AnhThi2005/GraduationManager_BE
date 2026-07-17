@@ -2,8 +2,11 @@
 
 namespace App\Services;
 
+use App\Models\Dot;
 use App\Models\GiangVien;
 use App\Models\Lop;
+use App\Models\Nhom;
+use App\Models\PhanCongHdtt;
 use App\Models\SinhVien;
 
 class NguoiDungService
@@ -203,5 +206,51 @@ class NguoiDungService
         $giangVien->save();
 
         return $giangVien;
+    }
+
+    /**
+     * Sinh viên đang tham gia (qua lớp hoặc gắn thủ công) một đợt TTTN/ĐATN
+     * chưa đóng (trang_thai != DA_DONG) thì không được khóa tài khoản.
+     */
+    public function sinhVienDangThamGiaDotMo($sinhVienId): bool
+    {
+        $sinhVien = SinhVien::where('sinh_vien_id', $sinhVienId)->first();
+        if (! $sinhVien) {
+            return false;
+        }
+
+        return Dot::where('trang_thai', '!=', 'DA_DONG')
+            ->where(function ($query) use ($sinhVien, $sinhVienId) {
+                $query->whereHas('lops', function ($q) use ($sinhVien) {
+                    $q->where('lop.lop_id', $sinhVien->lop_id);
+                })->orWhereHas('sinhViens', function ($q) use ($sinhVienId) {
+                    $q->where('sinhvien.sinh_vien_id', $sinhVienId);
+                });
+            })
+            ->exists();
+    }
+
+    /**
+     * Giảng viên đang được phân công hướng dẫn thực tập (phanconghdtt) trong
+     * một đợt TTTN chưa đóng, hoặc có đề tài ĐATN (thuộc đợt ĐATN chưa đóng)
+     * đã có nhóm sinh viên đăng ký, thì không được khóa tài khoản.
+     */
+    public function giangVienDangHuongDanDotMo($giangVienId): bool
+    {
+        $dangHuongDanTttn = PhanCongHdtt::where('giang_vien_id', $giangVienId)
+            ->whereHas('dot', function ($q) {
+                $q->where('loai_dot', 'TTTN')->where('trang_thai', '!=', 'DA_DONG');
+            })
+            ->exists();
+
+        if ($dangHuongDanTttn) {
+            return true;
+        }
+
+        return Nhom::whereHas('deTai', function ($q) use ($giangVienId) {
+            $q->where('giang_vien_id', $giangVienId);
+        })->whereHas('dot', function ($q) {
+            $q->where('loai_dot', 'DATN')->where('trang_thai', '!=', 'DA_DONG');
+        })->exists();
     }
 }

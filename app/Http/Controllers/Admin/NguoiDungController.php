@@ -422,6 +422,12 @@ class NguoiDungController extends Controller
                 }
 
                 $newStatus = $gv->dang_hoat_dong == 1 ? 0 : 1;
+                if ($newStatus == 0 && $this->nguoiDungService->giangVienDangHuongDanDotMo($gv->giang_vien_id)) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Không thể khóa: giảng viên đang hướng dẫn sinh viên trong đợt TTTN/ĐATN đang mở!',
+                    ], 403);
+                }
                 $this->nguoiDungService->doiTrangThaiGiangVien($gv->giang_vien_id, $newStatus);
                 $msg = $newStatus == 0 ? 'Khóa tài khoản giảng viên thành công!' : 'Mở khóa tài khoản giảng viên thành công!';
                 return response()->json([
@@ -435,6 +441,12 @@ class NguoiDungController extends Controller
                 ->first();
             if ($sv) {
                 $newStatus = $sv->dang_hoat_dong == 1 ? 0 : 1;
+                if ($newStatus == 0 && $this->nguoiDungService->sinhVienDangThamGiaDotMo($sv->sinh_vien_id)) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Không thể khóa: sinh viên đang tham gia đợt TTTN/ĐATN đang mở!',
+                    ], 403);
+                }
                 $this->nguoiDungService->doiTrangThaiSinhVien($sv->sinh_vien_id, $newStatus);
                 $msg = $newStatus == 0 ? 'Khóa tài khoản sinh viên thành công!' : 'Mở khóa tài khoản sinh viên thành công!';
                 return response()->json([
@@ -449,6 +461,12 @@ class NguoiDungController extends Controller
                 ->first();
             if ($sv) {
                 $newStatus = $sv->dang_hoat_dong == 1 ? 0 : 1;
+                if ($newStatus == 0 && $this->nguoiDungService->sinhVienDangThamGiaDotMo($sv->sinh_vien_id)) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Không thể khóa: sinh viên đang tham gia đợt TTTN/ĐATN đang mở!',
+                    ], 403);
+                }
                 $this->nguoiDungService->doiTrangThaiSinhVien($sv->sinh_vien_id, $newStatus);
                 $msg = $newStatus == 0 ? 'Khóa tài khoản sinh viên thành công!' : 'Mở khóa tài khoản sinh viên thành công!';
                 return response()->json([
@@ -467,6 +485,12 @@ class NguoiDungController extends Controller
                 }
 
                 $newStatus = $gv->dang_hoat_dong == 1 ? 0 : 1;
+                if ($newStatus == 0 && $this->nguoiDungService->giangVienDangHuongDanDotMo($gv->giang_vien_id)) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Không thể khóa: giảng viên đang hướng dẫn sinh viên trong đợt TTTN/ĐATN đang mở!',
+                    ], 403);
+                }
                 $this->nguoiDungService->doiTrangThaiGiangVien($gv->giang_vien_id, $newStatus);
                 $msg = $newStatus == 0 ? 'Khóa tài khoản giảng viên thành công!' : 'Mở khóa tài khoản giảng viên thành công!';
                 return response()->json([
