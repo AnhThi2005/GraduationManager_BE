@@ -253,4 +253,44 @@ class NguoiDungService
             $q->where('loai_dot', 'DATN')->where('trang_thai', '!=', 'DA_DONG');
         })->exists();
     }
+
+    /**
+     * Phạm vi (lop_id, sinh_vien_id thủ công) của các đợt TTTN/ĐATN chưa đóng —
+     * dùng để đánh dấu hàng loạt trong danh sách người dùng (tránh chạy lại
+     * truy vấn kiểm tra cho từng dòng như sinhVienDangThamGiaDotMo()).
+     */
+    public function phamViDotMoChoSinhVien(): array
+    {
+        $openDots = Dot::where('trang_thai', '!=', 'DA_DONG')->with('lops:lop_id')->get();
+        $openDotIds = $openDots->pluck('dot_id')->all();
+
+        return [
+            'lopIds' => $openDots->pluck('lops')->flatten()->pluck('lop_id')->unique()->all(),
+            'sinhVienIds' => empty($openDotIds) ? [] : \DB::table('dot_sinhvien')
+                ->whereIn('dot_id', $openDotIds)
+                ->pluck('sinh_vien_id')
+                ->all(),
+        ];
+    }
+
+    /**
+     * Danh sách giang_vien_id đang hướng dẫn TTTN/ĐATN ở đợt chưa đóng —
+     * dùng để đánh dấu hàng loạt trong danh sách người dùng (tránh chạy lại
+     * truy vấn kiểm tra cho từng dòng như giangVienDangHuongDanDotMo()).
+     */
+    public function danhSachGiangVienDangHuongDanDotMo(): array
+    {
+        $tttnIds = PhanCongHdtt::whereHas('dot', function ($q) {
+            $q->where('loai_dot', 'TTTN')->where('trang_thai', '!=', 'DA_DONG');
+        })->pluck('giang_vien_id')->all();
+
+        $datnIds = Nhom::whereHas('dot', function ($q) {
+            $q->where('loai_dot', 'DATN')->where('trang_thai', '!=', 'DA_DONG');
+        })->with('deTai:de_tai_id,giang_vien_id')->get()
+            ->pluck('deTai.giang_vien_id')
+            ->filter()
+            ->all();
+
+        return array_values(array_unique(array_merge($tttnIds, $datnIds)));
+    }
 }

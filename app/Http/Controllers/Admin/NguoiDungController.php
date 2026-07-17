@@ -53,13 +53,18 @@ class NguoiDungController extends Controller
 
         if ($role === 'teacher') {
             $paginator = $this->nguoiDungService->locGiangVien($filters, $limit);
-            $rows = collect($paginator->items())->map(function ($gv) {
-                return $this->transformTeacher($gv);
+            $busyGvIds = $this->nguoiDungService->danhSachGiangVienDangHuongDanDotMo();
+            $rows = collect($paginator->items())->map(function ($gv) use ($busyGvIds) {
+                return $this->transformTeacher($gv, in_array($gv->giang_vien_id, $busyGvIds, true));
             })->all();
         } else {
             $paginator = $this->nguoiDungService->locSinhVien($filters, $limit);
-            $rows = collect($paginator->items())->map(function ($sv) {
-                return $this->transformStudent($sv);
+            $phamVi = $this->nguoiDungService->phamViDotMoChoSinhVien();
+            $rows = collect($paginator->items())->map(function ($sv) use ($phamVi) {
+                $busy = in_array($sv->lop_id, $phamVi['lopIds'], true)
+                    || in_array($sv->sinh_vien_id, $phamVi['sinhVienIds'], true);
+
+                return $this->transformStudent($sv, $busy);
             })->all();
         }
 
@@ -280,7 +285,7 @@ class NguoiDungController extends Controller
                 return response()->json([
                     'code' => 200,
                     'results' => [
-                        'object' => $this->transformTeacher($gv),
+                        'object' => $this->transformTeacher($gv, $this->nguoiDungService->giangVienDangHuongDanDotMo($gv->giang_vien_id)),
                     ],
                 ], 200);
             }
@@ -292,7 +297,7 @@ class NguoiDungController extends Controller
                 return response()->json([
                     'code' => 200,
                     'results' => [
-                        'object' => $this->transformStudent($sv),
+                        'object' => $this->transformStudent($sv, $this->nguoiDungService->sinhVienDangThamGiaDotMo($sv->sinh_vien_id)),
                     ],
                 ], 200);
             }
@@ -305,7 +310,7 @@ class NguoiDungController extends Controller
                 return response()->json([
                     'code' => 200,
                     'results' => [
-                        'object' => $this->transformStudent($sv),
+                        'object' => $this->transformStudent($sv, $this->nguoiDungService->sinhVienDangThamGiaDotMo($sv->sinh_vien_id)),
                     ],
                 ], 200);
             }
@@ -315,7 +320,7 @@ class NguoiDungController extends Controller
                 return response()->json([
                     'code' => 200,
                     'results' => [
-                        'object' => $this->transformTeacher($gv),
+                        'object' => $this->transformTeacher($gv, $this->nguoiDungService->giangVienDangHuongDanDotMo($gv->giang_vien_id)),
                     ],
                 ], 200);
             }
@@ -507,7 +512,7 @@ class NguoiDungController extends Controller
     }
 
     // Helper functions
-    private function transformStudent($sv)
+    private function transformStudent($sv, $dangThamGiaDotMo = false)
     {
         return [
             'id' => (string) $sv->ma_so_sinh_vien,
@@ -519,10 +524,14 @@ class NguoiDungController extends Controller
             'status' => $sv->dang_hoat_dong == 1 ? 'active' : 'inactive',
             'gender' => $sv->gioi_tinh,
             'dateOfBirth' => $sv->ngay_sinh,
+            'lockRestricted' => $sv->dang_hoat_dong == 1 && $dangThamGiaDotMo,
+            'lockRestrictedReason' => $dangThamGiaDotMo
+                ? 'Sinh viên đang tham gia đợt TTTN/ĐATN đang mở, không thể khóa tài khoản.'
+                : null,
         ];
     }
 
-    private function transformTeacher($gv)
+    private function transformTeacher($gv, $dangHuongDanDotMo = false)
     {
         return [
             'id' => (string) $gv->giang_vien_id,
@@ -534,6 +543,10 @@ class NguoiDungController extends Controller
             'status' => $gv->dang_hoat_dong == 1 ? 'active' : 'inactive',
             'academicDegree' => $gv->hoc_vi,
             'specialization' => $gv->chuyen_mon,
+            'lockRestricted' => $gv->dang_hoat_dong == 1 && $dangHuongDanDotMo,
+            'lockRestrictedReason' => $dangHuongDanDotMo
+                ? 'Giảng viên đang hướng dẫn sinh viên trong đợt TTTN/ĐATN đang mở, không thể khóa tài khoản.'
+                : null,
         ];
     }
 }
