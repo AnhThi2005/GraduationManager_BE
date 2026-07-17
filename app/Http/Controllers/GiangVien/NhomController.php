@@ -52,7 +52,7 @@ class NhomController extends Controller
             : Carbon::parse($activePeriod->ngay_ket_thuc)->endOfDay();
 
         // 1. TTTN List (chỉ tính phân công đã được admin công bố, chưa bị xóa mềm)
-        $tttnList = DB::table('phanconghdtt')
+        $allTttnStudents = DB::table('phanconghdtt')
             ->where('phanconghdtt.giang_vien_id', $teacherId)
             ->where('phanconghdtt.dot_id', $dotId)
             ->where('phanconghdtt.da_cong_bo', true)
@@ -87,7 +87,7 @@ class NhomController extends Controller
         // Gộp truy vấn báo cáo tiến độ + nhận xét của TOÀN BỘ sinh viên trong danh sách
         // thành 2 query duy nhất (thay vì 1 query báo cáo + 1 query nhận xét mỗi tuần đã
         // nộp, lặp lại cho từng sinh viên) — tránh N+1 khi số sinh viên/tuần báo cáo tăng.
-        $tttnStudentIds = $tttnList->pluck('sinh_vien_id')->unique()->values();
+        $tttnStudentIds = $allTttnStudents->pluck('sinh_vien_id')->unique()->values();
         $tttnReportsByStudent = DB::table('baocaotiendo')
             ->whereIn('sinh_vien_id', $tttnStudentIds)
             ->where('dot_id', $dotId)
@@ -99,7 +99,7 @@ class NhomController extends Controller
             ->get()
             ->keyBy('bao_cao_id');
 
-        $tttnList = $tttnList
+        $tttnList = $allTttnStudents
             ->map(function ($row) use ($dotId, $activePeriod, $end, $now, $batchDeadline, $tttnReportsByStudent, $tttnCommentsByReport) {
                 $dbReports = ($tttnReportsByStudent->get($row->sinh_vien_id) ?? collect())
                     ->keyBy('tuan_so');
@@ -354,7 +354,7 @@ class NhomController extends Controller
 
                 $topicDetails = $g->deTai ? [
                     'name' => $g->deTai->ten_de_tai,
-                    'huong_de_tai' => ($g->deTai && $g->deTai->huongDeTais) ? $g->deTai->huongDeTais->pluck('ten_huong_de_tai')->implode(', ') : '—',
+                    'huong_de_tai' => $g->deTai->huongDeTais->pluck('ten_huong_de_tai')->implode(', ') ?: '—',
                     'limit' => $g->deTai->so_luong_sv_toi_da ?? 0,
                 ] : null;
 

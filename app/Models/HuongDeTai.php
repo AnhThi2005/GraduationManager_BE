@@ -19,11 +19,6 @@ class HuongDeTai extends Model
 
     public function deTais()
     {
-        return $this->belongsToMany(
-            DeTai::class,
-            'chitiethuongdetai',
-            'huong_de_tai_id',
-            'de_tai_id'
-        );
+        return $this->belongsToMany(DeTai::class, 'chitiethuongdetai', 'huong_de_tai_id', 'de_tai_id');
     }
 }

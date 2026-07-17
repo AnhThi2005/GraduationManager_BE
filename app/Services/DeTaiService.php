@@ -138,9 +138,7 @@ class DeTaiService
             'ly_do_tu_choi' => $rejectReason,
         ]);
 
-        if (isset($data['direction'])) {
-            $this->syncDirections($deTai, $data['direction']);
-        }
+        $this->syncDirections($deTai, $data['direction'] ?? $data['directionIds'] ?? null);
 
         return $this->getTopicDetail($deTai->de_tai_id);
     }
@@ -164,9 +162,6 @@ class DeTaiService
         }
         if (isset($data['fileUrl'])) {
             $updateData['file_mo_ta'] = $data['fileUrl'];
-        }
-        if (isset($data['direction'])) {
-            $this->syncDirections($deTai, $data['direction']);
         }
 
         $newStatus = null;
@@ -196,6 +191,10 @@ class DeTaiService
         }
 
         $deTai->update($updateData);
+
+        if (isset($data['direction']) || isset($data['directionIds'])) {
+            $this->syncDirections($deTai, $data['direction'] ?? $data['directionIds']);
+        }
 
         return $this->getTopicDetail($id);
     }
@@ -307,8 +306,8 @@ class DeTaiService
             'rejectReason' => $deTai->ly_do_tu_choi ?? '',
             'status' => $this->mapBackendStatusToFrontend($deTai->trang_thai),
             'description' => $deTai->mo_ta ?? '',
-            'direction' => $deTai->huongDeTais->pluck('ten_huong_de_tai')->implode(', '),
-            'direction_ids' => $deTai->huongDeTais->pluck('huong_de_tai_id')->all(),
+            'direction' => $deTai->huongDeTais->pluck('ten_huong_de_tai')->implode(', ') ?: 'Chưa xác định',
+            'direction_ids' => $deTai->huongDeTais->pluck('huong_de_tai_id')->map(fn($id) => (string)$id)->all(),
             'fileUrl' => $deTai->file_mo_ta ?? '',
             'period' => $deTai->dot ? $deTai->dot->ten_dot : '',
         ];
@@ -450,4 +449,6 @@ class DeTaiService
 
         $deTai->huongDeTais()->sync(array_unique($ids));
     }
+
+
 }
