@@ -89,6 +89,8 @@ class CapNhatNguoiDungRequest extends FormRequest
     {
         $isTeacher = $this->checkIfTeacher();
         $updateData = [];
+        $id = $this->route('id');
+        $currentUser = auth()->user();
 
         if ($this->has('name')) {
             $updateData['ho_ten'] = $this->input('name');
@@ -105,7 +107,8 @@ class CapNhatNguoiDungRequest extends FormRequest
         if ($this->has('dateOfBirth')) {
             $updateData['ngay_sinh'] = $this->input('dateOfBirth');
         }
-        if ($this->has('status')) {
+        // Không cho phép tự khóa tài khoản của chính mình
+        if ($this->has('status') && ($currentUser && $currentUser->giang_vien_id !== $id)) {
             $updateData['dang_hoat_dong'] = $this->input('status') === 'active' ? 1 : 0;
         }
         if ($this->has('className')) {
@@ -119,7 +122,8 @@ class CapNhatNguoiDungRequest extends FormRequest
             if ($this->has('specialization')) {
                 $updateData['chuyen_mon'] = $this->input('specialization');
             }
-            if ($this->has('role')) {
+            // Không cho phép tự thay đổi vai trò của chính mình
+            if ($this->has('role') && ($currentUser && $currentUser->giang_vien_id !== $id)) {
                 $updateData['vai_tro'] = $this->input('role') === 'admin' ? 'ADMIN' : 'GIANG_VIEN';
             }
         }
