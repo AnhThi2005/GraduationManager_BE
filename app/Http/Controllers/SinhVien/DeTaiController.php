@@ -632,14 +632,30 @@ class DeTaiController extends Controller
                 return response()->json(['success' => false, 'message' => 'Bạn không thể tự mời chính mình.'], 400);
             }
 
-            // Kiểm tra xem sinh viên được mời đã có nhóm trong đợt này chưa
-            $targetHasGroup = Nhom::where('dot_id', $activePeriod->dot_id)
+            // Kiểm tra xem sinh viên được mời đã có nhóm trong đợt này chưa — cho phép mời
+            // nếu họ chỉ đang là trưởng của 1 nhóm CHỈ CÓ MÌNH HỌ (chưa mời được ai, chưa
+            // duyệt đề tài), vì lúc chấp nhận sẽ tự động gộp (xem chapNhanLoiMoi()).
+            $targetGroup = Nhom::where('dot_id', $activePeriod->dot_id)
                 ->whereHas('members', function ($q) use ($targetStudent) {
                     $q->where('sinhvien.sinh_vien_id', $targetStudent->sinh_vien_id);
-                })->exists();
+                })->first();
 
-            if ($targetHasGroup) {
-                return response()->json(['success' => false, 'message' => 'Sinh viên này đã gia nhập một nhóm khác.'], 400);
+            if ($targetGroup) {
+                $targetPivot = DB::table('thanhviennhom')
+                    ->where('nhom_id', $targetGroup->nhom_id)
+                    ->where('sinh_vien_id', $targetStudent->sinh_vien_id)
+                    ->first();
+                $targetMemberCount = DB::table('thanhviennhom')
+                    ->where('nhom_id', $targetGroup->nhom_id)
+                    ->count();
+
+                $laTruongNhomSolo = $targetPivot && $targetPivot->la_truong_nhom == 1
+                    && $targetMemberCount === 1
+                    && $targetGroup->trang_thai_duyet !== 'DA_DUYET';
+
+                if (! $laTruongNhomSolo) {
+                    return response()->json(['success' => false, 'message' => 'Sinh viên này đã gia nhập một nhóm khác.'], 400);
+                }
             }
 
             // Kiểm tra xem đã có lời mời trùng lặp chưa
@@ -875,13 +891,57 @@ class DeTaiController extends Controller
                 $q->where('sinhvien.sinh_vien_id', $sinhVien->sinh_vien_id);
             })->first();
 
+        // Auto-merge: nếu sinh viên đang là trưởng của 1 nhóm CHỈ CÓ MÌNH HỌ (chưa mời
+        // được ai, chưa được duyệt đề tài), cho phép "gộp" thay vì chặn cứng — nhóm cũ
+        // của họ tự động giải tán, họ gia nhập nhóm mới với vai trò thành viên thường.
+        // Nếu nhóm đã đủ 2 người (giới hạn tối đa/nhóm) hoặc họ chỉ là member (không
+        // phải trưởng) của nhóm khác thì vẫn chặn như cũ.
+        $oldSoloGroupToMerge = null;
         if ($existingGroup) {
-            return response()->json(['success' => false, 'message' => 'Bạn đã tham gia một nhóm khác trong đợt tốt nghiệp này rồi.'], 400);
+            $existingPivot = DB::table('thanhviennhom')
+                ->where('nhom_id', $existingGroup->nhom_id)
+                ->where('sinh_vien_id', $sinhVien->sinh_vien_id)
+                ->first();
+
+            $existingMemberCount = DB::table('thanhviennhom')
+                ->where('nhom_id', $existingGroup->nhom_id)
+                ->count();
+
+            if ($existingPivot && $existingPivot->la_truong_nhom == 1
+                && $existingMemberCount === 1
+                && $existingGroup->trang_thai_duyet !== 'DA_DUYET') {
+                $oldSoloGroupToMerge = $existingGroup;
+            } else {
+                return response()->json(['success' => false, 'message' => 'Bạn đã tham gia một nhóm khác trong đợt tốt nghiệp này rồi.'], 400);
+            }
         }
 
         // Thực hiện thêm sinh viên vào thành viên nhóm và đổi trạng thái lời mời
         DB::beginTransaction();
         try {
+            if ($oldSoloGroupToMerge) {
+                DB::table('dangkydetai')->where('nhom_id', $oldSoloGroupToMerge->nhom_id)->delete();
+                DB::table('thanhviennhom')->where('nhom_id', $oldSoloGroupToMerge->nhom_id)->delete();
+                DB::table('loimoinhom')->where('nhom_id', $oldSoloGroupToMerge->nhom_id)->delete();
+                $oldSoloGroupToMerge->delete();
+
+                LichSuHoatDong::ghiLog(
+                    'GIAI_TAN_NHOM',
+                    "Nhóm #{$oldSoloGroupToMerge->nhom_id} (chỉ có {$sinhVien->ho_ten}) tự động giải tán do {$sinhVien->ho_ten} gia nhập nhóm #{$nhom->nhom_id}.",
+                    $sinhVien->sinh_vien_id,
+                    $sinhVien->ma_so_sinh_vien,
+                    $oldSoloGroupToMerge->nhom_id,
+                    'sinh_vien',
+                    $sinhVien->ho_ten,
+                    ['auto_merged_into_nhom_id' => $nhom->nhom_id]
+                );
+
+                RealtimeService::broadcast('slot_updated', [
+                    'type' => 'group_disbanded',
+                    'nhomId' => $oldSoloGroupToMerge->nhom_id,
+                ]);
+            }
+
             // Cập nhật lời mời hiện tại
             $loiMoi->update(['trang_thai_xac_nhan' => 'DA_CHAP_NHAN']);
 
@@ -1118,25 +1178,37 @@ class DeTaiController extends Controller
             $broadcastType = 'group_member_left';
 
             if ($pivot && $pivot->la_truong_nhom == 1) {
+                // Trưởng nhóm "Giải tán": chỉ loại các thành viên KHÁC ra khỏi nhóm (họ trở
+                // thành tự do, được quyền mời người khác/tạo nhóm mới) — trưởng nhóm vẫn
+                // giữ nguyên nhóm của mình (giờ chỉ còn 1 mình), đề tài đã đăng ký (nếu có)
+                // vẫn được giữ lại vì trưởng nhóm còn đó.
+                $otherMemberIds = DB::table('thanhviennhom')
+                    ->where('nhom_id', $nhom->nhom_id)
+                    ->where('sinh_vien_id', '!=', $sinhVien->sinh_vien_id)
+                    ->pluck('sinh_vien_id');
+
                 LichSuHoatDong::ghiLog(
                     'GIAI_TAN_NHOM',
-                    "Trưởng nhóm {$sinhVien->ho_ten} đã giải tán nhóm #{$nhom->nhom_id} và đề tài đăng ký.",
+                    "Trưởng nhóm {$sinhVien->ho_ten} đã giải tán nhóm #{$nhom->nhom_id}, loại các thành viên khác khỏi nhóm.",
                     $sinhVien->sinh_vien_id,
                     $sinhVien->ma_so_sinh_vien,
                     $nhom->nhom_id,
                     'sinh_vien',
                     $sinhVien->ho_ten,
-                    ['nhom_id' => $nhom->nhom_id]
+                    ['nhom_id' => $nhom->nhom_id, 'removed_member_ids' => $otherMemberIds->all()]
                 );
 
-                // Xóa đăng ký đề tài tương ứng
-                DB::table('dangkydetai')->where('nhom_id', $nhom->nhom_id)->delete();
-                // Xóa tất cả thành viên và xóa nhóm
-                DB::table('thanhviennhom')->where('nhom_id', $nhom->nhom_id)->delete();
-                // Xóa tất cả lời mời liên quan đến nhóm này
-                DB::table('loimoinhom')->where('nhom_id', $nhom->nhom_id)->delete();
-                $nhom->delete();
-                $msg = 'Giải tán nhóm ĐATN thành công!';
+                // Loại các thành viên khác khỏi nhóm (trưởng nhóm vẫn ở lại)
+                DB::table('thanhviennhom')
+                    ->where('nhom_id', $nhom->nhom_id)
+                    ->where('sinh_vien_id', '!=', $sinhVien->sinh_vien_id)
+                    ->delete();
+                // Hủy các lời mời đang chờ từ nhóm này để trưởng nhóm mời lại từ đầu
+                DB::table('loimoinhom')
+                    ->where('nhom_id', $nhom->nhom_id)
+                    ->where('trang_thai_xac_nhan', 'CHO_XAC_NHAN')
+                    ->delete();
+                $msg = 'Giải tán nhóm ĐATN thành công! Các thành viên khác đã được loại khỏi nhóm, nhóm của bạn được giữ lại.';
                 $broadcastType = 'group_disbanded';
             } else {
                 LichSuHoatDong::ghiLog(
