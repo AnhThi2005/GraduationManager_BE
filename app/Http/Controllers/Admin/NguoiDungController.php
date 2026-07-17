@@ -413,10 +413,20 @@ class NguoiDungController extends Controller
         if ($role === 'teacher' || $role === 'admin') {
             $gv = GiangVien::where('giang_vien_id', $id)->first();
             if ($gv) {
-                $this->nguoiDungService->doiTrangThaiGiangVien($gv->giang_vien_id, 0);
+                // CHẶN: Admin không được khóa/mở khóa tài khoản Admin khác hoặc chính mình
+                if (strtolower($gv->vai_tro) === 'admin') {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Không được phép khóa/mở khóa tài khoản Admin!',
+                    ], 403);
+                }
+
+                $newStatus = $gv->dang_hoat_dong == 1 ? 0 : 1;
+                $this->nguoiDungService->doiTrangThaiGiangVien($gv->giang_vien_id, $newStatus);
+                $msg = $newStatus == 0 ? 'Khóa tài khoản giảng viên thành công!' : 'Mở khóa tài khoản giảng viên thành công!';
                 return response()->json([
                     'success' => true,
-                    'message' => 'Khóa tài khoản giảng viên thành công!',
+                    'message' => $msg,
                 ], 200);
             }
         } elseif ($role === 'student') {
@@ -424,10 +434,12 @@ class NguoiDungController extends Controller
                 ->orWhere('sinh_vien_id', $id)
                 ->first();
             if ($sv) {
-                $this->nguoiDungService->doiTrangThaiSinhVien($sv->sinh_vien_id, 0);
+                $newStatus = $sv->dang_hoat_dong == 1 ? 0 : 1;
+                $this->nguoiDungService->doiTrangThaiSinhVien($sv->sinh_vien_id, $newStatus);
+                $msg = $newStatus == 0 ? 'Khóa tài khoản sinh viên thành công!' : 'Mở khóa tài khoản sinh viên thành công!';
                 return response()->json([
                     'success' => true,
-                    'message' => 'Khóa tài khoản sinh viên thành công!',
+                    'message' => $msg,
                 ], 200);
             }
         } else {
@@ -436,19 +448,30 @@ class NguoiDungController extends Controller
                 ->orWhere('sinh_vien_id', $id)
                 ->first();
             if ($sv) {
-                $this->nguoiDungService->doiTrangThaiSinhVien($sv->sinh_vien_id, 0);
+                $newStatus = $sv->dang_hoat_dong == 1 ? 0 : 1;
+                $this->nguoiDungService->doiTrangThaiSinhVien($sv->sinh_vien_id, $newStatus);
+                $msg = $newStatus == 0 ? 'Khóa tài khoản sinh viên thành công!' : 'Mở khóa tài khoản sinh viên thành công!';
                 return response()->json([
                     'success' => true,
-                    'message' => 'Khóa tài khoản sinh viên thành công!',
+                    'message' => $msg,
                 ], 200);
             }
 
             $gv = GiangVien::where('giang_vien_id', $id)->first();
             if ($gv) {
-                $this->nguoiDungService->doiTrangThaiGiangVien($gv->giang_vien_id, 0);
+                if (strtolower($gv->vai_tro) === 'admin') {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Không được phép khóa/mở khóa tài khoản Admin!',
+                    ], 403);
+                }
+
+                $newStatus = $gv->dang_hoat_dong == 1 ? 0 : 1;
+                $this->nguoiDungService->doiTrangThaiGiangVien($gv->giang_vien_id, $newStatus);
+                $msg = $newStatus == 0 ? 'Khóa tài khoản giảng viên thành công!' : 'Mở khóa tài khoản giảng viên thành công!';
                 return response()->json([
                     'success' => true,
-                    'message' => 'Khóa tài khoản giảng viên thành công!',
+                    'message' => $msg,
                 ], 200);
             }
         }
