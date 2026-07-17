@@ -22,7 +22,17 @@ Route::get('/', function () {
 });
 
 // Thống kê công khai (không cần đăng nhập) - dùng cho màn hình đăng nhập
-Route::get('/private/v1/public/thong-ke-tong-quan', [ThongKeController::class, 'getPublicSummary']);
+// Bỏ session/CSRF của middleware "web": đây là API JSON stateless, không cần cookie phiên,
+// và StartSession từng gây lỗi ghi bảng "sessions" khiến response mất header CORS (trình duyệt
+// hiểu nhầm thành lỗi CORS thay vì lỗi 500 thật).
+Route::get('/private/v1/public/thong-ke-tong-quan', [ThongKeController::class, 'getPublicSummary'])
+    ->withoutMiddleware([
+        \Illuminate\Cookie\Middleware\EncryptCookies::class,
+        \Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse::class,
+        \Illuminate\Session\Middleware\StartSession::class,
+        \Illuminate\View\Middleware\ShareErrorsFromSession::class,
+        \Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class,
+    ]);
 
 // Fallback routes for frontend requests missing the /api prefix
 Route::middleware([
