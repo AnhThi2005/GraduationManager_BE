@@ -104,6 +104,9 @@ Route::middleware([
     Route::post('/private/v1/councils', [HoiDongController::class, 'themMoi']);
     Route::patch('/private/v1/councils/{id}', [HoiDongController::class, 'capNhat']);
     Route::delete('/private/v1/councils/{id}', [HoiDongController::class, 'xoa']);
+
+    // 11. Chức năng xem lịch sử hoạt động (Activity Logs)
+    Route::get('/private/v1/admin/history', [\App\Http\Controllers\HistoryController::class, 'getAdminHistory']);
 });
 
 Route::middleware([

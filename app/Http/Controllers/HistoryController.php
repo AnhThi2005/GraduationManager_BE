@@ -148,6 +148,13 @@ class HistoryController extends Controller
                 ->all();
         }
 
+        $dotId = $request->query('dot_id') ?? $request->query('periodId') ?? $request->query('period_id');
+        if (empty($dotId)) {
+            $activePeriod = \App\Models\Dot::where('trang_thai', 'DANG_MO')->orderBy('dot_id', 'desc')->first()
+                ?? \App\Models\Dot::orderBy('dot_id', 'desc')->first();
+            $dotId = $activePeriod ? $activePeriod->dot_id : null;
+        }
+
         // Get guided TTTN students
         $guidedStudentIds = [];
         if ($dotId) {
@@ -177,13 +184,6 @@ class HistoryController extends Controller
                     $q->orWhereIn('sinh_vien_id', $guidedStudentIds);
                 }
             });
-
-        $dotId = $request->query('dot_id') ?? $request->query('periodId') ?? $request->query('period_id');
-        if (empty($dotId)) {
-            $activePeriod = \App\Models\Dot::where('trang_thai', 'DANG_MO')->orderBy('dot_id', 'desc')->first()
-                ?? \App\Models\Dot::orderBy('dot_id', 'desc')->first();
-            $dotId = $activePeriod ? $activePeriod->dot_id : null;
-        }
 
         if ($dotId) {
             $query->where('dot_id', $dotId);
