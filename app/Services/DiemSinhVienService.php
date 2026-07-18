@@ -43,6 +43,7 @@ class DiemSinhVienService
                     $join->on('sinhvien.sinh_vien_id', '=', 'diemthuctap.sinh_vien_id')
                         ->where('diemthuctap.dot_id', '=', $dotId);
                 })
+                ->leftJoin('dot', 'dangkythuctap.dot_id', '=', 'dot.dot_id')
                 ->select([
                     'sinhvien.sinh_vien_id',
                     'sinhvien.ma_so_sinh_vien as studentId',
@@ -52,6 +53,7 @@ class DiemSinhVienService
                     'giangvien.ho_ten as mentor',
                     'diemthuctap.diem_id as id',
                     'diemthuctap.diem_so as finalScore',
+                    'dot.ten_dot as period',
                     DB::raw("CASE WHEN diemthuctap.diem_so IS NOT NULL THEN 'finalized' ELSE 'draft' END as status"),
                 ]);
         } else {
@@ -104,6 +106,7 @@ class DiemSinhVienService
                     $join->on('graded.sinh_vien_id', '=', 'sinhvien.sinh_vien_id')
                         ->on('graded.nhom_id', '=', 'nhomsvda.nhom_id');
                 })
+                ->leftJoin('dot', 'nhomsvda.dot_id', '=', 'dot.dot_id')
                 ->select([
                     'sinhvien.sinh_vien_id',
                     'sinhvien.ma_so_sinh_vien as studentId',
@@ -117,6 +120,7 @@ class DiemSinhVienService
                     DB::raw('dhbv.sum_van_dap / COALESCE(NULLIF(thd.total_lecturers, 0), 1) as qaScore'),
                     'diemtongketdatn.diem_bao_cao_chung as reportScore',
                     'diemtongketdatn.diem_tong_ket as finalScore',
+                    'dot.ten_dot as period',
                     // "Đã chấm" = có điểm báo cáo VÀ toàn bộ thành viên hội đồng đã chấm đủ 3 mục.
                     // (Không dùng trang_thai vì đó là kết quả Đạt/Không đạt, không phải trạng thái chấm điểm.)
                     DB::raw('CASE WHEN diemtongketdatn.diem_bao_cao_chung IS NOT NULL
@@ -294,6 +298,7 @@ class DiemSinhVienService
                     $join->on('sinhvien.sinh_vien_id', '=', 'diemthuctap.sinh_vien_id')
                         ->where('diemthuctap.dot_id', '=', $dotId);
                 })
+                ->leftJoin('dot', 'dangkythuctap.dot_id', '=', 'dot.dot_id')
                 ->select([
                     'sinhvien.sinh_vien_id',
                     'sinhvien.ma_so_sinh_vien as studentId',
@@ -303,6 +308,7 @@ class DiemSinhVienService
                     'giangvien.ho_ten as mentor',
                     'diemthuctap.diem_id as id',
                     'diemthuctap.diem_so as finalScore',
+                    'dot.ten_dot as period',
                     DB::raw("CASE WHEN diemthuctap.diem_so IS NOT NULL THEN 'finalized' ELSE 'draft' END as status"),
                 ])
                 ->first();
@@ -318,6 +324,7 @@ class DiemSinhVienService
                     $join->on('sinhvien.sinh_vien_id', '=', 'diemtongketdatn.sinh_vien_id')
                         ->on('nhomsvda.nhom_id', '=', 'diemtongketdatn.nhom_id');
                 })
+                ->leftJoin('dot', 'nhomsvda.dot_id', '=', 'dot.dot_id')
                 ->select([
                     'sinhvien.sinh_vien_id',
                     'sinhvien.ma_so_sinh_vien as studentId',
@@ -331,6 +338,7 @@ class DiemSinhVienService
                     DB::raw('(SELECT SUM(diem_van_dap) FROM diemhoidongbaove WHERE diemhoidongbaove.sinh_vien_id = sinhvien.sinh_vien_id AND diemhoidongbaove.nhom_id = nhomsvda.nhom_id) / COALESCE(NULLIF((SELECT COUNT(*) FROM thanhvienhoidong WHERE thanhvienhoidong.hoi_dong_id = nhomsvda.hoi_dong_id), 0), 1) as qaScore'),
                     'diemtongketdatn.diem_bao_cao_chung as reportScore',
                     'diemtongketdatn.diem_tong_ket as finalScore',
+                    'dot.ten_dot as period',
                     // Cùng logic "đã chấm" với getScoresList(): đủ điểm báo cáo + đủ toàn bộ hội đồng chấm đủ 3 mục.
                     DB::raw("CASE WHEN diemtongketdatn.diem_bao_cao_chung IS NOT NULL
                         AND (SELECT COUNT(*) FROM thanhvienhoidong WHERE thanhvienhoidong.hoi_dong_id = nhomsvda.hoi_dong_id) > 0
