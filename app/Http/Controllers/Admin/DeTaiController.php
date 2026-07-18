@@ -8,6 +8,7 @@ use App\Http\Requests\Admin\QuanLyDeTai\CapNhatDeTaiRequest;
 use App\Http\Requests\Admin\QuanLyDeTai\ThemDeTaiRequest;
 use App\Models\DeTai;
 use App\Models\Dot;
+use App\Models\HuongDeTai;
 use App\Services\DeTaiService;
 use App\Services\RealtimeService;
 use Illuminate\Http\Request;
@@ -42,6 +43,7 @@ class DeTaiController extends Controller
             'teacher' => $request->input('teacher'),
             'direction' => $request->input('direction'),
             'availableOnly' => $request->boolean('availableOnly'),
+            'slotsStatus' => $request->input('slotsStatus'),
         ];
 
         $res = $this->deTaiService->getListTopic($filters, $limit);
@@ -71,7 +73,7 @@ class DeTaiController extends Controller
      */
     public function layDanhSachHuong(Request $request)
     {
-        $rows = \App\Models\HuongDeTai::where('trang_thai_hd', 1)
+        $rows = HuongDeTai::where('trang_thai_hd', 1)
             ->orderBy('ten_huong_de_tai')
             ->get(['huong_de_tai_id', 'ten_huong_de_tai'])
             ->map(function ($h) {

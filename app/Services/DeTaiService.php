@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\DeTai;
 use App\Models\Dot;
 use App\Models\GiangVien;
+use App\Models\HuongDeTai;
 use App\Models\Nhom;
 use Illuminate\Support\Facades\DB;
 
@@ -40,7 +41,7 @@ class DeTaiService
             $dir = $filters['direction'];
             $query->whereHas('huongDeTais', function ($sub) use ($dir) {
                 if (is_numeric($dir)) {
-                    $sub->where('huongdetai.huong_de_tai_id', (int)$dir);
+                    $sub->where('huongdetai.huong_de_tai_id', (int) $dir);
                 } elseif ($dir === 'MANG_MAY_TINH') {
                     $sub->where('huongdetai.ten_huong_de_tai', 'like', '%mạng%')
                         ->orWhere('huongdetai.ten_huong_de_tai', 'like', '%network%');
@@ -48,7 +49,7 @@ class DeTaiService
                     $sub->where('huongdetai.ten_huong_de_tai', 'not like', '%mạng%')
                         ->where('huongdetai.ten_huong_de_tai', 'not like', '%network%');
                 } else {
-                    $sub->where('huongdetai.ten_huong_de_tai', 'like', '%' . $dir . '%');
+                    $sub->where('huongdetai.ten_huong_de_tai', 'like', '%'.$dir.'%');
                 }
             });
         }
@@ -69,15 +70,24 @@ class DeTaiService
             });
         }
 
-        // Lọc "nhóm có thể đăng ký": chỉ giữ đề tài còn slot trống (số SV đã vào nhóm
-        // của đề tài < số lượng SV tối đa). Dùng subquery tương quan ngay trong WHERE để
-        // paginate() đếm tổng/số trang đúng ngay từ đầu.
-        if (! empty($filters['availableOnly'])) {
+        // Lọc theo trạng thái số lượng thành viên (slotsStatus) hoặc availableOnly (tương thích cũ)
+        $slotsStatus = $filters['slotsStatus'] ?? null;
+        if (empty($slotsStatus) && ! empty($filters['availableOnly'])) {
+            $slotsStatus = 'available';
+        }
+
+        if ($slotsStatus === 'available') {
             $query->whereRaw('(
                     SELECT COUNT(*) FROM thanhviennhom
                     INNER JOIN nhomsvda ON thanhviennhom.nhom_id = nhomsvda.nhom_id
                     WHERE nhomsvda.de_tai_id = detai.de_tai_id
                 ) < COALESCE(detai.so_luong_sv_toi_da, 4)');
+        } elseif ($slotsStatus === 'full') {
+            $query->whereRaw('(
+                    SELECT COUNT(*) FROM thanhviennhom
+                    INNER JOIN nhomsvda ON thanhviennhom.nhom_id = nhomsvda.nhom_id
+                    WHERE nhomsvda.de_tai_id = detai.de_tai_id
+                ) >= COALESCE(detai.so_luong_sv_toi_da, 4)');
         }
 
         $query->orderBy('de_tai_id', 'desc');
@@ -318,7 +328,7 @@ class DeTaiService
             'status' => $this->mapBackendStatusToFrontend($deTai->trang_thai),
             'description' => $deTai->mo_ta ?? '',
             'direction' => $deTai->huongDeTais->pluck('ten_huong_de_tai')->implode(', ') ?: 'Chưa xác định',
-            'direction_ids' => $deTai->huongDeTais->pluck('huong_de_tai_id')->map(fn($id) => (string)$id)->all(),
+            'direction_ids' => $deTai->huongDeTais->pluck('huong_de_tai_id')->map(fn ($id) => (string) $id)->all(),
             'fileUrl' => $deTai->file_mo_ta ?? '',
             'period' => $deTai->dot ? $deTai->dot->ten_dot : '',
         ];
@@ -418,6 +428,7 @@ class DeTaiService
     {
         if (empty($directionInput)) {
             $deTai->huongDeTais()->detach();
+
             return;
         }
 
@@ -435,22 +446,24 @@ class DeTaiService
         if (is_array($directionInput)) {
             foreach ($directionInput as $item) {
                 if (is_numeric($item)) {
-                    $ids[] = (int)$item;
+                    $ids[] = (int) $item;
                 } elseif (is_string($item)) {
                     $item = trim($item);
-                    if (empty($item)) continue;
+                    if (empty($item)) {
+                        continue;
+                    }
 
                     // Tìm hoặc tạo hướng đề tài
-                    $huong = \App\Models\HuongDeTai::where('ten_huong_de_tai', 'like', $item)
-                        ->orWhere('ten_huong_de_tai', 'like', '%' . $item . '%')
+                    $huong = HuongDeTai::where('ten_huong_de_tai', 'like', $item)
+                        ->orWhere('ten_huong_de_tai', 'like', '%'.$item.'%')
                         ->first();
                     if ($huong) {
                         $ids[] = $huong->huong_de_tai_id;
                     } else {
                         // Tạo mới nếu chưa tồn tại
-                        $newHuong = \App\Models\HuongDeTai::create([
+                        $newHuong = HuongDeTai::create([
                             'ten_huong_de_tai' => $item,
-                            'trang_thai_hd' => 1
+                            'trang_thai_hd' => 1,
                         ]);
                         $ids[] = $newHuong->huong_de_tai_id;
                     }
@@ -460,6 +473,4 @@ class DeTaiService
 
         $deTai->huongDeTais()->sync(array_unique($ids));
     }
-
-
 }

@@ -187,7 +187,7 @@ class NhomController extends Controller
         $admin = $request->user();
         LichSuHoatDong::ghiLog(
             'CAP_NHAT_NHOM',
-            'Admin '.($admin ? $admin->ho_ten : 'Hệ thống')." đã cập nhật thông tin nhóm.",
+            'Admin '.($admin ? $admin->ho_ten : 'Hệ thống').' đã cập nhật thông tin nhóm.',
             null,
             null,
             $id,
@@ -328,7 +328,7 @@ class NhomController extends Controller
         $admin = $request->user();
         LichSuHoatDong::ghiLog(
             'XOA_NHOM',
-            'Admin '.($admin ? $admin->ho_ten : 'Hệ thống')." đã xóa nhóm.",
+            'Admin '.($admin ? $admin->ho_ten : 'Hệ thống').' đã xóa nhóm.',
             null,
             null,
             $id,
@@ -366,6 +366,7 @@ class NhomController extends Controller
         if ($dangkydetai) {
             $topic = DeTai::find($dangkydetai->de_tai_id);
             $maxSlots = $topic->so_luong_sv_toi_da ?? 4;
+            $memberCount = DB::table('thanhviennhom')->where('nhom_id', $id)->count();
             $approvedSlots = DB::table('thanhviennhom')
                 ->join('nhomsvda', 'thanhviennhom.nhom_id', '=', 'nhomsvda.nhom_id')
                 ->where('nhomsvda.de_tai_id', $dangkydetai->de_tai_id)
@@ -386,7 +387,7 @@ class NhomController extends Controller
         $admin = $request->user();
         LichSuHoatDong::ghiLog(
             'DUYET_DE_TAI',
-            'Admin '.($admin ? $admin->ho_ten : 'Hệ thống')." đã phê duyệt đề tài đăng ký của nhóm.",
+            'Admin '.($admin ? $admin->ho_ten : 'Hệ thống').' đã phê duyệt đề tài đăng ký của nhóm.',
             null,
             null,
             $id,
@@ -432,7 +433,7 @@ class NhomController extends Controller
         $admin = $request->user();
         LichSuHoatDong::ghiLog(
             'TU_CHOI_DE_TAI',
-            'Admin '.($admin ? $admin->ho_ten : 'Hệ thống')." đã từ chối đề tài đăng ký của nhóm.",
+            'Admin '.($admin ? $admin->ho_ten : 'Hệ thống').' đã từ chối đề tài đăng ký của nhóm.',
             null,
             null,
             $id,
