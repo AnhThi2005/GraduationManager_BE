@@ -498,8 +498,123 @@ class PhanCongHdttController extends Controller
             $dotId = $activePeriod ? $activePeriod->dot_id : 1;
         }
 
-        if ($resp = $this->chanNeuDotDaDong(Dot::find($dotId))) {
+        $dot = Dot::find($dotId);
+        if ($resp = $this->chanNeuDotDaDong($dot)) {
             return $resp;
+        }
+
+        if ($dot && $dot->loai_dot === 'DATN') {
+            // Check constraints:
+            // 0. Kiểm tra đề tài đồ án của sinh viên đã được duyệt hay chưa
+            $hasApprovedGroup = DB::table('thanhviennhom')
+                ->join('nhomsvda', 'thanhviennhom.nhom_id', '=', 'nhomsvda.nhom_id')
+                ->where('nhomsvda.dot_id', $dotId)
+                ->where('thanhviennhom.sinh_vien_id', $sv->sinh_vien_id)
+                ->where('nhomsvda.trang_thai_duyet', 'DA_DUYET')
+                ->exists();
+
+            if ($hasApprovedGroup) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Không thể xóa sinh viên này khỏi đợt đồ án vì đăng ký đề tài đồ án của sinh viên đã được duyệt và đang thực hiện!',
+                ], 400);
+            }
+
+            // 1. Sinh viên đã có điểm đồ án hoặc báo cáo chưa
+            $hasGrade = DB::table('diembaocao')
+                ->where('sinh_vien_id', $sv->sinh_vien_id)
+                ->where('nhom_id', function ($query) use ($sv, $dotId) {
+                    $query->select('nhom_id')
+                        ->from('thanhviennhom')
+                        ->join('nhomsvda', 'thanhviennhom.nhom_id', '=', 'nhomsvda.nhom_id')
+                        ->where('nhomsvda.dot_id', $dotId)
+                        ->where('thanhviennhom.sinh_vien_id', $sv->sinh_vien_id)
+                        ->limit(1);
+                })
+                ->exists();
+
+            if (! $hasGrade) {
+                $hasGrade = DB::table('diemtongketdatn')
+                    ->where('sinh_vien_id', $sv->sinh_vien_id)
+                    ->where('nhom_id', function ($query) use ($sv, $dotId) {
+                        $query->select('nhom_id')
+                            ->from('thanhviennhom')
+                            ->join('nhomsvda', 'thanhviennhom.nhom_id', '=', 'nhomsvda.nhom_id')
+                            ->where('nhomsvda.dot_id', $dotId)
+                            ->where('thanhviennhom.sinh_vien_id', $sv->sinh_vien_id)
+                            ->limit(1);
+                    })
+                    ->exists();
+            }
+
+            if ($hasGrade) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Không thể xóa sinh viên này khỏi đợt đồ án vì sinh viên đã có điểm số!',
+                ], 400);
+            }
+
+            // 2. Sinh viên đã nộp báo cáo tiến độ đồ án chưa
+            $hasReports = DB::table('baocaotiendo')
+                ->where('sinh_vien_id', $sv->sinh_vien_id)
+                ->where('dot_id', $dotId)
+                ->exists();
+            if ($hasReports) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Không thể xóa sinh viên này khỏi đợt đồ án vì sinh viên đã nộp báo cáo tiến độ!',
+                ], 400);
+            }
+
+            // Xử lý xóa:
+            // - Xóa khỏi các nhóm đồ án của đợt này (thanhviennhom)
+            $nhomIds = DB::table('thanhviennhom')
+                ->join('nhomsvda', 'thanhviennhom.nhom_id', '=', 'nhomsvda.nhom_id')
+                ->where('nhomsvda.dot_id', $dotId)
+                ->where('thanhviennhom.sinh_vien_id', $sv->sinh_vien_id)
+                ->pluck('thanhviennhom.nhom_id')
+                ->all();
+
+            if (! empty($nhomIds)) {
+                DB::table('thanhviennhom')
+                    ->whereIn('nhom_id', $nhomIds)
+                    ->where('sinh_vien_id', $sv->sinh_vien_id)
+                    ->delete();
+
+                // Nếu nhóm sau khi xóa không còn thành viên nào, xóa luôn nhóm
+                foreach ($nhomIds as $nhomId) {
+                    $memberCount = DB::table('thanhviennhom')->where('nhom_id', $nhomId)->count();
+                    if ($memberCount === 0) {
+                        DB::table('dangkydetai')->where('nhom_id', $nhomId)->delete();
+                        DB::table('lichbaove')->where('nhom_id', $nhomId)->delete();
+                        DB::table('nhomsvda')->where('nhom_id', $nhomId)->delete();
+                    }
+                }
+            }
+
+            // - Xóa khỏi danh sách sinh viên tự do gắn với đợt (dot_sinhvien)
+            DB::table('dot_sinhvien')
+                ->where('dot_id', $dotId)
+                ->where('sinh_vien_id', $sv->sinh_vien_id)
+                ->delete();
+
+            // Ghi log hoạt động
+            $admin = $request->user();
+            LichSuHoatDong::ghiLog(
+                'XOA_SINH_VIEN_DATN',
+                'Admin '.($admin ? $admin->ho_ten : 'Hệ thống')." đã xóa sinh viên {$sv->ho_ten} ({$sv->ma_so_sinh_vien}) khỏi đợt ĐATN.",
+                $sv->sinh_vien_id,
+                $sv->ma_so_sinh_vien,
+                null,
+                'admin',
+                $admin ? $admin->ho_ten : 'Hệ thống',
+                ['period_id' => $dotId]
+            );
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Đã xóa sinh viên khỏi đợt đồ án tốt nghiệp thành công!',
+            ], 200);
         }
 
         $assign = PhanCongHdtt::where('sinh_vien_id', $sv->sinh_vien_id)
@@ -639,7 +754,7 @@ class PhanCongHdttController extends Controller
             ->orWhere('sinh_vien_id', $studentId)
             ->first();
 
-        if (!$sinhVien) {
+        if (! $sinhVien) {
             return response()->json([
                 'success' => false,
                 'message' => 'Không tìm thấy sinh viên!',
@@ -678,7 +793,7 @@ class PhanCongHdttController extends Controller
             $admin = $request->user();
             \App\Models\LichSuHoatDong::ghiLog(
                 'CAP_NHAT_NHOM',
-                "Admin " . ($admin ? $admin->ho_ten : 'Hệ thống') . " đã cập nhật điều kiện làm đồ án của sinh viên {$sinhVien->ho_ten} thành " . ($dieuKien === 'DAT' ? 'Đạt' : 'Không đạt') . " trong đợt học #{$dotId}.",
+                'Admin '.($admin ? $admin->ho_ten : 'Hệ thống')." đã cập nhật điều kiện làm đồ án của sinh viên {$sinhVien->ho_ten} thành ".($dieuKien === 'DAT' ? 'Đạt' : 'Không đạt')." trong đợt học #{$dotId}.",
                 $sinhVien->sinh_vien_id,
                 $sinhVien->ma_so_sinh_vien,
                 null,
@@ -756,9 +871,10 @@ class PhanCongHdttController extends Controller
             ]);
         } catch (\Exception $e) {
             DB::rollBack();
+
             return response()->json([
                 'success' => false,
-                'message' => 'Lỗi cập nhật điều kiện: ' . $e->getMessage(),
+                'message' => 'Lỗi cập nhật điều kiện: '.$e->getMessage(),
             ], 500);
         }
     }

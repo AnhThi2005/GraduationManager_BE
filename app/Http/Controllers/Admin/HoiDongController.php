@@ -8,6 +8,7 @@ use App\Http\Requests\Admin\QuanLyHoiDong\ThemHoiDongRequest;
 use App\Models\Dot;
 use App\Models\GiangVien;
 use App\Models\HoiDong;
+use App\Models\LichSuHoatDong;
 use App\Models\Nhom;
 use App\Services\RealtimeService;
 use Illuminate\Http\Request;
@@ -86,6 +87,7 @@ class HoiDongController extends Controller
                     if ($ngayBaoVe < $ngayBatDauBaoVe || $ngayBaoVe > $ngayKetThucBaoVe) {
                         $startFormatted = date('d/m/Y', strtotime($ngayBatDauBaoVe));
                         $endFormatted = date('d/m/Y', strtotime($ngayKetThucBaoVe));
+
                         return response()->json([
                             'success' => false,
                             'message' => "Ngày bảo vệ phải nằm trong thời gian quy định {$startFormatted} - {$endFormatted}",
@@ -148,18 +150,18 @@ class HoiDongController extends Controller
 
         // Auto-generate name: "Hội đồng <số thứ tự>"
         $title = $request->title ?? $request->input('title');
-        if (empty($title) || !preg_match('/^Hội\s+đồng\s+(\d+)$/ui', $title)) {
+        if (empty($title) || ! preg_match('/^Hội\s+đồng\s+(\d+)$/ui', $title)) {
             $maxNum = 0;
             $existingCouncils = HoiDong::where('dot_id', $dotId)->get();
             foreach ($existingCouncils as $exHd) {
                 if (preg_match('/^Hội\s+đồng\s+(\d+)$/ui', $exHd->ten_hoi_dong, $matches)) {
-                    $num = (int)$matches[1];
+                    $num = (int) $matches[1];
                     if ($num > $maxNum) {
                         $maxNum = $num;
                     }
                 }
             }
-            $title = 'Hội đồng ' . ($maxNum + 1);
+            $title = 'Hội đồng '.($maxNum + 1);
         }
 
         try {
@@ -192,9 +194,9 @@ class HoiDongController extends Controller
 
             foreach ($members as $gvId) {
                 $role = 'UY_VIEN';
-                if ((string)$gvId === (string)$chairId) {
+                if ((string) $gvId === (string) $chairId) {
                     $role = 'CHU_TICH';
-                } elseif ((string)$gvId === (string)$secretaryId) {
+                } elseif ((string) $gvId === (string) $secretaryId) {
                     $role = 'THU_KY';
                 } else {
                     $isReviewer = collect($topics)->contains('reviewerId', $gvId);
@@ -210,11 +212,11 @@ class HoiDongController extends Controller
             }
 
             // Save groups & schedule
-            $nhomIds = collect($topics)->map(function($t) {
+            $nhomIds = collect($topics)->map(function ($t) {
                 return $t['nhom_id'] ?? $t['id'] ?? null;
             })->filter()->toArray();
 
-            if (!empty($nhomIds)) {
+            if (! empty($nhomIds)) {
                 // Delete existing schedules for these groups from other councils
                 DB::table('lichbaove')->whereIn('nhom_id', $nhomIds)->delete();
                 // Update their old council to null
@@ -291,18 +293,19 @@ class HoiDongController extends Controller
         }
 
         // Chỉ công bố các hội đồng đang ở trạng thái Bản nháp; hội đồng đã công bố
-        // hoặc đã kết thúc giữ nguyên, không bị tác động.
-        $publishedCount = HoiDong::where('dot_id', $dotId)
-            ->where('trang_thai', 'NHAP')
-            ->update(['trang_thai' => 'DA_CONG_BO']);
+        // giữ nguyên, không bị tác động.
+        $draftIds = HoiDong::where('dot_id', $dotId)->where('trang_thai', 'NHAP')->pluck('hoi_dong_id');
+        $publishedCount = $draftIds->count();
 
         if ($publishedCount > 0) {
-            RealtimeService::broadcast('notification', [
-                'title' => 'Hội đồng đã được công bố',
-                'message' => "Đã công bố {$publishedCount} hội đồng.",
-                'type' => 'council_published',
-                'dotId' => (string) $dotId,
-            ]);
+            HoiDong::whereIn('hoi_dong_id', $draftIds)->update(['trang_thai' => 'DA_CONG_BO']);
+
+            $hoiDongs = HoiDong::with(['giangViens', 'nhoms.members', 'nhoms.deTai.giangVien'])
+                ->whereIn('hoi_dong_id', $draftIds)
+                ->get();
+            foreach ($hoiDongs as $hdLoad) {
+                $this->ghiLogVaThongBaoCongBoHoiDong($hdLoad);
+            }
         }
 
         return response()->json([
@@ -334,10 +337,6 @@ class HoiDongController extends Controller
             return $resp;
         }
 
-        $trangThaiCu = $hd->trang_thai;
-        $trangThaiMoi = $request->input('status', $trangThaiCu);
-        $sapDuocCongBo = $trangThaiCu !== 'DA_CONG_BO' && $trangThaiMoi === 'DA_CONG_BO';
-
         // Validate defense date range constraint
         if ($dot) {
             $ngayBaoVe = $request->input('date');
@@ -349,6 +348,7 @@ class HoiDongController extends Controller
                     if ($ngayBaoVe < $ngayBatDauBaoVe || $ngayBaoVe > $ngayKetThucBaoVe) {
                         $startFormatted = date('d/m/Y', strtotime($ngayBatDauBaoVe));
                         $endFormatted = date('d/m/Y', strtotime($ngayKetThucBaoVe));
+
                         return response()->json([
                             'success' => false,
                             'message' => "Ngày bảo vệ phải nằm trong thời gian quy định {$startFormatted} - {$endFormatted}",
@@ -414,7 +414,7 @@ class HoiDongController extends Controller
 
         // Enforce/validate title format if updated
         $title = $request->input('title');
-        if ($title !== null && (empty($title) || !preg_match('/^Hội\s+đồng\s+(\d+)$/ui', $title))) {
+        if ($title !== null && (empty($title) || ! preg_match('/^Hội\s+đồng\s+(\d+)$/ui', $title))) {
             return response()->json([
                 'success' => false,
                 'message' => 'Tên hội đồng phải có định dạng là Hội đồng <số thứ tự>',
@@ -437,13 +437,17 @@ class HoiDongController extends Controller
             ], 422);
         }
 
-        return DB::transaction(function () use ($request, $hd, $dot, $sapDuocCongBo) {
+        return DB::transaction(function () use ($request, $hd, $dot) {
+            $oldStatus = $hd->trang_thai;
+            $newStatus = $request->input('status', $hd->trang_thai);
+
+
             $hd->update([
                 'ten_hoi_dong' => $request->input('title', $hd->ten_hoi_dong),
                 'phong_bao_ve' => $request->input('room', $hd->phong_bao_ve),
                 'ngay_bao_ve' => $request->input('date', $hd->ngay_bao_ve),
                 'gio_bao_ve' => $request->input('time', $hd->gio_bao_ve),
-                'trang_thai' => $request->input('status', $hd->trang_thai),
+                'trang_thai' => $newStatus,
             ]);
 
             // Save members if sent
@@ -456,9 +460,9 @@ class HoiDongController extends Controller
 
                 foreach ($members as $gvId) {
                     $role = 'UY_VIEN';
-                    if ((string)$gvId === (string)$chairId) {
+                    if ((string) $gvId === (string) $chairId) {
                         $role = 'CHU_TICH';
-                    } elseif ((string)$gvId === (string)$secretaryId) {
+                    } elseif ((string) $gvId === (string) $secretaryId) {
                         $role = 'THU_KY';
                     } else {
                         $isReviewer = collect($topics)->contains('reviewerId', $gvId);
@@ -481,11 +485,11 @@ class HoiDongController extends Controller
                 DB::table('lichbaove')->where('hoi_dong_id', $hd->hoi_dong_id)->delete();
 
                 $topics = $request->input('topics', []);
-                $nhomIds = collect($topics)->map(function($t) {
+                $nhomIds = collect($topics)->map(function ($t) {
                     return $t['nhom_id'] ?? $t['id'] ?? null;
                 })->filter()->toArray();
 
-                if (!empty($nhomIds)) {
+                if (! empty($nhomIds)) {
                     // Delete existing schedules for these groups from other councils
                     DB::table('lichbaove')->whereIn('nhom_id', $nhomIds)->delete();
                 }
@@ -531,17 +535,11 @@ class HoiDongController extends Controller
                 }
             }
 
-            $hdLoad = HoiDong::with(['giangViens', 'nhoms.members', 'nhoms.deTai.giangVien'])->find($hd->hoi_dong_id);
+            $hdLoad = HoiDong::with(['giangViens', 'nhoms.members.lop', 'nhoms.deTai.giangVien'])->find($hd->hoi_dong_id);
 
-            if ($sapDuocCongBo) {
-                $soNhom = $hdLoad->nhoms->count();
-                RealtimeService::broadcast('notification', [
-                    'title' => 'Hội đồng đã được công bố',
-                    'message' => "Hội đồng \"{$hdLoad->ten_hoi_dong}\" đã được công bố với {$soNhom} nhóm.",
-                    'type' => 'council_published',
-                    'dotId' => (string) $hdLoad->dot_id,
-                    'councilId' => (string) $hdLoad->hoi_dong_id,
-                ]);
+            // Gửi thông báo & Ghi nhận lịch sử hoạt động khi công bố hội đồng
+            if ($newStatus === 'DA_CONG_BO' && $oldStatus !== 'DA_CONG_BO') {
+                $this->ghiLogVaThongBaoCongBoHoiDong($hdLoad);
             }
 
             return response()->json([
@@ -551,6 +549,74 @@ class HoiDongController extends Controller
                 ],
             ], 200);
         });
+    }
+
+    private function ghiLogVaThongBaoCongBoHoiDong(HoiDong $hdLoad): void
+    {
+        // 1. Ghi log lịch sử cho các giảng viên trong hội đồng
+        foreach ($hdLoad->giangViens as $gv) {
+            $roleLabel = 'Thành viên';
+            if ($gv->pivot->vai_tro === 'CHU_TICH') {
+                $roleLabel = 'Chủ tịch';
+            } elseif ($gv->pivot->vai_tro === 'THU_KY') {
+                $roleLabel = 'Thư ký';
+            } elseif ($gv->pivot->vai_tro === 'PHAN_BIEN') {
+                $roleLabel = 'Phản biên';
+            } else {
+                $roleLabel = 'Ủy viên';
+            }
+
+            LichSuHoatDong::ghiLog(
+                'PHAN_CONG_HOI_DONG',
+                "Giảng viên {$gv->ho_ten} đã được phân công vào {$hdLoad->ten_hoi_dong} với vai trò {$roleLabel}.",
+                null,
+                null,
+                null,
+                'giang_vien',
+                $gv->ho_ten,
+                [
+                    'hoi_dong_id' => $hdLoad->hoi_dong_id,
+                    'ten_hoi_dong' => $hdLoad->ten_hoi_dong,
+                    'vai_tro' => $gv->pivot->vai_tro,
+                    'dot_id' => $hdLoad->dot_id,
+                ]
+            );
+        }
+
+        // 2. Ghi log lịch sử cho các sinh viên có nhóm bảo vệ trước hội đồng
+        foreach ($hdLoad->nhoms as $g) {
+            foreach ($g->members as $m) {
+                LichSuHoatDong::ghiLog(
+                    'LICH_BAO_VE_HOI_DONG',
+                    "Sinh viên {$m->ho_ten} đã có lịch bảo vệ tại {$hdLoad->ten_hoi_dong}, phòng ".($hdLoad->phong_bao_ve ?? '—').' vào lúc '.($hdLoad->gio_bao_ve ?? '08:00').' ngày '.($hdLoad->ngay_bao_ve ? date('d/m/Y', strtotime($hdLoad->ngay_bao_ve)) : '—').'.',
+                    $m->sinh_vien_id,
+                    $m->ma_so_sinh_vien,
+                    $g->nhom_id,
+                    'sinh_vien',
+                    $m->ho_ten,
+                    [
+                        'hoi_dong_id' => $hdLoad->hoi_dong_id,
+                        'ten_hoi_dong' => $hdLoad->ten_hoi_dong,
+                        'phong_bao_ve' => $hdLoad->phong_bao_ve,
+                        'ngay_bao_ve' => $hdLoad->ngay_bao_ve,
+                        'gio_bao_ve' => $hdLoad->gio_bao_ve,
+                        'nhom_id' => $g->nhom_id,
+                        'dot_id' => $hdLoad->dot_id,
+                    ]
+                );
+            }
+        }
+
+        // 3. Phát thông báo thời gian thực Realtime
+        RealtimeService::broadcast('notification', [
+            'title' => 'Công bố hội đồng bảo vệ tốt nghiệp',
+            'message' => "Hội đồng bảo vệ {$hdLoad->ten_hoi_dong} đã được công bố.",
+            'type' => 'council_published',
+            'payload' => [
+                'hoi_dong_id' => $hdLoad->hoi_dong_id,
+                'ten_hoi_dong' => $hdLoad->ten_hoi_dong,
+            ],
+        ]);
     }
 
     public function xoa(Request $request, $id)
@@ -618,7 +684,7 @@ class HoiDongController extends Controller
 
     private function validateNhomDotConstraint($nhom, $dot)
     {
-        if (!$nhom || !$dot) {
+        if (! $nhom || ! $dot) {
             return;
         }
 
@@ -629,7 +695,7 @@ class HoiDongController extends Controller
         $kqHd = $nhom->ket_qua_huong_dan;
         $kqPb = $nhom->ket_qua_phan_bien;
 
-        $topicName = $nhom->deTai ? $nhom->deTai->ten_de_tai : 'Nhóm #' . $nhom->nhom_id;
+        $topicName = $nhom->deTai ? $nhom->deTai->ten_de_tai : 'Nhóm #'.$nhom->nhom_id;
 
         if ($ngayBatDauPhanBien && $now >= $ngayBatDauPhanBien) {
             // Từ ngày bắt đầu phản biện trở đi: Bắt buộc cả hai phải là DAT
@@ -640,7 +706,7 @@ class HoiDongController extends Controller
             // Trước ngày bắt đầu phản biện: Hướng dẫn và Phản biện phải là null hoặc DAT (không được KHONG_DAT)
             $isHdValid = is_null($kqHd) || $kqHd === 'DAT';
             $isPbValid = is_null($kqPb) || $kqPb === 'DAT';
-            if (!$isHdValid || !$isPbValid) {
+            if (! $isHdValid || ! $isPbValid) {
                 throw new \Exception("Nhóm đề tài '{$topicName}' có kết quả không đạt, không thể xếp vào hội đồng!");
             }
         }
@@ -660,23 +726,27 @@ class HoiDongController extends Controller
             if ($start !== false && $end !== false) {
                 $startSec = date('H', $start) * 3600 + date('i', $start) * 60;
                 $endSec = date('H', $end) * 3600 + date('i', $end) * 60;
+
                 return [$startSec, $endSec];
             }
         } else {
             $start = strtotime(trim($timeStr));
             if ($start !== false) {
                 $startSec = date('H', $start) * 3600 + date('i', $start) * 60;
+
                 return [$startSec, $startSec + 4 * 3600];
             }
         }
+
         return [0, 86400];
     }
 
     private function isTimeOverlapping($timeStr1, $timeStr2)
     {
-        list($start1, $end1) = $this->parseTimeRange($timeStr1);
-        list($start2, $end2) = $this->parseTimeRange($timeStr2);
-        return ($start1 < $end2 && $start2 < $end1);
+        [$start1, $end1] = $this->parseTimeRange($timeStr1);
+        [$start2, $end2] = $this->parseTimeRange($timeStr2);
+
+        return $start1 < $end2 && $start2 < $end1;
     }
 
     private function validateNameAndRoomConflicts($title, $room, $date, $time, $dotId, $excludeId = null)
@@ -760,7 +830,7 @@ class HoiDongController extends Controller
             $ngayBatDau = $dot->ngay_bat_dau;
             $ngayBatDauPhanBien = $dot->ngay_bat_dau_phan_bien;
 
-            $nhoms = $nhoms->filter(function ($n) use ($now, $ngayBatDau, $ngayBatDauPhanBien) {
+            $nhoms = $nhoms->filter(function ($n) use ($now, $ngayBatDauPhanBien) {
                 $kqHd = $n->ket_qua_huong_dan;
                 $kqPb = $n->ket_qua_phan_bien;
 
@@ -769,6 +839,7 @@ class HoiDongController extends Controller
                 } else {
                     $isHdValid = is_null($kqHd) || $kqHd === 'DAT';
                     $isPbValid = is_null($kqPb) || $kqPb === 'DAT';
+
                     return $isHdValid && $isPbValid;
                 }
             });
@@ -823,20 +894,20 @@ class HoiDongController extends Controller
                         if (empty($rawEx)) {
                             $rawEx = $decoded['examiner_ids'] ?? [];
                         }
-                        if (empty($examinerId) && !empty($rawEx)) {
+                        if (empty($examinerId) && ! empty($rawEx)) {
                             $examinerId = reset($rawEx) ?: null;
                         }
                     }
                 }
 
                 // Resolve name strings to numeric IDs for backward compatibility
-                if ($reviewerId && !is_numeric($reviewerId)) {
+                if ($reviewerId && ! is_numeric($reviewerId)) {
                     $foundGv = $lecturers->firstWhere('ho_ten', $reviewerId);
                     if ($foundGv) {
                         $reviewerId = (string) $foundGv->giang_vien_id;
                     }
                 }
-                if ($examinerId && !is_numeric($examinerId)) {
+                if ($examinerId && ! is_numeric($examinerId)) {
                     $foundGv = $lecturers->firstWhere('ho_ten', $examinerId);
                     if ($foundGv) {
                         $examinerId = (string) $foundGv->giang_vien_id;
@@ -859,10 +930,10 @@ class HoiDongController extends Controller
             }
 
             // Map examiner names and lists
-            if (!empty($rawEx)) {
+            if (! empty($rawEx)) {
                 $rawExMapped = [];
                 foreach ($rawEx as $eid) {
-                    if ($eid && !is_numeric($eid)) {
+                    if ($eid && ! is_numeric($eid)) {
                         $foundGv = $lecturers->firstWhere('ho_ten', $eid);
                         $eid = $foundGv ? (string) $foundGv->giang_vien_id : $eid;
                     }
@@ -877,7 +948,7 @@ class HoiDongController extends Controller
                 }
                 $rawEx = $rawExMapped;
             } elseif ($examinerId) {
-                if ($examinerId && !is_numeric($examinerId)) {
+                if ($examinerId && ! is_numeric($examinerId)) {
                     $foundGv = $lecturers->firstWhere('ho_ten', $examinerId);
                     $examinerId = $foundGv ? (string) $foundGv->giang_vien_id : $examinerId;
                 }
@@ -895,14 +966,14 @@ class HoiDongController extends Controller
             $advisorId = ($nhom->deTai && $nhom->deTai->giangVien) ? (string) $nhom->deTai->giangVien->giang_vien_id : null;
             if (count($rawEx) < 2) {
                 // Find all council members
-                $councilMemberIds = $hd->giangViens->map(fn($gv) => (string)$gv->giang_vien_id)->all();
-                
+                $councilMemberIds = $hd->giangViens->map(fn ($gv) => (string) $gv->giang_vien_id)->all();
+
                 // Eligible members are those who are not the advisor and not the reviewer
-                $eligibleMemberIds = array_filter($councilMemberIds, function($mid) use ($advisorId, $reviewerId) {
-                    return $mid !== $advisorId && $mid !== (string)$reviewerId;
+                $eligibleMemberIds = array_filter($councilMemberIds, function ($mid) use ($advisorId, $reviewerId) {
+                    return $mid !== $advisorId && $mid !== (string) $reviewerId;
                 });
                 $eligibleMemberIds = array_values($eligibleMemberIds);
-                
+
                 if (count($rawEx) === 1) {
                     $savedId = $rawEx[0];
                     if (in_array($savedId, $eligibleMemberIds)) {
@@ -913,7 +984,7 @@ class HoiDongController extends Controller
                 } else {
                     $rawEx = $eligibleMemberIds;
                 }
-                
+
                 // Re-map the names
                 $examinerIds = [];
                 foreach ($rawEx as $eid) {

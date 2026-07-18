@@ -13,6 +13,7 @@ use App\Services\CongTyService;
 use App\Services\NguoiDungService;
 use App\Services\RealtimeService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 
 class CongTyController extends Controller
@@ -260,7 +261,7 @@ class CongTyController extends Controller
         $admin = $request->user();
         LichSuHoatDong::ghiLog(
             'DUYET_TTTN',
-            "Admin " . ($admin ? $admin->ho_ten : 'Hệ thống') . " đã cập nhật trạng thái hồ sơ khai báo thực tập của sinh viên " . ($reg['studentName'] ?? '') . ".",
+            'Admin '.($admin ? $admin->ho_ten : 'Hệ thống').' đã cập nhật trạng thái hồ sơ khai báo thực tập của sinh viên '.($reg['studentName'] ?? '').'.',
             $existing->sinh_vien_id,
             $reg['studentCode'] ?? null,
             null,
@@ -298,9 +299,16 @@ class CongTyController extends Controller
             return $resp;
         }
 
+        if ($existing->trang_thai === 'DA_DUYET') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Không thể xóa khai báo thực tập vì đã được duyệt và đang thực hiện!',
+            ], 400);
+        }
+
         // Kiểm tra ràng buộc:
         // 1. Sinh viên đã nộp báo cáo tiến độ
-        $hasReports = \Illuminate\Support\Facades\DB::table('baocaotiendo')
+        $hasReports = DB::table('baocaotiendo')
             ->where('sinh_vien_id', $existing->sinh_vien_id)
             ->where('dot_id', $existing->dot_id)
             ->exists();
@@ -312,7 +320,7 @@ class CongTyController extends Controller
         }
 
         // 3. Sinh viên đã có điểm thực tập
-        $hasGrade = \Illuminate\Support\Facades\DB::table('diemthuctap')
+        $hasGrade = DB::table('diemthuctap')
             ->where('sinh_vien_id', $existing->sinh_vien_id)
             ->where('dot_id', $existing->dot_id)
             ->whereNotNull('diem_so')
@@ -335,7 +343,7 @@ class CongTyController extends Controller
         $admin = $request->user();
         LichSuHoatDong::ghiLog(
             'XOA_TTTN',
-            "Admin " . ($admin ? $admin->ho_ten : 'Hệ thống') . " đã xóa hồ sơ khai báo thực tập của sinh viên mang ID {$existing->sinh_vien_id}.",
+            'Admin '.($admin ? $admin->ho_ten : 'Hệ thống')." đã xóa hồ sơ khai báo thực tập của sinh viên mang ID {$existing->sinh_vien_id}.",
             $existing->sinh_vien_id,
             null,
             null,
