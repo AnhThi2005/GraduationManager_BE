@@ -6,8 +6,8 @@ use App\Http\Controllers\Concerns\KiemTraTrangThaiDot;
 use App\Http\Controllers\Controller;
 use App\Models\DeTai;
 use App\Models\Dot;
-use App\Models\Nhom;
 use App\Models\LichSuHoatDong;
+use App\Models\Nhom;
 use App\Models\SinhVien;
 use App\Services\RealtimeService;
 use Illuminate\Http\Request;
@@ -94,10 +94,6 @@ class NhomController extends Controller
             $status = $body['status'];
             $dbStatus = 'CHO_DUYET';
             if ($status === 'APPROVED') {
-                $memberCount = DB::table('thanhviennhom')->where('nhom_id', $id)->count();
-                if ($memberCount < 2) {
-                    return response()->json(['success' => false, 'message' => 'Nhóm phải có đủ ít nhất 2 thành viên mới được duyệt!'], 400);
-                }
                 $g->trang_thai_duyet = 'DA_DUYET';
                 $dbStatus = 'DA_DUYET';
 
@@ -191,7 +187,7 @@ class NhomController extends Controller
         $admin = $request->user();
         LichSuHoatDong::ghiLog(
             'CAP_NHAT_NHOM',
-            "Admin " . ($admin ? $admin->ho_ten : 'Hệ thống') . " đã cập nhật thông tin nhóm #{$id}.",
+            'Admin '.($admin ? $admin->ho_ten : 'Hệ thống')." đã cập nhật thông tin nhóm #{$id}.",
             null,
             null,
             $id,
@@ -332,7 +328,7 @@ class NhomController extends Controller
         $admin = $request->user();
         LichSuHoatDong::ghiLog(
             'XOA_NHOM',
-            "Admin " . ($admin ? $admin->ho_ten : 'Hệ thống') . " đã xóa nhóm #{$id}.",
+            'Admin '.($admin ? $admin->ho_ten : 'Hệ thống')." đã xóa nhóm #{$id}.",
             null,
             null,
             $id,
@@ -366,11 +362,6 @@ class NhomController extends Controller
             return $resp;
         }
 
-        $memberCount = DB::table('thanhviennhom')->where('nhom_id', $id)->count();
-        if ($memberCount < 2) {
-            return response()->json(['success' => false, 'message' => 'Nhóm phải có đủ ít nhất 2 thành viên mới được duyệt!'], 400);
-        }
-
         $dangkydetai = DB::table('dangkydetai')->where('nhom_id', $id)->first();
         if ($dangkydetai) {
             $topic = DeTai::find($dangkydetai->de_tai_id);
@@ -395,7 +386,7 @@ class NhomController extends Controller
         $admin = $request->user();
         LichSuHoatDong::ghiLog(
             'DUYET_DE_TAI',
-            "Admin " . ($admin ? $admin->ho_ten : 'Hệ thống') . " đã phê duyệt đề tài đăng ký của nhóm #{$id}.",
+            'Admin '.($admin ? $admin->ho_ten : 'Hệ thống')." đã phê duyệt đề tài đăng ký của nhóm #{$id}.",
             null,
             null,
             $id,
@@ -441,7 +432,7 @@ class NhomController extends Controller
         $admin = $request->user();
         LichSuHoatDong::ghiLog(
             'TU_CHOI_DE_TAI',
-            "Admin " . ($admin ? $admin->ho_ten : 'Hệ thống') . " đã từ chối đề tài đăng ký của nhóm #{$id}.",
+            'Admin '.($admin ? $admin->ho_ten : 'Hệ thống')." đã từ chối đề tài đăng ký của nhóm #{$id}.",
             null,
             null,
             $id,
@@ -516,10 +507,12 @@ class NhomController extends Controller
             $status = 'LOCKED';
         }
 
-        if ($hasIneligible) {
-            $status = 'WARNING';
-        } elseif (count($members) < 2) {
-            $status = 'MISSING';
+        if ($g->trang_thai_duyet !== 'DA_DUYET') {
+            if ($hasIneligible) {
+                $status = 'WARNING';
+            } elseif (count($members) < 2) {
+                $status = 'MISSING';
+            }
         }
 
         return [
@@ -551,7 +544,7 @@ class NhomController extends Controller
         $svA = SinhVien::where('ma_so_sinh_vien', $studentIdA)->orWhere('sinh_vien_id', $studentIdA)->first();
         $svB = SinhVien::where('ma_so_sinh_vien', $studentIdB)->orWhere('sinh_vien_id', $studentIdB)->first();
 
-        if (!$svA || !$svB) {
+        if (! $svA || ! $svB) {
             return response()->json(['success' => false, 'message' => 'Không tìm thấy sinh viên!'], 400);
         }
 
@@ -569,13 +562,13 @@ class NhomController extends Controller
                     ->where('sinh_vien_id', $svB->sinh_vien_id)
                     ->first();
                 $eligible = ($eRecord ? ($eRecord->dieu_kien_lam_do_an ?? 'DAT') : 'DAT') === 'DAT';
-                if (!$eligible) {
+                if (! $eligible) {
                     return response()->json(['success' => false, 'message' => "Sinh viên {$svB->ho_ten} không đủ điều kiện làm đồ án!"], 400);
                 }
             }
         }
 
-        if (!$tvA || !$tvB) {
+        if (! $tvA || ! $tvB) {
             return response()->json(['success' => false, 'message' => 'Cả hai sinh viên phải đang ở trong một nhóm nào đó!'], 400);
         }
 
@@ -593,9 +586,9 @@ class NhomController extends Controller
             DB::table('thanhviennhom')->where('sinh_vien_id', $svB->sinh_vien_id)->update(['nhom_id' => $groupAId]);
 
             $admin = $request->user();
-            \App\Models\LichSuHoatDong::ghiLog(
+            LichSuHoatDong::ghiLog(
                 'CAP_NHAT_NHOM',
-                "Admin " . ($admin ? $admin->ho_ten : 'Hệ thống') . " đã hoán đổi vị trí nhóm của sinh viên {$svA->ho_ten} (Nhóm #{$groupAId}) và sinh viên {$svB->ho_ten} (Nhóm #{$groupBId}).",
+                'Admin '.($admin ? $admin->ho_ten : 'Hệ thống')." đã hoán đổi vị trí nhóm của sinh viên {$svA->ho_ten} (Nhóm #{$groupAId}) và sinh viên {$svB->ho_ten} (Nhóm #{$groupBId}).",
                 null,
                 null,
                 $groupAId,
@@ -605,9 +598,9 @@ class NhomController extends Controller
             );
 
             // Ghi log cho nhóm B nữa
-            \App\Models\LichSuHoatDong::ghiLog(
+            LichSuHoatDong::ghiLog(
                 'CAP_NHAT_NHOM',
-                "Admin " . ($admin ? $admin->ho_ten : 'Hệ thống') . " đã hoán đổi vị trí nhóm của sinh viên {$svA->ho_ten} (Nhóm #{$groupAId}) và sinh viên {$svB->ho_ten} (Nhóm #{$groupBId}).",
+                'Admin '.($admin ? $admin->ho_ten : 'Hệ thống')." đã hoán đổi vị trí nhóm của sinh viên {$svA->ho_ten} (Nhóm #{$groupAId}) và sinh viên {$svB->ho_ten} (Nhóm #{$groupBId}).",
                 null,
                 null,
                 $groupBId,
@@ -627,7 +620,8 @@ class NhomController extends Controller
             ]);
         } catch (\Exception $e) {
             DB::rollBack();
-            return response()->json(['success' => false, 'message' => 'Lỗi hệ thống: ' . $e->getMessage()], 500);
+
+            return response()->json(['success' => false, 'message' => 'Lỗi hệ thống: '.$e->getMessage()], 500);
         }
     }
 }
