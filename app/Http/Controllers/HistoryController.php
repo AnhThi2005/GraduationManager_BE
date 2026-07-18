@@ -166,17 +166,27 @@ class HistoryController extends Controller
                 ->all();
         }
 
+        // Các hành động sinh viên tự quản lý thành viên/nhóm nội bộ (lập nhóm, gửi/nhận/hủy
+        // lời mời) không cần thiết để giảng viên biết — chỉ nên hiển thị đầy đủ ở Lịch sử hệ
+        // thống bên Admin. Giảng viên chỉ cần thấy các mốc ảnh hưởng thật đến đề tài/nhóm họ
+        // hướng dẫn (đăng ký/hủy đăng ký đề tài, giải tán/rời nhóm, lịch bảo vệ...).
+        $teacherIrrelevantActionTypes = ['TAO_NHOM', 'GUI_LOI_MOI', 'CHAP_NHAN_LOI_MOI', 'TU_CHOI_LOI_MOI', 'HUY_LOI_MOI'];
+
         $query = LichSuHoatDong::query()
-            ->where(function ($q) use ($teacher, $groupIdsFromTopics, $guidedStudentIds) {
+            ->where(function ($q) use ($teacher, $groupIdsFromTopics, $guidedStudentIds, $teacherIrrelevantActionTypes) {
                 // Actor is the teacher
                 $q->where(function ($sub) use ($teacher) {
                     $sub->where('role', 'giang_vien')
                         ->where('user_name', $teacher->ho_ten);
                 });
 
-                // Or actions related to the teacher's groups
+                // Or actions related to the teacher's groups (trừ các hành động quản lý thành
+                // viên/nhóm nội bộ ở trên)
                 if (! empty($groupIdsFromTopics)) {
-                    $q->orWhereIn('nhom_id', $groupIdsFromTopics);
+                    $q->orWhere(function ($sub) use ($groupIdsFromTopics, $teacherIrrelevantActionTypes) {
+                        $sub->whereIn('nhom_id', $groupIdsFromTopics)
+                            ->whereNotIn('action_type', $teacherIrrelevantActionTypes);
+                    });
                 }
 
                 // Or actions related to the teacher's TTTN students
