@@ -34,6 +34,12 @@ class HistoryController extends Controller
                 }
             });
 
+        if ($request->filled('dot_id')) {
+            $query->where('dot_id', $request->query('dot_id'));
+        } else {
+            $query->whereRaw('1 = 0');
+        }
+
         // Chuông thông báo chỉ cần vài dòng gần nhất nên truyền "limit" để không phải quét/tải
         // toàn bộ lịch sử mỗi lần — trang "Lịch sử hoạt động" đầy đủ thì không truyền limit.
         if ($request->filled('limit')) {
@@ -56,6 +62,12 @@ class HistoryController extends Controller
     public function getAdminHistory(Request $request)
     {
         $query = LichSuHoatDong::query();
+
+        if ($request->filled('dot_id')) {
+            $query->where('dot_id', $request->query('dot_id'));
+        } else {
+            $query->whereRaw('1 = 0');
+        }
 
         if ($request->filled('sinh_vien_id')) {
             $query->where('sinh_vien_id', $request->query('sinh_vien_id'));
@@ -133,6 +145,12 @@ class HistoryController extends Controller
                     $q->orWhereIn('nhom_id', $groupIdsFromTopics);
                 }
             });
+
+        if ($request->filled('dot_id')) {
+            $query->where('dot_id', $request->query('dot_id'));
+        } else {
+            $query->whereRaw('1 = 0');
+        }
 
         // Chuông thông báo chỉ cần vài dòng gần nhất nên truyền "limit" để không phải quét/tải
         // toàn bộ lịch sử mỗi lần — trang "Lịch sử" đầy đủ thì không truyền limit.
