@@ -73,6 +73,15 @@ class DiemSinhVienService
                 ->select('hoi_dong_id', DB::raw('COUNT(*) as total_lecturers'))
                 ->groupBy('hoi_dong_id');
 
+            // Đếm số giám khảo đã chấm ĐỦ cả 3 mục (thuyết trình/demo/vấn đáp) cho từng sinh viên,
+            // dùng để xác định "đã chấm xong" thay vì dựa vào trang_thai (vốn là kết quả Đạt/Không đạt).
+            $gradedAgg = DB::table('diemhoidongbaove')
+                ->select('sinh_vien_id', 'nhom_id', DB::raw('COUNT(*) as graded_count'))
+                ->whereNotNull('diem_thuyet_trinh')
+                ->whereNotNull('diem_demo')
+                ->whereNotNull('diem_van_dap')
+                ->groupBy('sinh_vien_id', 'nhom_id');
+
             $studentsQuery = DB::table('thanhviennhom')
                 ->join('nhomsvda', 'thanhviennhom.nhom_id', '=', 'nhomsvda.nhom_id')
                 ->where('nhomsvda.dot_id', $dotId)
@@ -91,6 +100,10 @@ class DiemSinhVienService
                 ->leftJoinSub($thdAgg, 'thd', function ($join) {
                     $join->on('thd.hoi_dong_id', '=', 'nhomsvda.hoi_dong_id');
                 })
+                ->leftJoinSub($gradedAgg, 'graded', function ($join) {
+                    $join->on('graded.sinh_vien_id', '=', 'sinhvien.sinh_vien_id')
+                        ->on('graded.nhom_id', '=', 'nhomsvda.nhom_id');
+                })
                 ->select([
                     'sinhvien.sinh_vien_id',
                     'sinhvien.ma_so_sinh_vien as studentId',
@@ -104,7 +117,12 @@ class DiemSinhVienService
                     DB::raw('dhbv.sum_van_dap / COALESCE(NULLIF(thd.total_lecturers, 0), 1) as qaScore'),
                     'diemtongketdatn.diem_bao_cao_chung as reportScore',
                     'diemtongketdatn.diem_tong_ket as finalScore',
-                    DB::raw("CASE WHEN diemtongketdatn.trang_thai IS NOT NULL THEN 'finalized' ELSE 'draft' END as status"),
+                    // "Đã chấm" = có điểm báo cáo VÀ toàn bộ thành viên hội đồng đã chấm đủ 3 mục.
+                    // (Không dùng trang_thai vì đó là kết quả Đạt/Không đạt, không phải trạng thái chấm điểm.)
+                    DB::raw('CASE WHEN diemtongketdatn.diem_bao_cao_chung IS NOT NULL
+                        AND COALESCE(thd.total_lecturers, 0) > 0
+                        AND COALESCE(graded.graded_count, 0) >= thd.total_lecturers
+                        THEN \'finalized\' ELSE \'draft\' END as status'),
                 ]);
 
             // Chỉ hiển thị sinh viên đã có ít nhất 1 điểm thành phần được chấm THẬT
@@ -146,6 +164,11 @@ class DiemSinhVienService
             $studentsQuery->where('lop.ten_lop', '=', trim($filters['className']));
         }
 
+        // Lọc theo giảng viên hướng dẫn
+        if (! empty($filters['mentor'])) {
+            $studentsQuery->where('giangvien.ho_ten', '=', trim($filters['mentor']));
+        }
+
         // Lọc theo trạng thái chấm điểm
         if (! empty($filters['status']) && $filters['status'] !== 'all') {
             if ($loai === 'THUC_TAP') {
@@ -156,9 +179,15 @@ class DiemSinhVienService
                 }
             } else {
                 if ($filters['status'] === 'draft') {
-                    $studentsQuery->whereNull('diemtongketdatn.trang_thai');
+                    $studentsQuery->where(function ($q) {
+                        $q->whereNull('diemtongketdatn.diem_bao_cao_chung')
+                            ->orWhereRaw('COALESCE(thd.total_lecturers, 0) = 0')
+                            ->orWhereRaw('COALESCE(graded.graded_count, 0) < thd.total_lecturers');
+                    });
                 } else {
-                    $studentsQuery->whereNotNull('diemtongketdatn.trang_thai');
+                    $studentsQuery->whereNotNull('diemtongketdatn.diem_bao_cao_chung')
+                        ->whereRaw('COALESCE(thd.total_lecturers, 0) > 0')
+                        ->whereRaw('COALESCE(graded.graded_count, 0) >= thd.total_lecturers');
                 }
             }
         }
@@ -302,7 +331,12 @@ class DiemSinhVienService
                     DB::raw('(SELECT SUM(diem_van_dap) FROM diemhoidongbaove WHERE diemhoidongbaove.sinh_vien_id = sinhvien.sinh_vien_id AND diemhoidongbaove.nhom_id = nhomsvda.nhom_id) / COALESCE(NULLIF((SELECT COUNT(*) FROM thanhvienhoidong WHERE thanhvienhoidong.hoi_dong_id = nhomsvda.hoi_dong_id), 0), 1) as qaScore'),
                     'diemtongketdatn.diem_bao_cao_chung as reportScore',
                     'diemtongketdatn.diem_tong_ket as finalScore',
-                    DB::raw("CASE WHEN diemtongketdatn.trang_thai IS NOT NULL THEN 'finalized' ELSE 'draft' END as status"),
+                    // Cùng logic "đã chấm" với getScoresList(): đủ điểm báo cáo + đủ toàn bộ hội đồng chấm đủ 3 mục.
+                    DB::raw("CASE WHEN diemtongketdatn.diem_bao_cao_chung IS NOT NULL
+                        AND (SELECT COUNT(*) FROM thanhvienhoidong WHERE thanhvienhoidong.hoi_dong_id = nhomsvda.hoi_dong_id) > 0
+                        AND (SELECT COUNT(*) FROM diemhoidongbaove WHERE diemhoidongbaove.sinh_vien_id = sinhvien.sinh_vien_id AND diemhoidongbaove.nhom_id = nhomsvda.nhom_id AND diem_thuyet_trinh IS NOT NULL AND diem_demo IS NOT NULL AND diem_van_dap IS NOT NULL)
+                            >= (SELECT COUNT(*) FROM thanhvienhoidong WHERE thanhvienhoidong.hoi_dong_id = nhomsvda.hoi_dong_id)
+                        THEN 'finalized' ELSE 'draft' END as status"),
                 ])
                 ->first();
         }

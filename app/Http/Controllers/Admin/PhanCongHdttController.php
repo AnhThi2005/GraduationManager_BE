@@ -887,7 +887,7 @@ class PhanCongHdttController extends Controller
 
                     \App\Models\LichSuHoatDong::ghiLog(
                         'ROI_NHOM',
-                        "Hệ thống đã kích sinh viên {$sinhVien->ho_ten} ra khỏi nhóm #{$nhom->nhom_id} do bị đánh giá không đủ điều kiện làm đồ án.",
+                        "Hệ thống đã kích sinh viên {$sinhVien->ho_ten} ra khỏi nhóm do bị đánh giá không đủ điều kiện làm đồ án.",
                         $sinhVien->sinh_vien_id,
                         $sinhVien->ma_so_sinh_vien,
                         $nhom->nhom_id,

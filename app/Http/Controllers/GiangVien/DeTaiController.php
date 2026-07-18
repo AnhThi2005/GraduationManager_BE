@@ -308,7 +308,7 @@ class DeTaiController extends Controller
                 'id' => (string) $g->id,
                 'topicCode' => null,
                 'topicName' => $g->topicName,
-                'groupName' => 'Nhóm #'.$g->id,
+                'groupName' => 'Nhóm',
                 'leader' => $leader ? $leader->name : '—',
                 'members' => $members->count(),
                 'membersList' => $members,
@@ -364,7 +364,7 @@ class DeTaiController extends Controller
             $teacher = $request->user();
             LichSuHoatDong::ghiLog(
                 'DUYET_DE_TAI',
-                "Giảng viên {$teacher->ho_ten} đã phê duyệt đề tài đăng ký cho nhóm #{$groupId}.",
+                "Giảng viên {$teacher->ho_ten} đã phê duyệt đề tài đăng ký cho nhóm.",
                 null,
                 null,
                 $groupId,
@@ -383,7 +383,7 @@ class DeTaiController extends Controller
             $lyDo = $request->input('note', '');
             LichSuHoatDong::ghiLog(
                 'TU_CHOI_DE_TAI',
-                "Giảng viên {$teacher->ho_ten} đã từ chối đề tài đăng ký cho nhóm #{$groupId}.".($lyDo ? " Lý do: {$lyDo}" : ''),
+                "Giảng viên {$teacher->ho_ten} đã từ chối đề tài đăng ký cho nhóm.".($lyDo ? " Lý do: {$lyDo}" : ''),
                 null,
                 null,
                 $groupId,
@@ -421,7 +421,7 @@ class DeTaiController extends Controller
             'id' => (string) $groupId,
             'topicCode' => null,
             'topicName' => $g->topicName ?? '—',
-            'groupName' => 'Nhóm #'.$groupId,
+            'groupName' => 'Nhóm',
             'leader' => $leader ? $leader->name : '—',
             'members' => $members->count(),
             'membersList' => $members,
@@ -440,7 +440,7 @@ class DeTaiController extends Controller
 
         RealtimeService::broadcast('notification', [
             'title' => $action === 'accept' ? 'Đăng ký đề tài được duyệt' : 'Đăng ký đề tài bị từ chối',
-            'message' => 'Giảng viên đã '.($action === 'accept' ? 'duyệt' : 'từ chối').' đăng ký đề tài cho '.($groupObj['groupName'] ?? "nhóm #{$groupId}"),
+            'message' => 'Giảng viên đã '.($action === 'accept' ? 'duyệt' : 'từ chối').' đăng ký đề tài cho nhóm.',
             'type' => 'group_status_updated',
             'payload' => $groupObj,
         ]);

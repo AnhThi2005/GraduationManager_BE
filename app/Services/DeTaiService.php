@@ -69,6 +69,17 @@ class DeTaiService
             });
         }
 
+        // Lọc "nhóm có thể đăng ký": chỉ giữ đề tài còn slot trống (số SV đã vào nhóm
+        // của đề tài < số lượng SV tối đa). Dùng subquery tương quan ngay trong WHERE để
+        // paginate() đếm tổng/số trang đúng ngay từ đầu.
+        if (! empty($filters['availableOnly'])) {
+            $query->whereRaw('(
+                    SELECT COUNT(*) FROM thanhviennhom
+                    INNER JOIN nhomsvda ON thanhviennhom.nhom_id = nhomsvda.nhom_id
+                    WHERE nhomsvda.de_tai_id = detai.de_tai_id
+                ) < COALESCE(detai.so_luong_sv_toi_da, 4)');
+        }
+
         $query->orderBy('de_tai_id', 'desc');
 
         $paginator = $query->paginate($perPage);

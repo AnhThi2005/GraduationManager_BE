@@ -187,7 +187,7 @@ class NhomController extends Controller
         $admin = $request->user();
         LichSuHoatDong::ghiLog(
             'CAP_NHAT_NHOM',
-            'Admin '.($admin ? $admin->ho_ten : 'Hệ thống')." đã cập nhật thông tin nhóm #{$id}.",
+            'Admin '.($admin ? $admin->ho_ten : 'Hệ thống')." đã cập nhật thông tin nhóm.",
             null,
             null,
             $id,
@@ -328,7 +328,7 @@ class NhomController extends Controller
         $admin = $request->user();
         LichSuHoatDong::ghiLog(
             'XOA_NHOM',
-            'Admin '.($admin ? $admin->ho_ten : 'Hệ thống')." đã xóa nhóm #{$id}.",
+            'Admin '.($admin ? $admin->ho_ten : 'Hệ thống')." đã xóa nhóm.",
             null,
             null,
             $id,
@@ -386,7 +386,7 @@ class NhomController extends Controller
         $admin = $request->user();
         LichSuHoatDong::ghiLog(
             'DUYET_DE_TAI',
-            'Admin '.($admin ? $admin->ho_ten : 'Hệ thống')." đã phê duyệt đề tài đăng ký của nhóm #{$id}.",
+            'Admin '.($admin ? $admin->ho_ten : 'Hệ thống')." đã phê duyệt đề tài đăng ký của nhóm.",
             null,
             null,
             $id,
@@ -432,7 +432,7 @@ class NhomController extends Controller
         $admin = $request->user();
         LichSuHoatDong::ghiLog(
             'TU_CHOI_DE_TAI',
-            'Admin '.($admin ? $admin->ho_ten : 'Hệ thống')." đã từ chối đề tài đăng ký của nhóm #{$id}.",
+            'Admin '.($admin ? $admin->ho_ten : 'Hệ thống')." đã từ chối đề tài đăng ký của nhóm.",
             null,
             null,
             $id,
@@ -588,7 +588,7 @@ class NhomController extends Controller
             $admin = $request->user();
             LichSuHoatDong::ghiLog(
                 'CAP_NHAT_NHOM',
-                'Admin '.($admin ? $admin->ho_ten : 'Hệ thống')." đã hoán đổi vị trí nhóm của sinh viên {$svA->ho_ten} (Nhóm #{$groupAId}) và sinh viên {$svB->ho_ten} (Nhóm #{$groupBId}).",
+                'Admin '.($admin ? $admin->ho_ten : 'Hệ thống')." đã hoán đổi vị trí nhóm của sinh viên {$svA->ho_ten} và sinh viên {$svB->ho_ten}.",
                 null,
                 null,
                 $groupAId,
@@ -600,7 +600,7 @@ class NhomController extends Controller
             // Ghi log cho nhóm B nữa
             LichSuHoatDong::ghiLog(
                 'CAP_NHAT_NHOM',
-                'Admin '.($admin ? $admin->ho_ten : 'Hệ thống')." đã hoán đổi vị trí nhóm của sinh viên {$svA->ho_ten} (Nhóm #{$groupAId}) và sinh viên {$svB->ho_ten} (Nhóm #{$groupBId}).",
+                'Admin '.($admin ? $admin->ho_ten : 'Hệ thống')." đã hoán đổi vị trí nhóm của sinh viên {$svA->ho_ten} và sinh viên {$svB->ho_ten}.",
                 null,
                 null,
                 $groupBId,

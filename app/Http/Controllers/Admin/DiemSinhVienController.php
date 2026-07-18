@@ -28,6 +28,7 @@ class DiemSinhVienController extends Controller
             'mode' => $request->input('mode', 'internship'),
             'keyword' => $request->input('keyword'),
             'className' => $request->input('className'),
+            'mentor' => $request->input('mentor'),
             'status' => $request->input('status'),
         ];
 
