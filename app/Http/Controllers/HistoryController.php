@@ -28,14 +28,15 @@ class HistoryController extends Controller
         $query = LichSuHoatDong::query()
             ->where(function ($q) use ($sinhVien, $groupIds) {
                 $q->where('sinh_vien_id', $sinhVien->sinh_vien_id)
-                  ->orWhere('ma_so_sinh_vien', $sinhVien->ma_so_sinh_vien);
-                if (!empty($groupIds)) {
+                    ->orWhere('ma_so_sinh_vien', $sinhVien->ma_so_sinh_vien);
+                if (! empty($groupIds)) {
                     $q->orWhereIn('nhom_id', $groupIds);
                 }
             });
 
-        if ($request->filled('dot_id')) {
-            $query->where('dot_id', $request->query('dot_id'));
+        $dotId = $request->query('dot_id') ?? $request->query('periodId') ?? $request->query('period_id');
+        if ($dotId) {
+            $query->where('dot_id', $dotId);
         } else {
             $query->whereRaw('1 = 0');
         }
@@ -52,8 +53,8 @@ class HistoryController extends Controller
         return response()->json([
             'code' => 200,
             'results' => [
-                'objects' => $logs
-            ]
+                'objects' => $logs,
+            ],
         ]);
     }
 
@@ -64,8 +65,9 @@ class HistoryController extends Controller
     {
         $query = LichSuHoatDong::query();
 
-        if ($request->filled('dot_id')) {
-            $query->where('dot_id', $request->query('dot_id'));
+        $dotId = $request->query('dot_id') ?? $request->query('periodId') ?? $request->query('period_id');
+        if ($dotId) {
+            $query->where('dot_id', $dotId);
         } else {
             $query->whereRaw('1 = 0');
         }
@@ -81,8 +83,8 @@ class HistoryController extends Controller
         if ($request->filled('keyword')) {
             $keyword = trim($request->query('keyword'));
             $query->where(function ($q) use ($keyword) {
-                $q->where('ma_so_sinh_vien', 'like', '%' . $keyword . '%')
-                  ->orWhere('user_name', 'like', '%' . $keyword . '%');
+                $q->where('ma_so_sinh_vien', 'like', '%'.$keyword.'%')
+                    ->orWhere('user_name', 'like', '%'.$keyword.'%');
             });
         }
 
@@ -103,8 +105,8 @@ class HistoryController extends Controller
         return response()->json([
             'code' => 200,
             'results' => [
-                'objects' => $logs
-            ]
+                'objects' => $logs,
+            ],
         ]);
     }
 
@@ -126,7 +128,7 @@ class HistoryController extends Controller
 
         // Get all group IDs registered for these topics
         $groupIdsFromTopics = [];
-        if (!empty($topicIds)) {
+        if (! empty($topicIds)) {
             $groupIdsFromTopics = DB::table('nhomsvda')
                 ->whereIn('de_tai_id', $topicIds)
                 ->pluck('nhom_id')
@@ -140,9 +142,9 @@ class HistoryController extends Controller
                     $sub->where('role', 'giang_vien')
                         ->where('user_name', $teacher->ho_ten);
                 });
-                
+
                 // Or actions related to the teacher's groups
-                if (!empty($groupIdsFromTopics)) {
+                if (! empty($groupIdsFromTopics)) {
                     $q->orWhereIn('nhom_id', $groupIdsFromTopics);
                 }
             });
@@ -165,8 +167,8 @@ class HistoryController extends Controller
         return response()->json([
             'code' => 200,
             'results' => [
-                'objects' => $logs
-            ]
+                'objects' => $logs,
+            ],
         ]);
     }
 
@@ -228,6 +230,7 @@ class HistoryController extends Controller
                 'bạn',
                 $description
             );
+
             // Tên trần trụi còn sót lại (không kèm danh từ đứng trước) -> "bạn"
             return str_replace($viewerName, 'bạn', $description);
         }
