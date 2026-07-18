@@ -325,13 +325,58 @@ class PhanCongHdttController extends Controller
             $dotId = $activePeriod ? $activePeriod->dot_id : 1;
         }
 
-        // Chỉ áp dụng cho đợt Thực tập tốt nghiệp (TTTN)
         $dot = Dot::find($dotId);
-        if ($dot && $dot->loai_dot !== 'TTTN') {
+        if ($dot && $dot->loai_dot === 'DATN') {
+            // Lấy thông tin nhóm của sinh viên trong đợt này
+            $group = Nhom::with(['members.lop', 'deTai.giangVien'])
+                ->where('dot_id', $dotId)
+                ->whereHas('members', function ($q) use ($sv) {
+                    $q->where('sinhvien.sinh_vien_id', $sv->sinh_vien_id);
+                })
+                ->first();
+
+            $groupMembers = [];
+            $topicName = '—';
+            $topicDesc = '—';
+            $supervisor = '—';
+            $groupCode = '—';
+
+            if ($group) {
+                $groupCode = $group->code ?? "#{$group->nhom_id}";
+                $groupMembers = $group->members->map(function ($m) {
+                    return [
+                        'studentId' => $m->ma_so_sinh_vien,
+                        'name' => $m->ho_ten,
+                        'className' => $m->lop ? $m->lop->ten_lop : '—',
+                    ];
+                })->all();
+
+                if ($group->deTai) {
+                    $topicName = $group->deTai->ten_de_tai;
+                    $topicDesc = $group->deTai->mo_ta ?? '—';
+                    if ($group->deTai->giangVien) {
+                        $supervisor = $group->deTai->giangVien->ho_ten;
+                    }
+                }
+            }
+
             return response()->json([
-                'success' => false,
-                'message' => 'Thao tác phân công hướng dẫn chỉ áp dụng cho đợt Thực tập tốt nghiệp (TTTN)!',
-            ], 400);
+                'code' => 200,
+                'results' => [
+                    'object' => [
+                        'studentId' => (string) $sv->ma_so_sinh_vien,
+                        'name' => $sv->ho_ten,
+                        'className' => $sv->lop ? $sv->lop->ten_lop : '—',
+                        'course' => $sv->lop ? $sv->lop->khoa_hoc : '—',
+                        'dieuKienLamDoAn' => $sv->dieu_kien_lam_do_an ?? 'DAT',
+                        'groupCode' => $groupCode,
+                        'groupMembers' => $groupMembers,
+                        'topic' => $topicName,
+                        'topicDesc' => $topicDesc,
+                        'supervisor' => $supervisor,
+                    ],
+                ],
+            ], 200);
         }
 
         $assign = PhanCongHdtt::with('giangVien')

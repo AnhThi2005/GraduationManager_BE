@@ -340,9 +340,6 @@ class DeTaiController extends Controller
 
         if ($action === 'accept') {
             $memberCount = DB::table('thanhviennhom')->where('nhom_id', $groupId)->count();
-            if ($memberCount < 2) {
-                return response()->json(['success' => false, 'message' => 'Nhóm phải có đủ ít nhất 2 thành viên mới được duyệt đề tài!'], 400);
-            }
 
             $topic = DeTai::find($dangkydetai->de_tai_id);
             $maxSlots = $topic->so_luong_sv_toi_da ?? 4;
@@ -386,7 +383,7 @@ class DeTaiController extends Controller
             $lyDo = $request->input('note', '');
             LichSuHoatDong::ghiLog(
                 'TU_CHOI_DE_TAI',
-                "Giảng viên {$teacher->ho_ten} đã từ chối đề tài đăng ký cho nhóm #{$groupId}." . ($lyDo ? " Lý do: {$lyDo}" : ""),
+                "Giảng viên {$teacher->ho_ten} đã từ chối đề tài đăng ký cho nhóm #{$groupId}.".($lyDo ? " Lý do: {$lyDo}" : ''),
                 null,
                 null,
                 $groupId,
@@ -501,14 +498,15 @@ class DeTaiController extends Controller
 
                 // Check internal duplicate in Excel file
                 if (in_array($lowerName, $seenNames)) {
-                    $errors[] = "Dòng " . ($index + 1) . ": Tên đề tài \"{$tenDeTai}\" bị trùng lặp trong file Excel.";
+                    $errors[] = 'Dòng '.($index + 1).": Tên đề tài \"{$tenDeTai}\" bị trùng lặp trong file Excel.";
+
                     continue;
                 }
                 $seenNames[] = $lowerName;
 
                 // Check duplicate in database
                 if (DeTai::where('ten_de_tai', $tenDeTai)->exists()) {
-                    $errors[] = "Dòng " . ($index + 1) . ": Tên đề tài \"{$tenDeTai}\" đã tồn tại trên hệ thống.";
+                    $errors[] = 'Dòng '.($index + 1).": Tên đề tài \"{$tenDeTai}\" đã tồn tại trên hệ thống.";
                 }
             }
 
