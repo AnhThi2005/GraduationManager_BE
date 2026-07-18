@@ -139,7 +139,7 @@ class DeTaiController extends Controller
                 'object' => [
                     'topicId' => (string) $nhom->de_tai_id,
                     'topicTitle' => $nhom->deTai ? $nhom->deTai->ten_de_tai : 'Chưa chọn đề tài',
-                    'groupName' => 'Nhóm số #'.$nhom->nhom_id,
+                    'groupName' => 'Nhóm',
                     'batch' => $nhom->dot ? $nhom->dot->ten_dot : '',
                     'submittedAt' => $nhom->ngay_dang_ky ? date('d/m/Y H:i', strtotime($nhom->ngay_dang_ky)) : '—',
                     'status' => $status,
@@ -245,7 +245,7 @@ class DeTaiController extends Controller
 
             LichSuHoatDong::ghiLog(
                 'DANG_KY_DE_TAI',
-                "Nhóm #{$nhom->nhom_id} (Trưởng nhóm {$sinhVien->ho_ten}) đã đăng ký đề tài: {$deTai->ten_de_tai}.",
+                "Nhóm (Trưởng nhóm {$sinhVien->ho_ten}) đã đăng ký đề tài: {$deTai->ten_de_tai}.",
                 $sinhVien->sinh_vien_id,
                 $sinhVien->ma_so_sinh_vien,
                 $nhom->nhom_id,
@@ -268,7 +268,7 @@ class DeTaiController extends Controller
                 'payload' => [
                     'topicId' => (string) $deTai->de_tai_id,
                     'topicTitle' => $deTai->ten_de_tai,
-                    'groupName' => 'Nhóm số #'.$nhom->nhom_id,
+                    'groupName' => 'Nhóm',
                     'studentName' => $sinhVien->ho_ten,
                 ],
             ]);
@@ -282,7 +282,7 @@ class DeTaiController extends Controller
                     'object' => [
                         'topicId' => (string) $deTai->de_tai_id,
                         'topicTitle' => $deTai->ten_de_tai,
-                        'groupName' => 'Nhóm số #'.$nhom->nhom_id,
+                        'groupName' => 'Nhóm',
                         'batch' => $deTai->dot ? $deTai->dot->ten_dot : 'Đợt hiện tại',
                         'submittedAt' => date('d/m/Y H:i'),
                         'status' => 'pending',
@@ -372,7 +372,7 @@ class DeTaiController extends Controller
 
             LichSuHoatDong::ghiLog(
                 'HUY_DANG_KY_DE_TAI',
-                "Nhóm #{$nhom->nhom_id} (Trưởng nhóm {$sinhVien->ho_ten}) đã hủy đăng ký đề tài.",
+                "Nhóm (Trưởng nhóm {$sinhVien->ho_ten}) đã hủy đăng ký đề tài.",
                 $sinhVien->sinh_vien_id,
                 $sinhVien->ma_so_sinh_vien,
                 $nhom->nhom_id,
@@ -596,7 +596,7 @@ class DeTaiController extends Controller
 
                 LichSuHoatDong::ghiLog(
                     'TAO_NHOM',
-                    "Sinh viên {$sinhVien->ho_ten} đã tạo nhóm mới #{$nhom->nhom_id} trong đợt {$activePeriod->ten_dot}.",
+                    "Sinh viên {$sinhVien->ho_ten} đã tạo nhóm mới trong đợt {$activePeriod->ten_dot}.",
                     $sinhVien->sinh_vien_id,
                     $sinhVien->ma_so_sinh_vien,
                     $nhom->nhom_id,
@@ -927,7 +927,7 @@ class DeTaiController extends Controller
 
                 LichSuHoatDong::ghiLog(
                     'GIAI_TAN_NHOM',
-                    "Nhóm #{$oldSoloGroupToMerge->nhom_id} (chỉ có {$sinhVien->ho_ten}) tự động giải tán do {$sinhVien->ho_ten} gia nhập nhóm #{$nhom->nhom_id}.",
+                    "Nhóm (chỉ có {$sinhVien->ho_ten}) tự động giải tán do {$sinhVien->ho_ten} gia nhập nhóm khác.",
                     $sinhVien->sinh_vien_id,
                     $sinhVien->ma_so_sinh_vien,
                     $oldSoloGroupToMerge->nhom_id,
@@ -960,7 +960,7 @@ class DeTaiController extends Controller
 
             LichSuHoatDong::ghiLog(
                 'CHAP_NHAN_LOI_MOI',
-                "Sinh viên {$sinhVien->ho_ten} đã chấp nhận lời mời gia nhập nhóm #{$nhom->nhom_id}.",
+                "Sinh viên {$sinhVien->ho_ten} đã chấp nhận lời mời gia nhập nhóm.",
                 $sinhVien->sinh_vien_id,
                 $sinhVien->ma_so_sinh_vien,
                 $nhom->nhom_id,
@@ -1024,7 +1024,7 @@ class DeTaiController extends Controller
 
             LichSuHoatDong::ghiLog(
                 'TU_CHOI_LOI_MOI',
-                "Sinh viên {$sinhVien->ho_ten} đã từ chối lời mời gia nhập nhóm #{$nhom->nhom_id}.",
+                "Sinh viên {$sinhVien->ho_ten} đã từ chối lời mời gia nhập nhóm.",
                 $sinhVien->sinh_vien_id,
                 $sinhVien->ma_so_sinh_vien,
                 $nhom->nhom_id,
@@ -1189,7 +1189,7 @@ class DeTaiController extends Controller
 
                 LichSuHoatDong::ghiLog(
                     'GIAI_TAN_NHOM',
-                    "Trưởng nhóm {$sinhVien->ho_ten} đã giải tán nhóm #{$nhom->nhom_id}, loại các thành viên khác khỏi nhóm.",
+                    "Trưởng nhóm {$sinhVien->ho_ten} đã giải tán nhóm, loại các thành viên khác khỏi nhóm.",
                     $sinhVien->sinh_vien_id,
                     $sinhVien->ma_so_sinh_vien,
                     $nhom->nhom_id,
@@ -1213,7 +1213,7 @@ class DeTaiController extends Controller
             } else {
                 LichSuHoatDong::ghiLog(
                     'ROI_NHOM',
-                    "Sinh viên {$sinhVien->ho_ten} đã rời khỏi nhóm #{$nhom->nhom_id}.",
+                    "Sinh viên {$sinhVien->ho_ten} đã rời khỏi nhóm.",
                     $sinhVien->sinh_vien_id,
                     $sinhVien->ma_so_sinh_vien,
                     $nhom->nhom_id,

@@ -41,6 +41,7 @@ class DeTaiController extends Controller
             'periodId' => $request->input('periodId'),
             'teacher' => $request->input('teacher'),
             'direction' => $request->input('direction'),
+            'availableOnly' => $request->boolean('availableOnly'),
         ];
 
         $res = $this->deTaiService->getListTopic($filters, $limit);

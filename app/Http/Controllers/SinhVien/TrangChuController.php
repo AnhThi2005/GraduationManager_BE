@@ -109,7 +109,7 @@ class TrangChuController extends Controller
 
             if ($nhom) {
                 $datnInfo['groupId'] = $nhom->nhom_id;
-                $datnInfo['groupName'] = 'Nhóm số #'.$nhom->nhom_id;
+                $datnInfo['groupName'] = 'Nhóm';
 
                 if ($nhom->de_tai_id) {
                     $deTai = DeTai::with('giangVien')->find($nhom->de_tai_id);
