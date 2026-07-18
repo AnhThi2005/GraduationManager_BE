@@ -198,11 +198,6 @@ class HoiDongController extends Controller
                     $role = 'CHU_TICH';
                 } elseif ((string) $gvId === (string) $secretaryId) {
                     $role = 'THU_KY';
-                } else {
-                    $isReviewer = collect($topics)->contains('reviewerId', $gvId);
-                    if ($isReviewer) {
-                        $role = 'PHAN_BIEN';
-                    }
                 }
                 DB::table('thanhvienhoidong')->insert([
                     'hoi_dong_id' => $hd->hoi_dong_id,
@@ -464,11 +459,6 @@ class HoiDongController extends Controller
                         $role = 'CHU_TICH';
                     } elseif ((string) $gvId === (string) $secretaryId) {
                         $role = 'THU_KY';
-                    } else {
-                        $isReviewer = collect($topics)->contains('reviewerId', $gvId);
-                        if ($isReviewer) {
-                            $role = 'PHAN_BIEN';
-                        }
                     }
                     DB::table('thanhvienhoidong')->insert([
                         'hoi_dong_id' => $hd->hoi_dong_id,
@@ -560,8 +550,6 @@ class HoiDongController extends Controller
                 $roleLabel = 'Chủ tịch';
             } elseif ($gv->pivot->vai_tro === 'THU_KY') {
                 $roleLabel = 'Thư ký';
-            } elseif ($gv->pivot->vai_tro === 'PHAN_BIEN') {
-                $roleLabel = 'Phản biên';
             } else {
                 $roleLabel = 'Ủy viên';
             }
@@ -804,14 +792,14 @@ class HoiDongController extends Controller
             $nameWithTitle = $gv->ho_ten;
             if ($role === 'CHU_TICH') {
                 $chair[] = $nameWithTitle;
-            } elseif ($role === 'PHAN_BIEN') {
-                $reviewer[] = $nameWithTitle;
             } elseif ($role === 'TH' || $role === 'THU_KY') {
                 $secretary[] = $nameWithTitle;
             } else {
                 $member[] = $nameWithTitle;
             }
         }
+        // Phản biện không còn là vai trò lưu trong thanhvienhoidong — được suy ra theo
+        // từng đề tài từ lichbaove.giang_vien_pb_id khi duyệt qua $nhoms bên dưới.
 
         // Load schedule from lichbaove
         $schedules = DB::table('lichbaove')
@@ -1019,6 +1007,9 @@ class HoiDongController extends Controller
                 if ($revGv) {
                     $reviewerName = $revGv->ho_ten;
                 }
+            }
+            if ($reviewerName && ! in_array($reviewerName, $reviewer, true)) {
+                $reviewer[] = $reviewerName;
             }
 
             $studentsList = $nhom->members->map(function ($m) {

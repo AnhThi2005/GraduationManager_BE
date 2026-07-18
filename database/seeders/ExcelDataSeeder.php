@@ -309,7 +309,8 @@ class ExcelDataSeeder extends Seeder
             $councilId = ($councilNum >= 1 && $councilNum <= 5) ? $councilNum : null;
 
             if ($councilId) {
-                // Assign GVHD as UY_VIEN and GVPB as PHAN_BIEN in council
+                // GVHD và GVPB đều chỉ là UY_VIEN trong thanhvienhoidong — ai là phản biện
+                // của nhóm nào được lưu riêng ở lichbaove.giang_vien_pb_id (mục 4 bên dưới).
                 // Check if they are already in the council
                 $existsGvhd = DB::table('thanhvienhoidong')
                     ->where('hoi_dong_id', $councilId)
@@ -331,7 +332,7 @@ class ExcelDataSeeder extends Seeder
                     DB::table('thanhvienhoidong')->insert([
                         'hoi_dong_id' => $councilId,
                         'giang_vien_id' => $gvpbId,
-                        'vai_tro' => 'PHAN_BIEN',
+                        'vai_tro' => 'UY_VIEN',
                     ]);
                 }
             }
@@ -370,6 +371,7 @@ class ExcelDataSeeder extends Seeder
                 DB::table('lichbaove')->insert([
                     'hoi_dong_id' => $councilId,
                     'nhom_id' => $nhom->nhom_id,
+                    'giang_vien_pb_id' => $gvpbId,
                     'thoi_gian_bat_dau' => $startTime,
                     'thu_tu' => $order,
                     'ghi_chu' => 'Báo cáo bảo vệ đồ án',

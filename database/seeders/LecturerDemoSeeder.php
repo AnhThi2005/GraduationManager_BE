@@ -335,14 +335,22 @@ class LecturerDemoSeeder extends Seeder
             ],
             [
                 'hoi_dong_id' => 101,
-                'giang_vien_id' => 3, // Phạm Thị Lan
-                'vai_tro' => 'PHAN_BIEN',
+                'giang_vien_id' => 3, // Phạm Thị Lan — phản biện nhóm 101, lưu ở lichbaove.giang_vien_pb_id bên dưới
+                'vai_tro' => 'UY_VIEN',
             ],
         ]);
 
         // Link Group 101 to Council 101 for defense / grading
         $group1->hoi_dong_id = 101;
         $group1->save();
+
+        DB::table('lichbaove')->insert([
+            'hoi_dong_id' => 101,
+            'nhom_id' => 101,
+            'giang_vien_pb_id' => 3, // Phạm Thị Lan
+            'thu_tu' => 1,
+            'ghi_chu' => 'Báo cáo bảo vệ đồ án',
+        ]);
 
         // 10. SEED: TTTN Guidance Assignments (phanconghdtt) for Trần Thị Hoa in TTTN period (dot_id = 4)
         PhanCongHdtt::create([

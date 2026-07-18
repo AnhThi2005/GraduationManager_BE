@@ -105,25 +105,34 @@ class DiemController extends Controller
         }
 
         foreach ($councils as $hd) {
+            // Phản biện không còn lưu trong thanhvienhoidong.vai_tro — xác định giảng viên
+            // này (hoặc bất kỳ thành viên nào) có đang phản biện cho nhóm nào trong hội đồng
+            // hay không bằng cách đối chiếu lichbaove.giang_vien_pb_id theo từng nhóm.
+            $reviewerIdsInCouncil = $hd->nhoms
+                ->map(fn ($g) => optional($lichByNhom->get($g->nhom_id))->giang_vien_pb_id)
+                ->filter()
+                ->map(fn ($id) => (string) $id)
+                ->unique();
+
             $myPivot = $hd->giangViens->firstWhere('giang_vien_id', $teacherId);
             $roleText = 'Ủy viên';
             if ($myPivot) {
                 if ($myPivot->pivot->vai_tro === 'CHU_TICH') {
                     $roleText = 'Chủ tịch';
-                } elseif ($myPivot->pivot->vai_tro === 'PHAN_BIEN') {
+                } elseif ($reviewerIdsInCouncil->contains((string) $teacherId)) {
                     $roleText = 'GVPB';
                 }
             }
 
-            $members = $hd->giangViens->map(function ($gv) {
+            $members = $hd->giangViens->map(function ($gv) use ($reviewerIdsInCouncil) {
                 $vaiTro = $gv->pivot->vai_tro;
                 $displayRole = 'Ủy viên';
                 if ($vaiTro === 'CHU_TICH') {
                     $displayRole = 'Chủ tịch';
-                } elseif ($vaiTro === 'PHAN_BIEN') {
-                    $displayRole = 'Ủy viên phản biên';
                 } elseif ($vaiTro === 'THU_KY') {
                     $displayRole = 'Thư ký';
+                } elseif ($reviewerIdsInCouncil->contains((string) $gv->giang_vien_id)) {
+                    $displayRole = 'Ủy viên phản biên';
                 }
 
                 return [
@@ -295,13 +304,6 @@ class DiemController extends Controller
                 $gvpbId = $decoded['reviewer_id'] ?? null;
             }
         }
-        if (! $gvpbId && $nhom && $nhom->hoi_dong_id) {
-            $thanhVienPb = DB::table('thanhvienhoidong')
-                ->where('hoi_dong_id', $nhom->hoi_dong_id)
-                ->where('vai_tro', 'PHAN_BIEN')
-                ->first();
-            $gvpbId = $thanhVienPb ? $thanhVienPb->giang_vien_id : null;
-        }
 
         // Chỉ GVHD, GVPB, hoặc thành viên hội đồng của nhóm mới được xem chi tiết chấm điểm của nhóm này
         $isCouncilMember = $group->hoi_dong_id ? DB::table('thanhvienhoidong')
@@ -345,7 +347,7 @@ class DiemController extends Controller
                     } elseif ($m->role === 'CHU_TICH') {
                         $displayRole = 'Chủ tịch';
                     } else {
-                        $displayRole = $m->role === 'PHAN_BIEN' ? 'Ủy viên phản biên' : ($m->role === 'THU_KY' ? 'Thư ký' : 'Ủy viên');
+                        $displayRole = $m->role === 'THU_KY' ? 'Thư ký' : 'Ủy viên';
                     }
 
                     return [
