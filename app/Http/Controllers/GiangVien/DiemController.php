@@ -7,6 +7,7 @@ use App\Http\Controllers\Concerns\KiemTraTrangThaiDot;
 use App\Http\Controllers\Controller;
 use App\Models\Dot;
 use App\Models\HoiDong;
+use App\Models\LichSuHoatDong;
 use App\Models\Nhom;
 use App\Models\SinhVien;
 use App\Services\DiemSinhVienService;
@@ -70,8 +71,9 @@ class DiemController extends Controller
             })
             ->all();
 
-        // 2. Councils & Groups under this teacher
+        // 2. Councils & Groups under this teacher (only published or finished)
         $councils = HoiDong::where('dot_id', $dotId)
+            ->whereIn('trang_thai', ['DA_CONG_BO', 'DA_KET_THUC'])
             ->whereHas('giangViens', function ($q) use ($teacherId) {
                 $q->where('giangvien.giang_vien_id', $teacherId);
             })
@@ -136,7 +138,7 @@ class DiemController extends Controller
                 $reviewerId = null;
                 if ($lich) {
                     $reviewerId = $lich->giang_vien_pb_id;
-                    if (!$reviewerId && $lich->ghi_chu) {
+                    if (! $reviewerId && $lich->ghi_chu) {
                         $decoded = json_decode($lich->ghi_chu, true);
                         $reviewerId = $decoded['reviewer_id'] ?? null;
                     }
@@ -278,7 +280,7 @@ class DiemController extends Controller
         $lich = DB::table('lichbaove')->where('nhom_id', $groupId)->first();
         if ($lich) {
             $gvpbId = $lich->giang_vien_pb_id;
-            if (!$gvpbId && $lich->ghi_chu) {
+            if (! $gvpbId && $lich->ghi_chu) {
                 $decoded = json_decode($lich->ghi_chu, true);
                 $gvpbId = $decoded['reviewer_id'] ?? null;
             }
@@ -323,10 +325,10 @@ class DiemController extends Controller
                 ->select('giangvien.giang_vien_id as id', 'giangvien.ho_ten as name', 'thanhvienhoidong.vai_tro as role')
                 ->get()
                 ->map(function ($m) use ($gvpbIdFromLich, $examinerIdsFromLich) {
-                    $memberIdStr = (string)$m->id;
+                    $memberIdStr = (string) $m->id;
                     $displayRole = 'Ủy viên';
 
-                    if ($gvpbIdFromLich && (string)$gvpbIdFromLich === $memberIdStr) {
+                    if ($gvpbIdFromLich && (string) $gvpbIdFromLich === $memberIdStr) {
                         $displayRole = 'Ủy viên phản biên';
                     } elseif (in_array($memberIdStr, $examinerIdsFromLich)) {
                         $displayRole = 'Ủy viên';
@@ -350,16 +352,16 @@ class DiemController extends Controller
         if ($gvhdId) {
             $hasGvhd = false;
             foreach ($councilMembers as $m) {
-                if ((string)$m['id'] === (string)$gvhdId) {
+                if ((string) $m['id'] === (string) $gvhdId) {
                     $hasGvhd = true;
                     break;
                 }
             }
-            if (!$hasGvhd) {
+            if (! $hasGvhd) {
                 $gv = DB::table('giangvien')->where('giang_vien_id', $gvhdId)->first();
                 if ($gv) {
                     $councilMembers[] = [
-                        'id' => (string)$gvhdId,
+                        'id' => (string) $gvhdId,
                         'name' => $gv->ho_ten,
                         'role' => 'Giảng viên hướng dẫn',
                     ];
@@ -370,16 +372,16 @@ class DiemController extends Controller
         if ($gvpbId) {
             $hasGvpb = false;
             foreach ($councilMembers as $m) {
-                if ((string)$m['id'] === (string)$gvpbId) {
+                if ((string) $m['id'] === (string) $gvpbId) {
                     $hasGvpb = true;
                     break;
                 }
             }
-            if (!$hasGvpb) {
+            if (! $hasGvpb) {
                 $gv = DB::table('giangvien')->where('giang_vien_id', $gvpbId)->first();
                 if ($gv) {
                     $councilMembers[] = [
-                        'id' => (string)$gvpbId,
+                        'id' => (string) $gvpbId,
                         'name' => $gv->ho_ten,
                         'role' => 'Ủy viên phản biên',
                     ];
@@ -524,13 +526,11 @@ class DiemController extends Controller
         $reviewerId = null;
         if ($lich) {
             $reviewerId = $lich->giang_vien_pb_id;
-            if (!$reviewerId && $lich->ghi_chu) {
+            if (! $reviewerId && $lich->ghi_chu) {
                 $decoded = json_decode($lich->ghi_chu, true);
                 $reviewerId = $decoded['reviewer_id'] ?? null;
             }
         }
-
-
 
         // Chỉ GVHD, GVPB được phân công, hoặc thành viên hội đồng của nhóm mới được phép chấm điểm nhóm này
         $isCouncilMember = $hoiDongId ? DB::table('thanhvienhoidong')
@@ -542,8 +542,9 @@ class DiemController extends Controller
             return response()->json(['success' => false, 'message' => 'Bạn không có quyền chấm điểm cho nhóm này.'], 403);
         }
 
+        $completedStudents = [];
         try {
-            DB::transaction(function () use ($rows, $groupId, $gvhdId, $reviewerId, $teacherId, $isCouncilMember) {
+            DB::transaction(function () use ($rows, $groupId, $gvhdId, $reviewerId, $teacherId, $isCouncilMember, &$completedStudents, $hoiDongId) {
                 foreach ($rows as $row) {
                     $studentCode = $row['id'] ?? '';
                     $sv = SinhVien::where('ma_so_sinh_vien', $studentCode)->first();
@@ -630,10 +631,82 @@ class DiemController extends Controller
                     // Tự động tính toán lại điểm trung bình bảo vệ, báo cáo và điểm tổng kết
                     $diemSinhVienService = app(DiemSinhVienService::class);
                     $diemSinhVienService->recalculateScores($sv->sinh_vien_id, $groupId);
+
+                    // Thu thập thông tin sinh viên để kiểm tra sau transaction
+                    $completedStudents[] = [
+                        'sinh_vien' => $sv,
+                        'hoi_dong_id' => $hoiDongId,
+                    ];
                 }
             });
         } catch (GradingValidationException $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], $e->getStatusCode());
+        }
+
+        // Sau khi transaction thành công, kiểm tra xem sinh viên nào có đủ điểm
+        foreach ($completedStudents as $item) {
+            $sv = $item['sinh_vien'];
+            $hdId = $item['hoi_dong_id'];
+
+            // A. Kiểm tra điểm GVHD & GVPB
+            $dbc = DB::table('diembaocao')
+                ->where('sinh_vien_id', $sv->sinh_vien_id)
+                ->where('nhom_id', $groupId)
+                ->first();
+            $hasGvhd = $dbc && $dbc->diem_gvhd !== null;
+            $hasGvpb = $dbc && $dbc->diem_gvpb !== null;
+
+            // B. Kiểm tra điểm hội đồng (toàn bộ thành viên hội đồng phải chấm)
+            $hasAllCouncil = false;
+            if ($hdId) {
+                $councilCount = DB::table('thanhvienhoidong')
+                    ->where('hoi_dong_id', $hdId)
+                    ->count();
+
+                $gradedCount = DB::table('diemhoidongbaove')
+                    ->where('sinh_vien_id', $sv->sinh_vien_id)
+                    ->where('nhom_id', $groupId)
+                    ->whereNotNull('diem_bao_ve')
+                    ->count();
+
+                $hasAllCouncil = $councilCount > 0 && $gradedCount === $councilCount;
+            }
+
+            if ($hasGvhd && $hasGvpb && $hasAllCouncil) {
+                // Kiểm tra xem đã thông báo chưa
+                $alreadyNotified = DB::table('lich_su_hoat_dong')
+                    ->where('sinh_vien_id', $sv->sinh_vien_id)
+                    ->where('nhom_id', $groupId)
+                    ->where('action_type', 'DIEM_DATN_HOAN_THANH')
+                    ->exists();
+
+                if (! $alreadyNotified) {
+                    LichSuHoatDong::ghiLog(
+                        'DIEM_DATN_HOAN_THANH',
+                        'Kết quả chấm điểm Đồ án tốt nghiệp của bạn đã hoàn tất. Hãy vào xem kết quả!',
+                        $sv->sinh_vien_id,
+                        $sv->ma_so_sinh_vien,
+                        $groupId,
+                        'sinh_vien',
+                        $sv->ho_ten,
+                        [
+                            'nhom_id' => $groupId,
+                            'dot_id' => $nhom->dot_id,
+                        ]
+                    );
+
+                    // Phát thông báo Realtime
+                    RealtimeService::broadcast('notification', [
+                        'title' => 'Kết quả chấm điểm ĐATN',
+                        'message' => 'Kết quả chấm điểm Đồ án tốt nghiệp của bạn đã hoàn tất. Hãy vào xem kết quả!',
+                        'type' => 'student_score_completed',
+                        'payload' => [
+                            'sinh_vien_id' => $sv->sinh_vien_id,
+                            'nhom_id' => $groupId,
+                        ],
+                    ]);
+                }
+            }
         }
 
         RealtimeService::broadcast('score_updated', [
@@ -747,6 +820,39 @@ class DiemController extends Controller
                         'diem_so' => $scoreVal,
                     ]
                 );
+
+                // Gửi thông báo cho sinh viên khi hoàn tất điểm thực tập
+                $alreadyNotified = DB::table('lich_su_hoat_dong')
+                    ->where('sinh_vien_id', $sv->sinh_vien_id)
+                    ->where('dot_id', $dotId)
+                    ->where('action_type', 'DIEM_TTTN_HOAN_THANH')
+                    ->exists();
+
+                if (! $alreadyNotified) {
+                    LichSuHoatDong::ghiLog(
+                        'DIEM_TTTN_HOAN_THANH',
+                        'Kết quả chấm điểm Thực tập tốt nghiệp của bạn đã hoàn tất. Hãy vào xem kết quả!',
+                        $sv->sinh_vien_id,
+                        $sv->ma_so_sinh_vien,
+                        null,
+                        'sinh_vien',
+                        $sv->ho_ten,
+                        [
+                            'dot_id' => $dotId,
+                        ]
+                    );
+
+                    // Phát thông báo Realtime
+                    RealtimeService::broadcast('notification', [
+                        'title' => 'Kết quả chấm điểm TTTN',
+                        'message' => 'Kết quả chấm điểm Thực tập tốt nghiệp của bạn đã hoàn tất. Hãy vào xem kết quả!',
+                        'type' => 'student_score_completed',
+                        'payload' => [
+                            'sinh_vien_id' => $sv->sinh_vien_id,
+                            'dot_id' => $dotId,
+                        ],
+                    ]);
+                }
             }
         }
 
