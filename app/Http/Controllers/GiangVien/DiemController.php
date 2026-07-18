@@ -114,10 +114,20 @@ class DiemController extends Controller
             }
 
             $members = $hd->giangViens->map(function ($gv) {
+                $vaiTro = $gv->pivot->vai_tro;
+                $displayRole = 'Ủy viên';
+                if ($vaiTro === 'CHU_TICH') {
+                    $displayRole = 'Chủ tịch';
+                } elseif ($vaiTro === 'PHAN_BIEN') {
+                    $displayRole = 'Ủy viên phản biên';
+                } elseif ($vaiTro === 'THU_KY') {
+                    $displayRole = 'Thư ký';
+                }
+
                 return [
                     'id' => (string) $gv->giang_vien_id,
                     'name' => $gv->ho_ten,
-                    'role' => $gv->pivot->vai_tro === 'CHU_TICH' ? 'Chủ tịch' : ($gv->pivot->vai_tro === 'PHAN_BIEN' ? 'Ủy viên phản biên' : 'Ủy viên'),
+                    'role' => $displayRole,
                 ];
             })->all();
 
