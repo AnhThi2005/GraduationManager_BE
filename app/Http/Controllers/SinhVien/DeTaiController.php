@@ -1161,10 +1161,11 @@ class DeTaiController extends Controller
             ], 400);
         }
 
-        if ($nhom->trang_thai_duyet === 'DA_DUYET') {
+        if ($nhom->de_tai_id !== null) {
+            $statusText = $nhom->trang_thai_duyet === 'DA_DUYET' ? 'đã được phê duyệt' : 'đang chờ phê duyệt';
             return response()->json([
                 'success' => false,
-                'message' => 'Nhóm đề tài đã được phê duyệt bởi giảng viên, không thể tự ý rời nhóm hoặc giải tán.',
+                'message' => "Đề tài của nhóm {$statusText}, bạn không thể tự ý rời nhóm hoặc giải tán. Bạn chỉ có thể rời/giải tán nhóm khi chưa đăng ký đề tài hoặc khi đề tài đăng ký bị giảng viên từ chối.",
             ], 400);
         }
 
