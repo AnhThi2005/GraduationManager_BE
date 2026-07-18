@@ -35,6 +35,12 @@ class HistoryController extends Controller
             });
 
         $dotId = $request->query('dot_id') ?? $request->query('periodId') ?? $request->query('period_id');
+        if (empty($dotId)) {
+            $activePeriod = \App\Models\Dot::where('trang_thai', 'DANG_MO')->orderBy('dot_id', 'desc')->first()
+                ?? \App\Models\Dot::orderBy('dot_id', 'desc')->first();
+            $dotId = $activePeriod ? $activePeriod->dot_id : null;
+        }
+
         if ($dotId) {
             $query->where('dot_id', $dotId);
         } else {
@@ -66,6 +72,12 @@ class HistoryController extends Controller
         $query = LichSuHoatDong::query();
 
         $dotId = $request->query('dot_id') ?? $request->query('periodId') ?? $request->query('period_id');
+        if (empty($dotId)) {
+            $activePeriod = \App\Models\Dot::where('trang_thai', 'DANG_MO')->orderBy('dot_id', 'desc')->first()
+                ?? \App\Models\Dot::orderBy('dot_id', 'desc')->first();
+            $dotId = $activePeriod ? $activePeriod->dot_id : null;
+        }
+
         if ($dotId) {
             $query->where('dot_id', $dotId);
         } else {
@@ -149,8 +161,15 @@ class HistoryController extends Controller
                 }
             });
 
-        if ($request->filled('dot_id')) {
-            $query->where('dot_id', $request->query('dot_id'));
+        $dotId = $request->query('dot_id') ?? $request->query('periodId') ?? $request->query('period_id');
+        if (empty($dotId)) {
+            $activePeriod = \App\Models\Dot::where('trang_thai', 'DANG_MO')->orderBy('dot_id', 'desc')->first()
+                ?? \App\Models\Dot::orderBy('dot_id', 'desc')->first();
+            $dotId = $activePeriod ? $activePeriod->dot_id : null;
+        }
+
+        if ($dotId) {
+            $query->where('dot_id', $dotId);
         } else {
             $query->whereRaw('1 = 0');
         }

@@ -26,8 +26,10 @@ class TrangChuController extends Controller
             $dotId = $latestPeriod ? $latestPeriod->dot_id : 1;
         }
 
-        // 1. Total topics
-        $topicsCount = DeTai::where('giang_vien_id', $teacherId)->count();
+        // 1. Total topics (filtered by dot_id)
+        $topicsCount = DeTai::where('giang_vien_id', $teacherId)
+            ->where('dot_id', $dotId)
+            ->count();
 
         // 2. TTTN students guided (chỉ tính phân công đã được admin công bố, chưa bị xóa mềm)
         $tttnCount = DB::table('phanconghdtt')
@@ -63,7 +65,7 @@ class TrangChuController extends Controller
 
         $topicIds = $topicsQuery->pluck('de_tai_id')->toArray();
         $occupiedCounts = [];
-        if (!empty($topicIds)) {
+        if (! empty($topicIds)) {
             $occupiedCounts = DB::table('thanhviennhom')
                 ->join('nhomsvda', 'thanhviennhom.nhom_id', '=', 'nhomsvda.nhom_id')
                 ->whereIn('nhomsvda.de_tai_id', $topicIds)

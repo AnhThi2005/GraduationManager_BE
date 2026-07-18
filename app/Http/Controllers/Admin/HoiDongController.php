@@ -179,96 +179,103 @@ class HoiDongController extends Controller
             ], 422);
         }
 
-        return DB::transaction(function () use ($request, $dotId, $title, $members, $chairId, $secretaryId, $dot) {
-            $hd = HoiDong::create([
-                'dot_id' => $dotId,
-                'ten_hoi_dong' => $title,
-                'ngay_bao_ve' => $request->date ?? date('Y-m-d'),
-                'gio_bao_ve' => $request->time ?? '08:00–12:00',
-                'phong_bao_ve' => $request->room,
-                'trang_thai' => 'NHAP',
-            ]);
-
-            // Save members
-            $topics = $request->input('topics', []);
-
-            foreach ($members as $gvId) {
-                $role = 'UY_VIEN';
-                if ((string) $gvId === (string) $chairId) {
-                    $role = 'CHU_TICH';
-                } elseif ((string) $gvId === (string) $secretaryId) {
-                    $role = 'THU_KY';
-                }
-                DB::table('thanhvienhoidong')->insert([
-                    'hoi_dong_id' => $hd->hoi_dong_id,
-                    'giang_vien_id' => $gvId,
-                    'vai_tro' => $role,
-                ]);
-            }
-
-            // Save groups & schedule
-            $nhomIds = collect($topics)->map(function ($t) {
-                return $t['nhom_id'] ?? $t['id'] ?? null;
-            })->filter()->toArray();
-
-            if (! empty($nhomIds)) {
-                // Delete existing schedules for these groups from other councils
-                DB::table('lichbaove')->whereIn('nhom_id', $nhomIds)->delete();
-                // Update their old council to null
-                DB::table('nhomsvda')->whereIn('nhom_id', $nhomIds)->update([
-                    'hoi_dong_id' => null,
-                ]);
-            }
-
-            foreach ($topics as $idx => $t) {
-                if (empty($t)) {
-                    continue;
-                }
-                $nhomId = $t['nhom_id'] ?? $t['id'] ?? null;
-                if (! $nhomId) {
-                    continue;
-                }
-
-                $nhom = Nhom::find($nhomId);
-                $this->validateNhomDotConstraint($nhom, $dot);
-
-                // Update group's council
-                DB::table('nhomsvda')->where('nhom_id', $nhomId)->update([
-                    'hoi_dong_id' => $hd->hoi_dong_id,
+        try {
+            return DB::transaction(function () use ($request, $dotId, $title, $members, $chairId, $secretaryId, $dot) {
+                $hd = HoiDong::create([
+                    'dot_id' => $dotId,
+                    'ten_hoi_dong' => $title,
+                    'ngay_bao_ve' => $request->date ?? date('Y-m-d'),
+                    'gio_bao_ve' => $request->time ?? '08:00–12:00',
+                    'phong_bao_ve' => $request->room,
+                    'trang_thai' => 'NHAP',
                 ]);
 
-                // Save schedule
-                $time = null;
-                if (! empty($t['start_time'] ?? $t['startTime'])) {
-                    $time = date('H:i:s', strtotime($t['start_time'] ?? $t['startTime']));
+                // Save members
+                $topics = $request->input('topics', []);
+
+                foreach ($members as $gvId) {
+                    $role = 'UY_VIEN';
+                    if ((string) $gvId === (string) $chairId) {
+                        $role = 'CHU_TICH';
+                    } elseif ((string) $gvId === (string) $secretaryId) {
+                        $role = 'THU_KY';
+                    }
+                    DB::table('thanhvienhoidong')->insert([
+                        'hoi_dong_id' => $hd->hoi_dong_id,
+                        'giang_vien_id' => $gvId,
+                        'vai_tro' => $role,
+                    ]);
                 }
 
-                $examinerId = $t['examinerId'] ?? (isset($t['examinerIds']) && is_array($t['examinerIds']) ? (reset($t['examinerIds']) ?: null) : null);
-                DB::table('lichbaove')->insert([
-                    'hoi_dong_id' => $hd->hoi_dong_id,
-                    'nhom_id' => $nhomId,
-                    'giang_vien_pb_id' => $t['reviewerId'] ?? null,
-                    'giang_vien_cham_id' => json_encode($t['examinerIds'] ?? []),
-                    'thoi_gian_bat_dau' => $time,
-                    'thu_tu' => $idx + 1,
-                    'ghi_chu' => json_encode([
-                        'minutes' => $t['minutes'] ?? 40,
-                        'reviewer_id' => $t['reviewerId'] ?? null,
-                        'examiner_ids' => $t['examinerIds'] ?? [],
-                        'external_examiners' => $t['externalExaminers'] ?? [],
-                    ]),
-                ]);
-            }
+                // Save groups & schedule
+                $nhomIds = collect($topics)->map(function ($t) {
+                    return $t['nhom_id'] ?? $t['id'] ?? null;
+                })->filter()->toArray();
 
-            $hdLoad = HoiDong::with(['giangViens', 'nhoms.members', 'nhoms.deTai.giangVien'])->find($hd->hoi_dong_id);
+                if (! empty($nhomIds)) {
+                    // Delete existing schedules for these groups from other councils
+                    DB::table('lichbaove')->whereIn('nhom_id', $nhomIds)->delete();
+                    // Update their old council to null
+                    DB::table('nhomsvda')->whereIn('nhom_id', $nhomIds)->update([
+                        'hoi_dong_id' => null,
+                    ]);
+                }
 
+                foreach ($topics as $idx => $t) {
+                    if (empty($t)) {
+                        continue;
+                    }
+                    $nhomId = $t['nhom_id'] ?? $t['id'] ?? null;
+                    if (! $nhomId) {
+                        continue;
+                    }
+
+                    $nhom = Nhom::find($nhomId);
+                    $this->validateNhomDotConstraint($nhom, $dot);
+
+                    // Update group's council
+                    DB::table('nhomsvda')->where('nhom_id', $nhomId)->update([
+                        'hoi_dong_id' => $hd->hoi_dong_id,
+                    ]);
+
+                    // Save schedule
+                    $time = null;
+                    if (! empty($t['start_time'] ?? $t['startTime'])) {
+                        $time = date('H:i:s', strtotime($t['start_time'] ?? $t['startTime']));
+                    }
+
+                    $examinerId = $t['examinerId'] ?? (isset($t['examinerIds']) && is_array($t['examinerIds']) ? (reset($t['examinerIds']) ?: null) : null);
+                    DB::table('lichbaove')->insert([
+                        'hoi_dong_id' => $hd->hoi_dong_id,
+                        'nhom_id' => $nhomId,
+                        'giang_vien_pb_id' => (!empty($t['reviewerId']) && is_numeric($t['reviewerId'])) ? $t['reviewerId'] : null,
+                        'giang_vien_cham_id' => json_encode($t['examinerIds'] ?? []),
+                        'thoi_gian_bat_dau' => $time,
+                        'thu_tu' => $idx + 1,
+                        'ghi_chu' => json_encode([
+                            'minutes' => $t['minutes'] ?? 40,
+                            'reviewer_id' => (!empty($t['reviewerId']) && is_numeric($t['reviewerId'])) ? $t['reviewerId'] : null,
+                            'examiner_ids' => $t['examinerIds'] ?? [],
+                            'external_examiners' => $t['externalExaminers'] ?? [],
+                        ]),
+                    ]);
+                }
+
+                $hdLoad = HoiDong::with(['giangViens', 'nhoms.members', 'nhoms.deTai.giangVien'])->find($hd->hoi_dong_id);
+
+                return response()->json([
+                    'code' => 200,
+                    'results' => [
+                        'object' => $this->transformCouncil($hdLoad),
+                    ],
+                ], 200);
+            });
+        } catch (\Throwable $e) {
             return response()->json([
-                'code' => 200,
-                'results' => [
-                    'object' => $this->transformCouncil($hdLoad),
-                ],
-            ], 200);
-        });
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        }
     }
 
     public function congBoTatCa(Request $request)
@@ -432,113 +439,119 @@ class HoiDongController extends Controller
             ], 422);
         }
 
-        return DB::transaction(function () use ($request, $hd, $dot) {
-            $oldStatus = $hd->trang_thai;
-            $newStatus = $request->input('status', $hd->trang_thai);
+        try {
+            return DB::transaction(function () use ($request, $hd, $dot) {
+                $oldStatus = $hd->trang_thai;
+                $newStatus = $request->input('status', $hd->trang_thai);
 
+                $hd->update([
+                    'ten_hoi_dong' => $request->input('title', $hd->ten_hoi_dong),
+                    'phong_bao_ve' => $request->input('room', $hd->phong_bao_ve),
+                    'ngay_bao_ve' => $request->input('date', $hd->ngay_bao_ve),
+                    'gio_bao_ve' => $request->input('time', $hd->gio_bao_ve),
+                    'trang_thai' => $newStatus,
+                ]);
 
-            $hd->update([
-                'ten_hoi_dong' => $request->input('title', $hd->ten_hoi_dong),
-                'phong_bao_ve' => $request->input('room', $hd->phong_bao_ve),
-                'ngay_bao_ve' => $request->input('date', $hd->ngay_bao_ve),
-                'gio_bao_ve' => $request->input('time', $hd->gio_bao_ve),
-                'trang_thai' => $newStatus,
-            ]);
+                // Save members if sent
+                if ($request->has('members')) {
+                    DB::table('thanhvienhoidong')->where('hoi_dong_id', $hd->hoi_dong_id)->delete();
+                    $members = $request->input('members', []);
+                    $topics = $request->input('topics', []);
+                    $chairId = $request->input('chair_id') ?? $request->input('chairId');
+                    $secretaryId = $request->input('secretary_id') ?? $request->input('secretaryId');
 
-            // Save members if sent
-            if ($request->has('members')) {
-                DB::table('thanhvienhoidong')->where('hoi_dong_id', $hd->hoi_dong_id)->delete();
-                $members = $request->input('members', []);
-                $topics = $request->input('topics', []);
-                $chairId = $request->input('chair_id') ?? $request->input('chairId');
-                $secretaryId = $request->input('secretary_id') ?? $request->input('secretaryId');
-
-                foreach ($members as $gvId) {
-                    $role = 'UY_VIEN';
-                    if ((string) $gvId === (string) $chairId) {
-                        $role = 'CHU_TICH';
-                    } elseif ((string) $gvId === (string) $secretaryId) {
-                        $role = 'THU_KY';
+                    foreach ($members as $gvId) {
+                        $role = 'UY_VIEN';
+                        if ((string) $gvId === (string) $chairId) {
+                            $role = 'CHU_TICH';
+                        } elseif ((string) $gvId === (string) $secretaryId) {
+                            $role = 'THU_KY';
+                        }
+                        DB::table('thanhvienhoidong')->insert([
+                            'hoi_dong_id' => $hd->hoi_dong_id,
+                            'giang_vien_id' => $gvId,
+                            'vai_tro' => $role,
+                        ]);
                     }
-                    DB::table('thanhvienhoidong')->insert([
-                        'hoi_dong_id' => $hd->hoi_dong_id,
-                        'giang_vien_id' => $gvId,
-                        'vai_tro' => $role,
-                    ]);
-                }
-            }
-
-            // Save topics if sent
-            if ($request->has('topics')) {
-                // Unassign all groups currently in this council
-                DB::table('nhomsvda')->where('hoi_dong_id', $hd->hoi_dong_id)->update(['hoi_dong_id' => null]);
-                DB::table('lichbaove')->where('hoi_dong_id', $hd->hoi_dong_id)->delete();
-
-                $topics = $request->input('topics', []);
-                $nhomIds = collect($topics)->map(function ($t) {
-                    return $t['nhom_id'] ?? $t['id'] ?? null;
-                })->filter()->toArray();
-
-                if (! empty($nhomIds)) {
-                    // Delete existing schedules for these groups from other councils
-                    DB::table('lichbaove')->whereIn('nhom_id', $nhomIds)->delete();
                 }
 
-                foreach ($topics as $idx => $t) {
-                    if (empty($t)) {
-                        continue;
-                    }
-                    $nhomId = $t['nhom_id'] ?? $t['id'] ?? null;
-                    if (! $nhomId) {
-                        continue;
-                    }
+                // Save topics if sent
+                if ($request->has('topics')) {
+                    // Unassign all groups currently in this council
+                    DB::table('nhomsvda')->where('hoi_dong_id', $hd->hoi_dong_id)->update(['hoi_dong_id' => null]);
+                    DB::table('lichbaove')->where('hoi_dong_id', $hd->hoi_dong_id)->delete();
 
-                    $nhom = Nhom::find($nhomId);
-                    $this->validateNhomDotConstraint($nhom, $dot);
+                    $topics = $request->input('topics', []);
+                    $nhomIds = collect($topics)->map(function ($t) {
+                        return $t['nhom_id'] ?? $t['id'] ?? null;
+                    })->filter()->toArray();
 
-                    // Update group's council
-                    DB::table('nhomsvda')->where('nhom_id', $nhomId)->update([
-                        'hoi_dong_id' => $hd->hoi_dong_id,
-                    ]);
-
-                    // Save schedule
-                    $time = null;
-                    if (! empty($t['start_time'] ?? $t['startTime'])) {
-                        $time = date('H:i:s', strtotime($t['start_time'] ?? $t['startTime']));
+                    if (! empty($nhomIds)) {
+                        // Delete existing schedules for these groups from other councils
+                        DB::table('lichbaove')->whereIn('nhom_id', $nhomIds)->delete();
                     }
 
-                    $examinerId = $t['examinerId'] ?? (isset($t['examinerIds']) && is_array($t['examinerIds']) ? (reset($t['examinerIds']) ?: null) : null);
-                    DB::table('lichbaove')->insert([
-                        'hoi_dong_id' => $hd->hoi_dong_id,
-                        'nhom_id' => $nhomId,
-                        'giang_vien_pb_id' => $t['reviewerId'] ?? null,
-                        'giang_vien_cham_id' => json_encode($t['examinerIds'] ?? []),
-                        'thoi_gian_bat_dau' => $time,
-                        'thu_tu' => $idx + 1,
-                        'ghi_chu' => json_encode([
-                            'minutes' => $t['minutes'] ?? 40,
-                            'reviewer_id' => $t['reviewerId'] ?? null,
-                            'examiner_ids' => $t['examinerIds'] ?? [],
-                            'external_examiners' => $t['externalExaminers'] ?? [],
-                        ]),
-                    ]);
+                    foreach ($topics as $idx => $t) {
+                        if (empty($t)) {
+                            continue;
+                        }
+                        $nhomId = $t['nhom_id'] ?? $t['id'] ?? null;
+                        if (! $nhomId) {
+                            continue;
+                        }
+
+                        $nhom = Nhom::find($nhomId);
+                        $this->validateNhomDotConstraint($nhom, $dot);
+
+                        // Update group's council
+                        DB::table('nhomsvda')->where('nhom_id', $nhomId)->update([
+                            'hoi_dong_id' => $hd->hoi_dong_id,
+                        ]);
+
+                        // Save schedule
+                        $time = null;
+                        if (! empty($t['start_time'] ?? $t['startTime'])) {
+                            $time = date('H:i:s', strtotime($t['start_time'] ?? $t['startTime']));
+                        }
+
+                        $examinerId = $t['examinerId'] ?? (isset($t['examinerIds']) && is_array($t['examinerIds']) ? (reset($t['examinerIds']) ?: null) : null);
+                        DB::table('lichbaove')->insert([
+                            'hoi_dong_id' => $hd->hoi_dong_id,
+                            'nhom_id' => $nhomId,
+                            'giang_vien_pb_id' => (!empty($t['reviewerId']) && is_numeric($t['reviewerId'])) ? $t['reviewerId'] : null,
+                            'giang_vien_cham_id' => json_encode($t['examinerIds'] ?? []),
+                            'thoi_gian_bat_dau' => $time,
+                            'thu_tu' => $idx + 1,
+                            'ghi_chu' => json_encode([
+                                'minutes' => $t['minutes'] ?? 40,
+                                'reviewer_id' => (!empty($t['reviewerId']) && is_numeric($t['reviewerId'])) ? $t['reviewerId'] : null,
+                                'examiner_ids' => $t['examinerIds'] ?? [],
+                                'external_examiners' => $t['externalExaminers'] ?? [],
+                            ]),
+                        ]);
+                    }
                 }
-            }
 
-            $hdLoad = HoiDong::with(['giangViens', 'nhoms.members.lop', 'nhoms.deTai.giangVien'])->find($hd->hoi_dong_id);
+                $hdLoad = HoiDong::with(['giangViens', 'nhoms.members.lop', 'nhoms.deTai.giangVien'])->find($hd->hoi_dong_id);
 
-            // Gửi thông báo & Ghi nhận lịch sử hoạt động khi công bố hội đồng
-            if ($newStatus === 'DA_CONG_BO' && $oldStatus !== 'DA_CONG_BO') {
-                $this->ghiLogVaThongBaoCongBoHoiDong($hdLoad);
-            }
+                // Gửi thông báo & Ghi nhận lịch sử hoạt động khi công bố hội đồng
+                if ($newStatus === 'DA_CONG_BO' && $oldStatus !== 'DA_CONG_BO') {
+                    $this->ghiLogVaThongBaoCongBoHoiDong($hdLoad);
+                }
 
+                return response()->json([
+                    'code' => 200,
+                    'results' => [
+                        'object' => $this->transformCouncil($hdLoad),
+                    ],
+                ], 200);
+            });
+        } catch (\Throwable $e) {
             return response()->json([
-                'code' => 200,
-                'results' => [
-                    'object' => $this->transformCouncil($hdLoad),
-                ],
-            ], 200);
-        });
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        }
     }
 
     private function ghiLogVaThongBaoCongBoHoiDong(HoiDong $hdLoad): void
@@ -677,25 +690,27 @@ class HoiDongController extends Controller
         }
 
         $now = date('Y-m-d');
-        $ngayBatDau = $dot->ngay_bat_dau;
-        $ngayBatDauPhanBien = $dot->ngay_bat_dau_phan_bien;
+        $ngayBatDauBaoVe = $dot->ngay_bat_dau_bao_ve;
 
         $kqHd = $nhom->ket_qua_huong_dan;
         $kqPb = $nhom->ket_qua_phan_bien;
 
         $topicName = $nhom->deTai ? $nhom->deTai->ten_de_tai : 'Nhóm #'.$nhom->nhom_id;
 
-        if ($ngayBatDauPhanBien && $now >= $ngayBatDauPhanBien) {
-            // Từ ngày bắt đầu phản biện trở đi: Bắt buộc cả hai phải là DAT
+        // Nếu đã tới ngày bảo vệ trở đi: Bắt buộc cả Hướng dẫn và Phản biện phải ĐẠT (DAT)
+        if ($ngayBatDauBaoVe && $now >= $ngayBatDauBaoVe) {
             if ($kqHd !== 'DAT' || $kqPb !== 'DAT') {
-                throw new \Exception("Nhóm đề tài '{$topicName}' phải có kết quả Hướng dẫn và Phản biện đạt (DAT) kể từ giai đoạn phản biện!");
+                throw new \Exception("Nhóm đề tài '{$topicName}' phải có kết quả Hướng dẫn và Phản biện đạt (DAT) để tiến hành bảo vệ!");
             }
         } else {
-            // Trước ngày bắt đầu phản biện: Hướng dẫn và Phản biện phải là null hoặc DAT (không được KHONG_DAT)
-            $isHdValid = is_null($kqHd) || $kqHd === 'DAT';
-            $isPbValid = is_null($kqPb) || $kqPb === 'DAT';
-            if (! $isHdValid || ! $isPbValid) {
-                throw new \Exception("Nhóm đề tài '{$topicName}' có kết quả không đạt, không thể xếp vào hội đồng!");
+            // Trước ngày bảo vệ (trong giai đoạn phản biện hoặc trước đó):
+            // - Kết quả Hướng dẫn (GVHD) bắt buộc phải ĐẠT (DAT) để được đưa vào hội đồng
+            // - Kết quả Phản biện (GVPB) có thể chưa chấm (null) hoặc đã chấm ĐẠT (DAT) (không được KHONG_DAT)
+            if ($kqHd !== 'DAT') {
+                throw new \Exception("Nhóm đề tài '{$topicName}' chưa đạt đánh giá hướng dẫn (GVHD), không thể xếp vào hội đồng!");
+            }
+            if ($kqPb === 'KHONG_DAT') {
+                throw new \Exception("Nhóm đề tài '{$topicName}' có kết quả phản biện Không đạt, không thể xếp vào hội đồng!");
             }
         }
     }
