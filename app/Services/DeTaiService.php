@@ -353,10 +353,18 @@ class DeTaiService
 
         $yearPart = substr($m[1], 2, 2);
         $semesterPart = $dot->hoc_ky ?: '1';
-
         $maxSlots = $deTai->so_luong_sv_toi_da ?? 4;
 
-        return 'DT'.$yearPart.$semesterPart.'-'.str_pad($deTai->de_tai_id, 2, '0', STR_PAD_LEFT).'-'.$maxSlots;
+        if ($deTai->trang_thai === 'DA_DUYET') {
+            $seq = DB::table('detai')
+                ->where('dot_id', $deTai->dot_id)
+                ->where('trang_thai', 'DA_DUYET')
+                ->where('de_tai_id', '<=', $deTai->de_tai_id)
+                ->count();
+            return 'DT'.$yearPart.$semesterPart.'-'.str_pad($seq, 2, '0', STR_PAD_LEFT).'-'.$maxSlots;
+        }
+
+        return 'DT'.$yearPart.$semesterPart.'-temp'.str_pad($deTai->de_tai_id, 2, '0', STR_PAD_LEFT).'-'.$maxSlots;
     }
 
     /**

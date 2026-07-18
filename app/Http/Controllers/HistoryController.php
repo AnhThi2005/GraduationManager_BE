@@ -113,6 +113,7 @@ class HistoryController extends Controller
         }
 
         $logs = $query->orderBy('created_at', 'desc')->get();
+        $this->personalizeLogs($logs, 'admin', '');
 
         return response()->json([
             'code' => 200,
@@ -147,8 +148,19 @@ class HistoryController extends Controller
                 ->all();
         }
 
+        // Get guided TTTN students
+        $guidedStudentIds = [];
+        if ($dotId) {
+            $guidedStudentIds = DB::table('phanconghdtt')
+                ->where('giang_vien_id', $teacher->giang_vien_id)
+                ->where('dot_id', $dotId)
+                ->whereNull('deleted_at')
+                ->pluck('sinh_vien_id')
+                ->all();
+        }
+
         $query = LichSuHoatDong::query()
-            ->where(function ($q) use ($teacher, $groupIdsFromTopics) {
+            ->where(function ($q) use ($teacher, $groupIdsFromTopics, $guidedStudentIds) {
                 // Actor is the teacher
                 $q->where(function ($sub) use ($teacher) {
                     $sub->where('role', 'giang_vien')
@@ -158,6 +170,11 @@ class HistoryController extends Controller
                 // Or actions related to the teacher's groups
                 if (! empty($groupIdsFromTopics)) {
                     $q->orWhereIn('nhom_id', $groupIdsFromTopics);
+                }
+
+                // Or actions related to the teacher's TTTN students
+                if (! empty($guidedStudentIds)) {
+                    $q->orWhereIn('sinh_vien_id', $guidedStudentIds);
                 }
             });
 
@@ -199,13 +216,46 @@ class HistoryController extends Controller
      *   nên mọi "nhóm" còn lại trong log đã lọc chắc chắn là nhóm của người xem).
      * Không áp dụng cho getAdminHistory: Admin cần thấy tên thật để tra cứu/đối chiếu.
      */
-    private function personalizeLogs($logs, string $viewerRole, string $viewerName, ?int $viewerSinhVienId = null, ?string $viewerMaSoSinhVien = null): void
+    private $groupDetailsCache = [];
+
+    private function getGroupDisplayName($nhomId)
     {
-        $viewerName = trim((string) $viewerName);
-        if ($viewerName === '') {
-            return;
+        if (empty($nhomId)) {
+            return 'nhóm';
+        }
+        if (isset($this->groupDetailsCache[$nhomId])) {
+            return $this->groupDetailsCache[$nhomId];
         }
 
+        $nhom = \App\Models\Nhom::with(['members', 'deTai'])->find($nhomId);
+        if (! $nhom) {
+            return 'nhóm';
+        }
+
+        if ($nhom->deTai) {
+            $name = 'nhóm đề tài "' . $nhom->deTai->ten_de_tai . '"';
+        } else {
+            $leader = $nhom->members->first(function ($m) {
+                return $m->pivot->la_truong_nhom;
+            });
+            if ($leader) {
+                $name = 'nhóm của ' . $leader->ho_ten;
+            } else {
+                $firstMember = $nhom->members->first();
+                if ($firstMember) {
+                    $name = 'nhóm của ' . $firstMember->ho_ten;
+                } else {
+                    $name = 'nhóm';
+                }
+            }
+        }
+
+        $this->groupDetailsCache[$nhomId] = $name;
+        return $name;
+    }
+
+    private function personalizeLogs($logs, string $viewerRole, string $viewerName, ?int $viewerSinhVienId = null, ?string $viewerMaSoSinhVien = null): void
+    {
         foreach ($logs as $log) {
             $log->description = $this->personalizeDescription(
                 $log->description,
@@ -220,45 +270,57 @@ class HistoryController extends Controller
 
     private function personalizeDescription(string $description, $log, string $viewerRole, string $viewerName, ?int $viewerSinhVienId, ?string $viewerMaSoSinhVien): string
     {
-        $isAboutViewer = false;
+        // 1. Group info replacement (applies to all roles, including admin)
+        $description = preg_replace_callback('/nhóm\s+#(\d+)/iu', function ($matches) {
+            $nhomId = $matches[1];
+            return $this->getGroupDisplayName($nhomId);
+        }, $description);
 
-        if ($viewerRole === 'sinh_vien') {
-            $isAboutViewer = ($viewerSinhVienId && (int) $log->sinh_vien_id === (int) $viewerSinhVienId)
-                || ($viewerMaSoSinhVien && $log->ma_so_sinh_vien === $viewerMaSoSinhVien);
-        } elseif ($viewerRole === 'giang_vien') {
-            $isAboutViewer = $log->role === 'giang_vien'
-                && $log->user_name !== null
-                && mb_strtolower(trim($log->user_name)) === mb_strtolower($viewerName);
+        if ($log->nhom_id) {
+            $displayName = $this->getGroupDisplayName($log->nhom_id);
+            if (mb_strpos($description, $displayName) === false) {
+                // Avoid replacing parts of words like "trưởng nhóm" or "nhóm bạn"
+                $description = preg_replace('/(?<!Trưởng )(?<!trưởng )\bnhóm\b(?!\s+bạn)/iu', $displayName, $description);
+            }
         }
 
-        if ($isAboutViewer) {
-            $namePattern = preg_quote($viewerName, '/');
-            $nounPattern = '(?:Sinh viên|Giảng viên|Trưởng nhóm|sinh viên|giảng viên|trưởng nhóm)';
+        // 2. Personalize actor name to "Bạn" (only if viewerName is provided)
+        $viewerName = trim((string) $viewerName);
+        if ($viewerName !== '') {
+            $isAboutViewer = false;
 
-            // Đầu câu: "Sinh viên/Giảng viên/Trưởng nhóm {tên}" -> "Bạn"
-            $description = preg_replace(
-                '/^(Sinh viên|Giảng viên|Trưởng nhóm)\s+'.$namePattern.'(?=\s|$)/u',
-                'Bạn',
-                $description,
-                1
-            );
-            // Giữa câu: cùng cụm danh từ + tên (vd "...kích sinh viên {tên} ra khỏi...") -> "bạn",
-            // tránh để sót thành "sinh viên bạn" (danh từ đứng trước đại từ, sai ngữ pháp).
-            $description = preg_replace(
-                '/'.$nounPattern.'\s+'.$namePattern.'(?=\s|$)/u',
-                'bạn',
-                $description
-            );
+            if ($viewerRole === 'sinh_vien') {
+                $isAboutViewer = ($viewerSinhVienId && (int) $log->sinh_vien_id === (int) $viewerSinhVienId)
+                    || ($viewerMaSoSinhVien && $log->ma_so_sinh_vien === $viewerMaSoSinhVien);
+            } elseif ($viewerRole === 'giang_vien') {
+                $isAboutViewer = $log->role === 'giang_vien'
+                    && $log->user_name !== null
+                    && mb_strtolower(trim($log->user_name)) === mb_strtolower($viewerName);
+            }
 
-            // Tên trần trụi còn sót lại (không kèm danh từ đứng trước) -> "bạn"
-            return str_replace($viewerName, 'bạn', $description);
-        }
+            if ($isAboutViewer) {
+                $namePattern = preg_quote($viewerName, '/');
+                $nounPattern = '(?:Sinh viên|Giảng viên|Trưởng nhóm|sinh viên|giảng viên|trưởng nhóm)';
 
-        // Không phải hành động/đối tượng của chính người xem, nhưng vẫn thuộc nhóm của họ (chỉ áp
-        // dụng cho sinh viên — giảng viên có thể hướng dẫn nhiều nhóm nên "nhóm bạn" không hợp ngữ cảnh).
-        if ($viewerRole === 'sinh_vien' && $log->nhom_id) {
-            $description = preg_replace('/(?<!Trưởng )(?<!trưởng )\bnhóm\b(?!\s+bạn)/u', 'nhóm bạn', $description);
-            $description = preg_replace('/(?<!Trưởng )(?<!trưởng )\bNhóm\b(?!\s+bạn)/u', 'Nhóm bạn', $description);
+                $description = preg_replace(
+                    '/^(Sinh viên|Giảng viên|Trưởng nhóm)\s+'.$namePattern.'(?=\s|$)/u',
+                    'Bạn',
+                    $description,
+                    1
+                );
+                $description = preg_replace(
+                    '/'.$nounPattern.'\s+'.$namePattern.'(?=\s|$)/u',
+                    'bạn',
+                    $description
+                );
+
+                $description = str_replace($viewerName, 'bạn', $description);
+            }
+
+            if ($viewerRole === 'sinh_vien' && $log->nhom_id) {
+                $description = preg_replace('/(?<!Trưởng )(?<!trưởng )\bnhóm\b(?!\s+bạn)/u', 'nhóm bạn', $description);
+                $description = preg_replace('/(?<!Trưởng )(?<!trưởng )\bNhóm\b(?!\s+bạn)/u', 'Nhóm bạn', $description);
+            }
         }
 
         return $description;

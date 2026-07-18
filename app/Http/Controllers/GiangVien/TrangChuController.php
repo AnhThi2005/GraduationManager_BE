@@ -59,7 +59,8 @@ class TrangChuController extends Controller
             ->count();
 
         // 5. Topics list under charge
-        $topicsQuery = DeTai::where('giang_vien_id', $teacherId)
+        $topicsQuery = DeTai::with('dot')
+            ->where('giang_vien_id', $teacherId)
             ->where('dot_id', $dotId)
             ->get();
 
@@ -87,7 +88,7 @@ class TrangChuController extends Controller
                 }
 
                 return [
-                    'code' => 'DA'.str_pad($t->de_tai_id, 3, '0', STR_PAD_LEFT),
+                    'code' => $this->buildTopicCode($t),
                     'name' => $t->ten_de_tai,
                     'slot' => $occupied.'/'.($t->so_luong_sv_toi_da ?? 4),
                     'status' => $statusVal,
@@ -127,5 +128,28 @@ class TrangChuController extends Controller
                 'specialty' => $teacher->chuyen_mon ?? 'Khoa Công nghệ thông tin',
             ],
         ]);
+    }
+
+    private function buildTopicCode($deTai)
+    {
+        $dot = $deTai->dot;
+        if (! $dot || ! $dot->nam_hoc || ! preg_match('/^(\d{4})-\d{4}$/', $dot->nam_hoc, $m)) {
+            return 'DA'.str_pad($deTai->de_tai_id, 3, '0', STR_PAD_LEFT);
+        }
+
+        $yearPart = substr($m[1], 2, 2);
+        $semesterPart = $dot->hoc_ky ?: '1';
+        $maxSlots = $deTai->so_luong_sv_toi_da ?? 4;
+
+        if ($deTai->trang_thai === 'DA_DUYET') {
+            $seq = DB::table('detai')
+                ->where('dot_id', $deTai->dot_id)
+                ->where('trang_thai', 'DA_DUYET')
+                ->where('de_tai_id', '<=', $deTai->de_tai_id)
+                ->count();
+            return 'DT'.$yearPart.$semesterPart.'-'.str_pad($seq, 2, '0', STR_PAD_LEFT).'-'.$maxSlots;
+        }
+
+        return 'DT'.$yearPart.$semesterPart.'-temp'.str_pad($deTai->de_tai_id, 2, '0', STR_PAD_LEFT).'-'.$maxSlots;
     }
 }
