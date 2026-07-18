@@ -9,6 +9,7 @@ use App\Models\Dot;
 use App\Models\GiangVien;
 use App\Models\HoiDong;
 use App\Models\Nhom;
+use App\Services\RealtimeService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -273,6 +274,48 @@ class HoiDongController extends Controller
         });
     }
 
+    public function congBoTatCa(Request $request)
+    {
+        $dotId = $request->input('periodId') ?? $request->input('period_id');
+        if (empty($dotId)) {
+            $activePeriod = Dot::orderBy('dot_id', 'desc')->first();
+            $dotId = $activePeriod ? $activePeriod->dot_id : 1;
+        }
+
+        $dot = Dot::find($dotId);
+        if ($resp = $this->chanNeuDotDaDong($dot)) {
+            return $resp;
+        }
+        if ($resp = $this->chanNeuDaToiNgayBaoVe($dot)) {
+            return $resp;
+        }
+
+        // Chỉ công bố các hội đồng đang ở trạng thái Bản nháp; hội đồng đã công bố
+        // hoặc đã kết thúc giữ nguyên, không bị tác động.
+        $publishedCount = HoiDong::where('dot_id', $dotId)
+            ->where('trang_thai', 'NHAP')
+            ->update(['trang_thai' => 'DA_CONG_BO']);
+
+        if ($publishedCount > 0) {
+            RealtimeService::broadcast('notification', [
+                'title' => 'Hội đồng đã được công bố',
+                'message' => "Đã công bố {$publishedCount} hội đồng.",
+                'type' => 'council_published',
+                'dotId' => (string) $dotId,
+            ]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => $publishedCount > 0
+                ? "Đã công bố {$publishedCount} hội đồng!"
+                : 'Không có hội đồng nào cần công bố.',
+            'results' => [
+                'publishedCount' => $publishedCount,
+            ],
+        ], 200);
+    }
+
     public function capNhat(Request $request, $id)
     {
         $hd = HoiDong::find($id);
@@ -290,6 +333,10 @@ class HoiDongController extends Controller
         if ($resp = $this->chanNeuDaToiNgayBaoVe($dot)) {
             return $resp;
         }
+
+        $trangThaiCu = $hd->trang_thai;
+        $trangThaiMoi = $request->input('status', $trangThaiCu);
+        $sapDuocCongBo = $trangThaiCu !== 'DA_CONG_BO' && $trangThaiMoi === 'DA_CONG_BO';
 
         // Validate defense date range constraint
         if ($dot) {
@@ -390,7 +437,7 @@ class HoiDongController extends Controller
             ], 422);
         }
 
-        return DB::transaction(function () use ($request, $hd, $dot) {
+        return DB::transaction(function () use ($request, $hd, $dot, $sapDuocCongBo) {
             $hd->update([
                 'ten_hoi_dong' => $request->input('title', $hd->ten_hoi_dong),
                 'phong_bao_ve' => $request->input('room', $hd->phong_bao_ve),
@@ -485,6 +532,17 @@ class HoiDongController extends Controller
             }
 
             $hdLoad = HoiDong::with(['giangViens', 'nhoms.members', 'nhoms.deTai.giangVien'])->find($hd->hoi_dong_id);
+
+            if ($sapDuocCongBo) {
+                $soNhom = $hdLoad->nhoms->count();
+                RealtimeService::broadcast('notification', [
+                    'title' => 'Hội đồng đã được công bố',
+                    'message' => "Hội đồng \"{$hdLoad->ten_hoi_dong}\" đã được công bố với {$soNhom} nhóm.",
+                    'type' => 'council_published',
+                    'dotId' => (string) $hdLoad->dot_id,
+                    'councilId' => (string) $hdLoad->hoi_dong_id,
+                ]);
+            }
 
             return response()->json([
                 'code' => 200,

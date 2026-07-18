@@ -229,6 +229,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
         // 10. Chức năng quản lý hội đồng (Councils)
         Route::get('/private/v1/councils', [HoiDongController::class, 'layDanhSach']);
+        Route::post('/private/v1/councils/publish', [HoiDongController::class, 'congBoTatCa']);
         Route::get('/private/v1/councils/{id}', [HoiDongController::class, 'xemChiTiet']);
         Route::post('/private/v1/councils', [HoiDongController::class, 'themMoi']);
         Route::patch('/private/v1/councils/{id}', [HoiDongController::class, 'capNhat']);

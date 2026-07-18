@@ -37,17 +37,20 @@ class TrangChuController extends Controller
             ->whereNull('deleted_at')
             ->count();
 
-        // 3. Reviewed groups (ĐATN)
+        // 3. Reviewed groups (ĐATN) — chỉ tính hội đồng admin đã công bố, chưa phải bản nháp
         $myCouncilIds = DB::table('thanhvienhoidong')
-            ->where('giang_vien_id', $teacherId)
-            ->pluck('hoi_dong_id');
+            ->join('hoidong', 'thanhvienhoidong.hoi_dong_id', '=', 'hoidong.hoi_dong_id')
+            ->where('thanhvienhoidong.giang_vien_id', $teacherId)
+            ->where('hoidong.trang_thai', '!=', 'NHAP')
+            ->pluck('thanhvienhoidong.hoi_dong_id');
 
         $reviewedGroupsCount = Nhom::whereIn('hoi_dong_id', $myCouncilIds)
             ->where('dot_id', $dotId)
             ->count();
 
-        // 4. Councils count
+        // 4. Councils count (chỉ tính hội đồng đã công bố)
         $councilsCount = HoiDong::where('dot_id', $dotId)
+            ->where('trang_thai', '!=', 'NHAP')
             ->whereHas('giangViens', function ($q) use ($teacherId) {
                 $q->where('giangvien.giang_vien_id', $teacherId);
             })

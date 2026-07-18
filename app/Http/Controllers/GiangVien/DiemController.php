@@ -70,8 +70,9 @@ class DiemController extends Controller
             })
             ->all();
 
-        // 2. Councils & Groups under this teacher
+        // 2. Councils & Groups under this teacher (chỉ hiện hội đồng đã được admin công bố, chưa phải bản nháp)
         $councils = HoiDong::where('dot_id', $dotId)
+            ->where('trang_thai', '!=', 'NHAP')
             ->whereHas('giangViens', function ($q) use ($teacherId) {
                 $q->where('giangvien.giang_vien_id', $teacherId);
             })
