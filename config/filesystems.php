@@ -56,6 +56,9 @@ return [
             'url' => env('AWS_URL'),
             'endpoint' => env('AWS_ENDPOINT'),
             'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
+            // File upload (đề tài, báo cáo...) cần link xem công khai ngay sau khi tải lên —
+            // không set 'public' thì object mặc định private, link vẫn 403 dù cấu hình đúng hết.
+            'visibility' => 'public',
             'throw' => false,
             'report' => false,
         ],
