@@ -845,6 +845,8 @@ class HoiDongController extends Controller
         }
         // Phản biện không còn là vai trò lưu trong thanhvienhoidong — được suy ra theo
         // từng đề tài từ lichbaove.giang_vien_pb_id khi duyệt qua $nhoms bên dưới.
+        $dot = $hd->dot;
+        $nhoms = $hd->nhoms;
 
         // Load schedule from lichbaove
         $schedules = DB::table('lichbaove')
