@@ -6,6 +6,7 @@ use App\Http\Controllers\Concerns\KiemTraTrangThaiDot;
 use App\Http\Controllers\Controller;
 use App\Models\Dot;
 use App\Models\GiangVien;
+use App\Models\LichSuHoatDong;
 use App\Models\Nhom;
 use App\Models\PhanCongHdtt;
 use App\Models\SinhVien;
@@ -728,11 +729,53 @@ class PhanCongHdttController extends Controller
             return $resp;
         }
 
-        $publishedCount = PhanCongHdtt::where('dot_id', $dotId)
+        $toPublish = PhanCongHdtt::with(['giangVien', 'sinhVien'])
+            ->where('dot_id', $dotId)
             ->where('da_cong_bo', false)
-            ->update(['da_cong_bo' => true]);
+            ->get();
+        $publishedCount = $toPublish->count();
 
         if ($publishedCount > 0) {
+            PhanCongHdtt::whereIn('phan_cong_hd_id', $toPublish->pluck('phan_cong_hd_id'))
+                ->update(['da_cong_bo' => true]);
+
+            // Ghi log riêng cho từng giảng viên/sinh viên - giống pattern
+            // HoiDongController::ghiLogVaThongBaoCongBoHoiDong() - để mỗi người thực sự thấy
+            // thông báo của mình trong bell/"Lịch sử hoạt động" thay vì chỉ 1 broadcast chung.
+            foreach ($toPublish as $pc) {
+                if ($pc->giangVien) {
+                    LichSuHoatDong::ghiLog(
+                        'PHAN_CONG_HDTT',
+                        "Giảng viên {$pc->giangVien->ho_ten} đã được phân công hướng dẫn thực tập tốt nghiệp cho sinh viên ".($pc->sinhVien ? $pc->sinhVien->ho_ten : '—').'.',
+                        null,
+                        null,
+                        null,
+                        'giang_vien',
+                        $pc->giangVien->ho_ten,
+                        [
+                            'dot_id' => $dotId,
+                            'sinh_vien_id' => $pc->sinh_vien_id,
+                            'ma_so_sinh_vien' => $pc->sinhVien->ma_so_sinh_vien ?? null,
+                        ]
+                    );
+                }
+                if ($pc->sinhVien) {
+                    LichSuHoatDong::ghiLog(
+                        'PHAN_CONG_HDTT',
+                        "Sinh viên {$pc->sinhVien->ho_ten} đã được phân công giảng viên hướng dẫn thực tập tốt nghiệp: ".($pc->giangVien ? $pc->giangVien->ho_ten : '—').'.',
+                        $pc->sinh_vien_id,
+                        $pc->sinhVien->ma_so_sinh_vien,
+                        null,
+                        'sinh_vien',
+                        $pc->sinhVien->ho_ten,
+                        [
+                            'dot_id' => $dotId,
+                            'giang_vien_id' => $pc->giang_vien_id,
+                        ]
+                    );
+                }
+            }
+
             RealtimeService::broadcast('notification', [
                 'title' => 'Phân công hướng dẫn TTTN đã được công bố',
                 'message' => "Đã công bố phân công hướng dẫn cho {$publishedCount} sinh viên.",

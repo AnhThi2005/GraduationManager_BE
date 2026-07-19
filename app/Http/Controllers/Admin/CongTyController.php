@@ -259,15 +259,31 @@ class CongTyController extends Controller
         }
 
         $admin = $request->user();
+        $studentName = $reg['studentName'] ?? '';
+        // Câu mở đầu bằng "Sinh viên {tên}" để personalizeDescription() (HistoryController) tự
+        // đổi thành "Bạn" khi chính sinh viên đó xem thông báo — theo đúng quy ước đang dùng ở
+        // các log khác (VD: ThucTapController::batDauKhaiBao), khác với cách viết theo góc nhìn
+        // admin cũ ("Admin X đã cập nhật...") vốn không đổi được thành "Bạn".
+        $newStatus = $reg['status'] ?? null;
+        if ($newStatus === 'approved') {
+            $desc = "Sinh viên {$studentName} đã được duyệt khai báo công ty.";
+        } elseif ($newStatus === 'rejected') {
+            $desc = "Sinh viên {$studentName} đã bị từ chối khai báo công ty.";
+        } elseif ($newStatus === 'cho_cap_giay') {
+            $desc = "Sinh viên {$studentName} đã được duyệt cấp giấy giới thiệu.";
+        } else {
+            $desc = "Sinh viên {$studentName} đã được cập nhật trạng thái hồ sơ khai báo thực tập.";
+        }
+
         LichSuHoatDong::ghiLog(
             'DUYET_TTTN',
-            'Admin '.($admin ? $admin->ho_ten : 'Hệ thống').' đã cập nhật trạng thái hồ sơ khai báo thực tập của sinh viên '.($reg['studentName'] ?? '').'.',
+            $desc,
             $existing->sinh_vien_id,
             $reg['studentCode'] ?? null,
             null,
             'admin',
             $admin ? $admin->ho_ten : 'Hệ thống',
-            ['old_status' => $existing->trang_thai, 'new_status' => $reg['status'] ?? null]
+            ['old_status' => $existing->trang_thai, 'new_status' => $newStatus]
         );
 
         RealtimeService::broadcast('notification', [
