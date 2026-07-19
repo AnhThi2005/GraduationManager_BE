@@ -140,9 +140,19 @@ class TrangChuController extends Controller
         $datnReportsCount = $dotDatn ? BaoCaoTienDo::where('sinh_vien_id', $sinhVienId)->where('dot_id', $dotDatn->dot_id)->where('loai_bao_cao', 'DO_AN')->count() : 0;
         $totalReports = $tttnReportsCount + $datnReportsCount;
 
-        // 5. Kết quả điểm số
-        $diemTttn = DB::table('diemthuctap')->where('sinh_vien_id', $sinhVienId)->first();
-        $diemDatn = DB::table('diemtongketdatn')->where('sinh_vien_id', $sinhVienId)->first();
+        // 5. Kết quả điểm số (lấy điểm của đợt mới nhất nếu sinh viên học lại)
+        $diemTttn = DB::table('diemthuctap')
+            ->where('sinh_vien_id', $sinhVienId)
+            ->orderBy('dot_id', 'desc')
+            ->first();
+
+        $diemDatn = DB::table('diemtongketdatn')
+            ->join('nhomsvda', 'diemtongketdatn.nhom_id', '=', 'nhomsvda.nhom_id')
+            ->where('diemtongketdatn.sinh_vien_id', $sinhVienId)
+            ->orderBy('nhomsvda.dot_id', 'desc')
+            ->select('diemtongketdatn.*')
+            ->first();
+
         $gpa = 0.0;
         $gradesCount = 0;
 

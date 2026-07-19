@@ -411,6 +411,19 @@ class DiemController extends Controller
                 ->where('thanhvienhoidong.hoi_dong_id', $group->hoi_dong_id)
                 ->select('giangvien.giang_vien_id as id', 'giangvien.ho_ten as name', 'thanhvienhoidong.vai_tro as role')
                 ->get()
+                ->filter(function ($m) use ($examinerIdsFromLich) {
+                    // Nhóm đã được gán cụ thể giảng viên chấm (qua luân chuyển hoặc lúc tạo hội
+                    // đồng) thì chỉ hiện đúng người trong danh sách đó - Ủy viên khác của hội
+                    // đồng nhưng KHÔNG được gán cho riêng nhóm này (kể cả người vừa bị luân
+                    // chuyển đi) sẽ không còn hiện cột ở đây nữa. Nếu nhóm CHƯA từng được gán cụ
+                    // thể (mảng rỗng - tình trạng hiện tại của toàn bộ dữ liệu cũ) thì giữ nguyên
+                    // hành vi cũ: hiện toàn bộ thành viên hội đồng.
+                    if (empty($examinerIdsFromLich)) {
+                        return true;
+                    }
+
+                    return in_array((string) $m->id, $examinerIdsFromLich, true);
+                })
                 ->map(function ($m) use ($gvpbIdFromLich, $examinerIdsFromLich) {
                     $memberIdStr = (string) $m->id;
                     $displayRole = 'Ủy viên';
@@ -431,6 +444,7 @@ class DiemController extends Controller
                         'role' => $displayRole,
                     ];
                 })
+                ->values()
                 ->all();
         }
 
