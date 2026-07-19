@@ -786,12 +786,35 @@ class DiemController extends Controller
             $hasGvhd = $dbc && $dbc->diem_gvhd !== null;
             $hasGvpb = $dbc && $dbc->diem_gvpb !== null;
 
-            // B. Kiểm tra điểm hội đồng (toàn bộ thành viên hội đồng phải chấm)
+            // B. Kiểm tra điểm hội đồng - đúng những người ĐANG được phân công chấm nhóm này
+            // (GVHD/GVPB/giang_vien_cham_id) phải chấm đủ, không phải toàn bộ thanhvienhoidong.
+            // Nếu chỉ đếm theo thanhvienhoidong như trước: nhóm đã "luân chuyển" sẽ không bao
+            // giờ đủ, vì người bị luân chuyển đi không còn chấm nhóm này nữa (đúng theo thiết kế)
+            // trong khi người mới vào không nằm trong thanhvienhoidong nên không được tính vào
+            // councilCount - khiến "hasAllCouncil" mãi mãi false, chặn luôn thông báo hoàn tất.
             $hasAllCouncil = false;
             if ($hdId) {
-                $councilCount = DB::table('thanhvienhoidong')
-                    ->where('hoi_dong_id', $hdId)
-                    ->count();
+                $examinerIdsForGroup = [];
+                if ($lich && $lich->giang_vien_cham_id) {
+                    $examinerIdsForGroup = array_map('strval', json_decode($lich->giang_vien_cham_id, true) ?: []);
+                }
+
+                if (! empty($examinerIdsForGroup)) {
+                    // Đã gán cụ thể (kể cả sau khi luân chuyển) - đếm đúng theo giảng viên chấm
+                    // + GVHD/GVPB của riêng nhóm này.
+                    $councilCount = collect($examinerIdsForGroup)
+                        ->push($gvhdId ? (string) $gvhdId : null)
+                        ->push($reviewerId ? (string) $reviewerId : null)
+                        ->filter()
+                        ->unique()
+                        ->count();
+                } else {
+                    // Chưa từng gán cụ thể - giữ nguyên hành vi cũ: đếm theo toàn bộ thành viên
+                    // hội đồng (tình trạng hiện tại của mọi hội đồng chưa dùng luân chuyển).
+                    $councilCount = DB::table('thanhvienhoidong')
+                        ->where('hoi_dong_id', $hdId)
+                        ->count();
+                }
 
                 $gradedCount = DB::table('diemhoidongbaove')
                     ->where('sinh_vien_id', $sv->sinh_vien_id)
