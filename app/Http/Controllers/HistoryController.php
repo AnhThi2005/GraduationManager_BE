@@ -327,10 +327,13 @@ class HistoryController extends Controller
                 $description = str_replace($viewerName, 'bạn', $description);
             }
 
-            if ($viewerRole === 'sinh_vien' && $log->nhom_id) {
-                $description = preg_replace('/(?<!Trưởng )(?<!trưởng )\bnhóm\b(?!\s+bạn)/u', 'nhóm bạn', $description);
-                $description = preg_replace('/(?<!Trưởng )(?<!trưởng )\bNhóm\b(?!\s+bạn)/u', 'Nhóm bạn', $description);
-            }
+                if ($viewerRole === 'sinh_vien' && $log->nhom_id) {
+                    // Chuẩn hóa các mẫu câu cũ dễ gây hiểu nhầm như "nhóm bạn của ..."
+                    // hoặc lặp "... của bạn của bạn" để mô tả tự nhiên hơn.
+                    $description = preg_replace('/\bnhóm bạn của\b/iu', 'nhóm của', $description);
+                    $description = preg_replace('/\bcủa bạn của bạn\b/iu', 'của bạn', $description);
+                    $description = preg_replace('/\bnhóm bạn\b/iu', 'nhóm của bạn', $description);
+                }
         }
 
         return $description;

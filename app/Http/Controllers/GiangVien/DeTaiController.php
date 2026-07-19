@@ -138,13 +138,6 @@ class DeTaiController extends Controller
             ['topic_id' => $topic['id'] ?? null]
         );
 
-        RealtimeService::broadcast('notification', [
-            'title' => 'Đề tài mới được đề xuất',
-            'message' => 'Giảng viên '.($teacher->ho_ten).' vừa đề xuất đề tài: '.($topic['name'] ?? ''),
-            'type' => 'topic_proposed',
-            'payload' => $topic,
-        ]);
-
         return response()->json([
             'code' => 200,
             'results' => [

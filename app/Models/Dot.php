@@ -109,7 +109,7 @@ class Dot extends Model
         
         $regOpen = $this->ngay_bat_dau_dang_ky;
         $gradingStart = $this->ngay_bat_dau_cham_diem;
-        $gradingEnd = $this->ngay_ket_thuc_cham_diem;
+        $endDate = $this->ngay_ket_thuc;
 
         if ($regOpen && $now < $regOpen) {
             return 'DA_CONG_BO';
@@ -117,10 +117,10 @@ class Dot extends Model
         if ($regOpen && $gradingStart && $now >= $regOpen && $now < $gradingStart) {
             return 'DANG_MO';
         }
-        if ($gradingStart && $gradingEnd && $now >= $gradingStart && $now < $gradingEnd) {
+        if ($gradingStart && $endDate && $now >= $gradingStart && $now < $endDate) {
             return 'CHAM_DIEM';
         }
-        if ($gradingEnd && $now >= $gradingEnd) {
+        if ($endDate && $now >= $endDate) {
             return 'DA_DONG';
         }
 

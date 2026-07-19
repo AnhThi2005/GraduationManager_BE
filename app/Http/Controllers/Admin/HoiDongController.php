@@ -192,8 +192,9 @@ class HoiDongController extends Controller
 
                 // Save members
                 $topics = $request->input('topics', []);
+                $uniqueMembers = array_unique($members);
 
-                foreach ($members as $gvId) {
+                foreach ($uniqueMembers as $gvId) {
                     $role = 'UY_VIEN';
                     if ((string) $gvId === (string) $chairId) {
                         $role = 'CHU_TICH';
@@ -244,18 +245,45 @@ class HoiDongController extends Controller
                         $time = date('H:i:s', strtotime($t['start_time'] ?? $t['startTime']));
                     }
 
-                    $examinerId = $t['examinerId'] ?? (isset($t['examinerIds']) && is_array($t['examinerIds']) ? (reset($t['examinerIds']) ?: null) : null);
+                    // Resolve GVPB (Reviewer) name to ID
+                    $reviewerId = null;
+                    if (! empty($t['reviewerId'])) {
+                        if (is_numeric($t['reviewerId'])) {
+                            $reviewerId = (int) $t['reviewerId'];
+                        } else {
+                            $foundGv = DB::table('giangvien')->where('ho_ten', trim($t['reviewerId']))->first();
+                            if ($foundGv) {
+                                $reviewerId = $foundGv->giang_vien_id;
+                            }
+                        }
+                    }
+
+                    // Resolve Examiner IDs
+                    $examinerIds = [];
+                    if (! empty($t['examinerIds']) && is_array($t['examinerIds'])) {
+                        foreach ($t['examinerIds'] as $eid) {
+                            if (is_numeric($eid)) {
+                                $examinerIds[] = (string)$eid;
+                            } else {
+                                $foundGv = DB::table('giangvien')->where('ho_ten', trim($eid))->first();
+                                if ($foundGv) {
+                                    $examinerIds[] = (string)$foundGv->giang_vien_id;
+                                }
+                            }
+                        }
+                    }
+
                     DB::table('lichbaove')->insert([
                         'hoi_dong_id' => $hd->hoi_dong_id,
                         'nhom_id' => $nhomId,
-                        'giang_vien_pb_id' => (!empty($t['reviewerId']) && is_numeric($t['reviewerId'])) ? $t['reviewerId'] : null,
-                        'giang_vien_cham_id' => json_encode($t['examinerIds'] ?? []),
+                        'giang_vien_pb_id' => $reviewerId,
+                        'giang_vien_cham_id' => json_encode($examinerIds),
                         'thoi_gian_bat_dau' => $time,
                         'thu_tu' => $idx + 1,
                         'ghi_chu' => json_encode([
                             'minutes' => $t['minutes'] ?? 40,
-                            'reviewer_id' => (!empty($t['reviewerId']) && is_numeric($t['reviewerId'])) ? $t['reviewerId'] : null,
-                            'examiner_ids' => $t['examinerIds'] ?? [],
+                            'reviewer_id' => $reviewerId,
+                            'examiner_ids' => $examinerIds,
                             'external_examiners' => $t['externalExaminers'] ?? [],
                         ]),
                     ]);
@@ -456,11 +484,12 @@ class HoiDongController extends Controller
                 if ($request->has('members')) {
                     DB::table('thanhvienhoidong')->where('hoi_dong_id', $hd->hoi_dong_id)->delete();
                     $members = $request->input('members', []);
+                    $uniqueMembers = array_unique($members);
                     $topics = $request->input('topics', []);
                     $chairId = $request->input('chair_id') ?? $request->input('chairId');
                     $secretaryId = $request->input('secretary_id') ?? $request->input('secretaryId');
 
-                    foreach ($members as $gvId) {
+                    foreach ($uniqueMembers as $gvId) {
                         $role = 'UY_VIEN';
                         if ((string) $gvId === (string) $chairId) {
                             $role = 'CHU_TICH';
@@ -514,18 +543,45 @@ class HoiDongController extends Controller
                             $time = date('H:i:s', strtotime($t['start_time'] ?? $t['startTime']));
                         }
 
-                        $examinerId = $t['examinerId'] ?? (isset($t['examinerIds']) && is_array($t['examinerIds']) ? (reset($t['examinerIds']) ?: null) : null);
+                        // Resolve GVPB (Reviewer) name to ID
+                        $reviewerId = null;
+                        if (! empty($t['reviewerId'])) {
+                            if (is_numeric($t['reviewerId'])) {
+                                $reviewerId = (int) $t['reviewerId'];
+                            } else {
+                                $foundGv = DB::table('giangvien')->where('ho_ten', trim($t['reviewerId']))->first();
+                                if ($foundGv) {
+                                    $reviewerId = $foundGv->giang_vien_id;
+                                }
+                            }
+                        }
+
+                        // Resolve Examiner IDs
+                        $examinerIds = [];
+                        if (! empty($t['examinerIds']) && is_array($t['examinerIds'])) {
+                            foreach ($t['examinerIds'] as $eid) {
+                                if (is_numeric($eid)) {
+                                    $examinerIds[] = (string)$eid;
+                                } else {
+                                    $foundGv = DB::table('giangvien')->where('ho_ten', trim($eid))->first();
+                                    if ($foundGv) {
+                                        $examinerIds[] = (string)$foundGv->giang_vien_id;
+                                    }
+                                }
+                            }
+                        }
+
                         DB::table('lichbaove')->insert([
                             'hoi_dong_id' => $hd->hoi_dong_id,
                             'nhom_id' => $nhomId,
-                            'giang_vien_pb_id' => (!empty($t['reviewerId']) && is_numeric($t['reviewerId'])) ? $t['reviewerId'] : null,
-                            'giang_vien_cham_id' => json_encode($t['examinerIds'] ?? []),
+                            'giang_vien_pb_id' => $reviewerId,
+                            'giang_vien_cham_id' => json_encode($examinerIds),
                             'thoi_gian_bat_dau' => $time,
                             'thu_tu' => $idx + 1,
                             'ghi_chu' => json_encode([
                                 'minutes' => $t['minutes'] ?? 40,
-                                'reviewer_id' => (!empty($t['reviewerId']) && is_numeric($t['reviewerId'])) ? $t['reviewerId'] : null,
-                                'examiner_ids' => $t['examinerIds'] ?? [],
+                                'reviewer_id' => $reviewerId,
+                                'examiner_ids' => $examinerIds,
                                 'external_examiners' => $t['externalExaminers'] ?? [],
                             ]),
                         ]);
@@ -685,34 +741,8 @@ class HoiDongController extends Controller
 
     private function validateNhomDotConstraint($nhom, $dot)
     {
-        if (! $nhom || ! $dot) {
-            return;
-        }
-
-        $now = date('Y-m-d');
-        $ngayBatDauBaoVe = $dot->ngay_bat_dau_bao_ve;
-
-        $kqHd = $nhom->ket_qua_huong_dan;
-        $kqPb = $nhom->ket_qua_phan_bien;
-
-        $topicName = $nhom->deTai ? $nhom->deTai->ten_de_tai : 'Nhóm #'.$nhom->nhom_id;
-
-        // Nếu đã tới ngày bảo vệ trở đi: Bắt buộc cả Hướng dẫn và Phản biện phải ĐẠT (DAT)
-        if ($ngayBatDauBaoVe && $now >= $ngayBatDauBaoVe) {
-            if ($kqHd !== 'DAT' || $kqPb !== 'DAT') {
-                throw new \Exception("Nhóm đề tài '{$topicName}' phải có kết quả Hướng dẫn và Phản biện đạt (DAT) để tiến hành bảo vệ!");
-            }
-        } else {
-            // Trước ngày bảo vệ (trong giai đoạn phản biện hoặc trước đó):
-            // - Kết quả Hướng dẫn (GVHD) bắt buộc phải ĐẠT (DAT) để được đưa vào hội đồng
-            // - Kết quả Phản biện (GVPB) có thể chưa chấm (null) hoặc đã chấm ĐẠT (DAT) (không được KHONG_DAT)
-            if ($kqHd !== 'DAT') {
-                throw new \Exception("Nhóm đề tài '{$topicName}' chưa đạt đánh giá hướng dẫn (GVHD), không thể xếp vào hội đồng!");
-            }
-            if ($kqPb === 'KHONG_DAT') {
-                throw new \Exception("Nhóm đề tài '{$topicName}' có kết quả phản biện Không đạt, không thể xếp vào hội đồng!");
-            }
-        }
+        // Cho phép được tạo hội đồng mà chưa cần xét nhóm đề tài đạt hay không
+        return;
     }
 
     private function parseTimeRange($timeStr)
@@ -828,6 +858,8 @@ class HoiDongController extends Controller
         $nhoms = $hd->nhoms;
         $dot = $hd->dot;
 
+        // Cho phép được tạo hội đồng mà chưa cần xét nhóm đề tài đạt hay không
+        /*
         if ($dot) {
             $now = date('Y-m-d');
             $ngayBatDau = $dot->ngay_bat_dau;
@@ -847,6 +879,7 @@ class HoiDongController extends Controller
                 }
             });
         }
+        */
 
         foreach ($nhoms as $nhom) {
             $code = null;
