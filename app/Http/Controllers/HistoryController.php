@@ -32,25 +32,33 @@ class HistoryController extends Controller
                 if (! empty($groupIds)) {
                     $q->orWhereIn('nhom_id', $groupIds);
                 }
+                // Lời mời gia nhập nhóm gửi tới CHÍNH sinh viên này: log GUI_LOI_MOI ghi
+                // sinh_vien_id/nhom_id theo NGƯỜI GỬI (chưa vào nhóm nên không khớp 2 điều
+                // kiện trên), nên phải đọc thêm details JSON đã lưu sẵn lúc gửi lời mời.
+                $q->orWhere('details->invited_student_id', $sinhVien->sinh_vien_id);
             });
-
-        $dotId = $request->query('dot_id') ?? $request->query('periodId') ?? $request->query('period_id');
-        if (empty($dotId)) {
-            $activePeriod = \App\Models\Dot::where('trang_thai', 'DANG_MO')->orderBy('dot_id', 'desc')->first()
-                ?? \App\Models\Dot::orderBy('dot_id', 'desc')->first();
-            $dotId = $activePeriod ? $activePeriod->dot_id : null;
-        }
-
-        if ($dotId) {
-            $query->where('dot_id', $dotId);
-        } else {
-            $query->whereRaw('1 = 0');
-        }
 
         // Chuông thông báo chỉ cần vài dòng gần nhất nên truyền "limit" để không phải quét/tải
         // toàn bộ lịch sử mỗi lần — trang "Lịch sử hoạt động" đầy đủ thì không truyền limit.
         if ($request->filled('limit')) {
+            // Chuông dùng chung 1 "đợt hoạt động" toàn cục với các trang khác (vd trang đang
+            // xem là đợt TTTN) nên nếu vẫn lọc theo dot_id, thông báo của đợt ĐATN (hoặc
+            // ngược lại) sẽ bị ẩn dù thật sự liên quan đến sinh viên này. Chuông cần thấy
+            // hoạt động gần đây ở MỌI đợt của mình, không giới hạn theo 1 đợt đang chọn.
             $query->limit((int) $request->input('limit'));
+        } else {
+            $dotId = $request->query('dot_id') ?? $request->query('periodId') ?? $request->query('period_id');
+            if (empty($dotId)) {
+                $activePeriod = \App\Models\Dot::where('trang_thai', 'DANG_MO')->orderBy('dot_id', 'desc')->first()
+                    ?? \App\Models\Dot::orderBy('dot_id', 'desc')->first();
+                $dotId = $activePeriod ? $activePeriod->dot_id : null;
+            }
+
+            if ($dotId) {
+                $query->where('dot_id', $dotId);
+            } else {
+                $query->whereRaw('1 = 0');
+            }
         }
 
         $logs = $query->orderBy('created_at', 'desc')->get();
@@ -148,6 +156,12 @@ class HistoryController extends Controller
                 ->all();
         }
 
+        // Chuông thông báo (có truyền "limit") dùng chung 1 "đợt hoạt động" toàn cục với các
+        // trang khác nên không giới hạn theo 1 đợt cụ thể ở đây - nếu không, thông báo của
+        // đợt ĐATN sẽ bị ẩn khi giảng viên đang xem 1 đợt TTTN ở trang khác (và ngược lại).
+        // Trang "Lịch sử" đầy đủ (không truyền limit) vẫn lọc theo đúng 1 đợt như trước.
+        $isBellMode = $request->filled('limit');
+
         $dotId = $request->query('dot_id') ?? $request->query('periodId') ?? $request->query('period_id');
         if (empty($dotId)) {
             $activePeriod = \App\Models\Dot::where('trang_thai', 'DANG_MO')->orderBy('dot_id', 'desc')->first()
@@ -156,15 +170,13 @@ class HistoryController extends Controller
         }
 
         // Get guided TTTN students
-        $guidedStudentIds = [];
-        if ($dotId) {
-            $guidedStudentIds = DB::table('phanconghdtt')
-                ->where('giang_vien_id', $teacher->giang_vien_id)
-                ->where('dot_id', $dotId)
-                ->whereNull('deleted_at')
-                ->pluck('sinh_vien_id')
-                ->all();
+        $guidedQuery = DB::table('phanconghdtt')
+            ->where('giang_vien_id', $teacher->giang_vien_id)
+            ->whereNull('deleted_at');
+        if (! $isBellMode) {
+            $guidedQuery->where('dot_id', $dotId);
         }
+        $guidedStudentIds = ($isBellMode || $dotId) ? $guidedQuery->pluck('sinh_vien_id')->all() : [];
 
         // Các hành động sinh viên tự quản lý thành viên/nhóm nội bộ (lập nhóm, gửi/nhận/hủy
         // lời mời) không cần thiết để giảng viên biết — chỉ nên hiển thị đầy đủ ở Lịch sử hệ
@@ -195,16 +207,12 @@ class HistoryController extends Controller
                 }
             });
 
-        if ($dotId) {
+        if ($isBellMode) {
+            $query->limit((int) $request->input('limit'));
+        } elseif ($dotId) {
             $query->where('dot_id', $dotId);
         } else {
             $query->whereRaw('1 = 0');
-        }
-
-        // Chuông thông báo chỉ cần vài dòng gần nhất nên truyền "limit" để không phải quét/tải
-        // toàn bộ lịch sử mỗi lần — trang "Lịch sử" đầy đủ thì không truyền limit.
-        if ($request->filled('limit')) {
-            $query->limit((int) $request->input('limit'));
         }
 
         $logs = $query->orderBy('created_at', 'desc')->get();
@@ -302,6 +310,16 @@ class HistoryController extends Controller
             if ($viewerRole === 'sinh_vien') {
                 $isAboutViewer = ($viewerSinhVienId && (int) $log->sinh_vien_id === (int) $viewerSinhVienId)
                     || ($viewerMaSoSinhVien && $log->ma_so_sinh_vien === $viewerMaSoSinhVien);
+
+                // Log lời mời nhóm ghi theo người GỬI, nhưng người ĐƯỢC MỜI xem cũng cần
+                // thấy "bạn" thay vì tên mình - kiểm tra thêm details JSON đã lưu sẵn.
+                if (! $isAboutViewer && $viewerSinhVienId && $log->details) {
+                    $details = json_decode($log->details, true);
+                    if (is_array($details) && isset($details['invited_student_id'])
+                        && (int) $details['invited_student_id'] === (int) $viewerSinhVienId) {
+                        $isAboutViewer = true;
+                    }
+                }
             } elseif ($viewerRole === 'giang_vien') {
                 $isAboutViewer = $log->role === 'giang_vien'
                     && $log->user_name !== null
