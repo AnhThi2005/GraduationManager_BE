@@ -6,6 +6,7 @@ use App\Http\Controllers\Concerns\KiemTraTrangThaiDot;
 use App\Http\Controllers\Controller;
 use App\Models\BaoCaoTienDo;
 use App\Models\Dot;
+use App\Models\LichSuHoatDong;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -485,11 +486,11 @@ class BaoCaoController extends Controller
 
                 $formatted[] = [
                     'week' => $w,
-                    'name' => 'Chưa nộp bản thảo',
+                    'name' => 'Chưa nộp báo cáo',
                     'status' => $status,
                     'file' => '—',
                     'fileUrl' => null,
-                    'note' => 'Nhóm chưa nộp bản thảo tuần này.',
+                    'note' => 'Nhóm chưa nộp báo cáo tuần này.',
                     'teacherComment' => null,
                     'updated' => '—',
                 ];
@@ -660,11 +661,24 @@ class BaoCaoController extends Controller
             ]);
         }
 
+        // Báo cho thành viên còn lại trong nhóm (và giảng viên hướng dẫn, vì nhom_id trùng
+        // với nhóm của đề tài họ hướng dẫn) biết nhóm vừa nộp báo cáo tiến độ tuần này.
+        LichSuHoatDong::ghiLog(
+            'NOP_BAO_CAO_DATN',
+            "Sinh viên {$sinhVien->ho_ten} đã nộp báo cáo tiến độ tuần {$week}.",
+            $sinhVien->sinh_vien_id,
+            $sinhVien->ma_so_sinh_vien,
+            $nhom->nhom_id,
+            'sinh_vien',
+            $sinhVien->ho_ten,
+            ['week' => $week]
+        );
+
         $fileUrl = $this->resolveFileUrl($report->duong_dan_file);
 
         return response()->json([
             'code' => 200,
-            'message' => 'Nộp bản thảo đồ án thành công!',
+            'message' => 'Nộp báo cáo đồ án thành công!',
             'results' => [
                 'object' => [
                     'week' => $week,

@@ -319,7 +319,7 @@ class NhomController extends Controller
                         $reports[] = [
                             'bao_cao_id' => null,
                             'tuan_so' => $w,
-                            'noi_dung' => 'Nhóm chưa nộp bản thảo.',
+                            'noi_dung' => 'Nhóm chưa nộp báo cáo.',
                             'duong_dan_file' => '',
                             'trang_thai' => $trangThaiWeek,
                             'thoi_gian_nop' => '—',
