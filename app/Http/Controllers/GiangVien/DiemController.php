@@ -202,12 +202,32 @@ class DiemController extends Controller
 
                 $lich = $lichByNhom->get($g->nhom_id);
                 $reviewerId = null;
+                $examinerIdsForGroup = [];
                 if ($lich) {
                     $reviewerId = $lich->giang_vien_pb_id;
                     if (! $reviewerId && $lich->ghi_chu) {
                         $decoded = json_decode($lich->ghi_chu, true);
                         $reviewerId = $decoded['reviewer_id'] ?? null;
                     }
+                    if ($lich->giang_vien_cham_id) {
+                        $examinerIdsForGroup = array_map('strval', json_decode($lich->giang_vien_cham_id, true) ?: []);
+                    }
+                }
+
+                $isAdvisor = ($g->deTai && $g->deTai->giang_vien_id == $teacherId);
+                $isReviewer = ($reviewerId == $teacherId);
+                $isExaminer = in_array((string) $teacherId, $examinerIdsForGroup, true);
+
+                // Chỉ lọc theo giang_vien_cham_id KHI nhóm đó đã thực sự được gán cụ thể (mảng
+                // không rỗng) - lúc đó mới đúng người GVHD/GVPB/giảng viên chấm mới thấy nhóm,
+                // để "luân chuyển" phát huy tác dụng (người bị chuyển đi hết thấy, người được
+                // chuyển vào thấy đúng nhóm, không thấy nhóm khác không liên quan). Nếu nhóm CHƯA
+                // TỪNG được gán giảng viên chấm cụ thể (mảng rỗng - hiện là tình trạng của TOÀN
+                // BỘ dữ liệu cũ, kiểm tra thực tế thấy 0/66 dòng lichbaove có giang_vien_cham_id)
+                // thì giữ nguyên hành vi cũ: mọi thành viên hội đồng đều thấy nhóm, tránh làm
+                // trống trơn danh sách chấm điểm của toàn bộ hội đồng đã tạo trước đây.
+                if (! empty($examinerIdsForGroup) && ! $isAdvisor && ! $isReviewer && ! $isExaminer) {
+                    continue;
                 }
 
                 $advisorName = '—';
@@ -227,8 +247,6 @@ class DiemController extends Controller
                     'reviewerEvaluation' => $g->ket_qua_phan_bien,
                 ];
 
-                $isAdvisor = ($g->deTai && $g->deTai->giang_vien_id == $teacherId);
-                $isReviewer = ($reviewerId == $teacherId);
                 $hasAllScores = true;
 
                 foreach ($g->members as $m) {
