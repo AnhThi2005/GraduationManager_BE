@@ -429,11 +429,51 @@ class DiemSinhVienService
             return;
         }
 
-        // 2. Lấy điểm Bảo vệ trung bình của toàn hội đồng (tính trung bình cộng theo số lượng thành viên hội đồng, chưa chấm/chấm 0 thì tính là 0)
+        // 2. Lấy điểm Bảo vệ trung bình - đúng người phải chấm là GVHD + GVPB + giảng viên chấm
+        // (giang_vien_cham_id trong lichbaove của riêng nhóm này), KHÔNG PHẢI toàn bộ
+        // thanhvienhoidong của hội đồng. Ai trong nhóm này chưa chấm thì tính là 0, chia đều
+        // cho đúng số người thuộc 3 vai trò trên.
         $nhomsvda = DB::table('nhomsvda')->where('nhom_id', $nhomId)->first();
         $diemBaoVeTrungBinh = 0.00;
 
-        if ($nhomsvda && $nhomsvda->hoi_dong_id) {
+        $lich = DB::table('lichbaove')->where('nhom_id', $nhomId)->first();
+        $deTaiForGrading = $nhomsvda && $nhomsvda->de_tai_id
+            ? DB::table('detai')->where('de_tai_id', $nhomsvda->de_tai_id)->first()
+            : null;
+        $gvhdIdForGrading = $deTaiForGrading ? $deTaiForGrading->giang_vien_id : null;
+        $reviewerIdForGrading = $lich ? $lich->giang_vien_pb_id : null;
+        $examinerIdsForGrading = [];
+        if ($lich && $lich->giang_vien_cham_id) {
+            $examinerIdsForGrading = array_map('strval', json_decode($lich->giang_vien_cham_id, true) ?: []);
+        }
+
+        if (! empty($examinerIdsForGrading)) {
+            // Nhóm đã được gán cụ thể giảng viên chấm (kể cả sau khi luân chuyển) - dùng đúng
+            // danh sách GVHD + GVPB + giảng viên chấm của riêng nhóm này làm mẫu số.
+            $expectedGraders = collect($examinerIdsForGrading)
+                ->push($gvhdIdForGrading ? (string) $gvhdIdForGrading : null)
+                ->push($reviewerIdForGrading ? (string) $reviewerIdForGrading : null)
+                ->filter()
+                ->unique()
+                ->values();
+            $totalLecturers = $expectedGraders->count();
+
+            $scores = DB::table('diemhoidongbaove')
+                ->where('sinh_vien_id', $sinhVienId)
+                ->where('nhom_id', $nhomId)
+                ->whereIn('giang_vien_id', $expectedGraders)
+                ->pluck('diem_bao_ve', 'giang_vien_id');
+
+            $sumScores = 0.0;
+            foreach ($expectedGraders as $gvId) {
+                $scoreVal = isset($scores[$gvId]) ? floatval($scores[$gvId]) : 0.0;
+                $sumScores += $scoreVal;
+            }
+
+            $diemBaoVeTrungBinh = $totalLecturers > 0 ? round($sumScores / $totalLecturers, 2) : 0.00;
+        } elseif ($nhomsvda && $nhomsvda->hoi_dong_id) {
+            // Nhóm CHƯA từng được gán cụ thể giảng viên chấm (tình trạng hiện tại của toàn bộ
+            // dữ liệu cũ) - giữ nguyên hành vi cũ: đếm theo toàn bộ thành viên hội đồng.
             $councilLecturers = DB::table('thanhvienhoidong')
                 ->where('hoi_dong_id', $nhomsvda->hoi_dong_id)
                 ->pluck('giang_vien_id');
@@ -441,7 +481,6 @@ class DiemSinhVienService
             if ($councilLecturers->isNotEmpty()) {
                 $totalLecturers = $councilLecturers->count();
 
-                // Lấy điểm của các giảng viên hội đồng đã chấm cho sinh viên này
                 $scores = DB::table('diemhoidongbaove')
                     ->where('sinh_vien_id', $sinhVienId)
                     ->where('nhom_id', $nhomId)
