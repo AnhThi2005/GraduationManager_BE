@@ -176,6 +176,8 @@ class DiemController extends Controller
                     'advisorName' => $advisorName,
                     'reviewerId' => $reviewerId ? (string) $reviewerId : null,
                     'students' => $studentsList,
+                    'advisorEvaluation' => $g->ket_qua_huong_dan,
+                    'reviewerEvaluation' => $g->ket_qua_phan_bien,
                 ];
 
                 $isAdvisor = ($g->deTai && $g->deTai->giang_vien_id == $teacherId);
@@ -523,6 +525,12 @@ class DiemController extends Controller
         $nhom = DB::table('nhomsvda')->where('nhom_id', $groupId)->first();
         if (! $nhom) {
             return response()->json(['success' => false, 'message' => 'Nhom not found.'], 404);
+        }
+        if ($nhom->ket_qua_huong_dan !== 'DAT' || $nhom->ket_qua_phan_bien !== 'DAT') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Nhóm phải được cả GVHD và GVPB đánh giá đạt mới được nhập điểm ĐATN.'
+            ], 400);
         }
         $hoiDongId = $nhom->hoi_dong_id;
 

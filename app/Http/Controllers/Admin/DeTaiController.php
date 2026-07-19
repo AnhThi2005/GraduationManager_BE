@@ -128,13 +128,6 @@ class DeTaiController extends Controller
 
         $topic = $this->deTaiService->createTopic($request->all(), $periodId);
 
-        RealtimeService::broadcast('notification', [
-            'title' => 'Đề tài mới được đề xuất',
-            'message' => 'Giảng viên '.($topic['teacher'] ?? 'GV').' vừa đề xuất đề tài: '.($topic['name'] ?? ''),
-            'type' => 'topic_proposed',
-            'payload' => $topic,
-        ]);
-
         return response()->json([
             'code' => 200,
             'results' => [
@@ -154,12 +147,50 @@ class DeTaiController extends Controller
             return $resp;
         }
 
+        $oldStatus = $existing ? $existing->trang_thai : null;
         $topic = $this->deTaiService->updateTopic($id, $request->all());
         if (! $topic) {
             return response()->json([
                 'success' => false,
                 'message' => 'Không tìm thấy đề tài này để cập nhật!',
             ], 404);
+        }
+
+        $newStatus = $topic['status']; // 'approved', 'rejected', or 'pending'
+        if ($oldStatus !== 'DA_DUYET' && $newStatus === 'approved') {
+            \App\Models\LichSuHoatDong::ghiLog(
+                'DUYET_DE_TAI',
+                "Đề tài \"{$topic['name']}\" đã được phê duyệt.",
+                null,
+                null,
+                null,
+                'admin',
+                'Admin',
+                ['topic_id' => $id]
+            );
+            RealtimeService::broadcast('notification', [
+                'title' => 'Đề tài đã được duyệt',
+                'message' => "Đề tài \"{$topic['name']}\" của bạn đã được duyệt",
+                'type' => 'topic_approved',
+                'payload' => $topic,
+            ]);
+        } elseif ($oldStatus !== 'TU_CHOI' && $newStatus === 'rejected') {
+            \App\Models\LichSuHoatDong::ghiLog(
+                'TU_CHOI_DE_TAI',
+                "Đề tài \"{$topic['name']}\" đã bị từ chối.",
+                null,
+                null,
+                null,
+                'admin',
+                'Admin',
+                ['topic_id' => $id]
+            );
+            RealtimeService::broadcast('notification', [
+                'title' => 'Đề tài bị từ chối',
+                'message' => "Đề tài \"{$topic['name']}\" của bạn đã bị từ chối",
+                'type' => 'topic_rejected',
+                'payload' => $topic,
+            ]);
         }
 
         RealtimeService::broadcast('slot_updated', [

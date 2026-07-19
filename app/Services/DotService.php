@@ -381,13 +381,44 @@ class DotService
             return false;
         }
 
-        if (
-            DeTai::where('dot_id', $id)->exists()
-            || DangKyThucTap::where('dot_id', $id)->exists()
-            || Nhom::where('dot_id', $id)->exists()
-        ) {
+        $hasTopics = DeTai::where('dot_id', $id)->exists();
+        $hasInternships = DangKyThucTap::where('dot_id', $id)->exists();
+        $hasGroups = Nhom::where('dot_id', $id)->exists();
+
+        if ($hasTopics || $hasInternships || $hasGroups) {
+            $linkedResources = [];
+            $isDatn = strtoupper((string) $dot->loai_dot) === 'DATN';
+
+            if ($isDatn) {
+                if ($hasTopics) {
+                    $linkedResources[] = 'đề tài đồ án';
+                }
+                if ($hasGroups) {
+                    $linkedResources[] = 'nhóm đồ án';
+                }
+                // Trường hợp dữ liệu cũ/lệch vẫn còn bản ghi thực tập gắn cùng dot DATN.
+                if ($hasInternships) {
+                    $linkedResources[] = 'khai báo thực tập';
+                }
+
+                throw new \InvalidArgumentException(
+                    'Không thể xóa đợt ĐATN này vì đã có '.implode(', ', $linkedResources).' gắn với đợt. Vui lòng xử lý dữ liệu liên quan trước.'
+                );
+            }
+
+            if ($hasInternships) {
+                $linkedResources[] = 'khai báo thực tập';
+            }
+            // Giữ đủ ngữ cảnh nếu có dữ liệu chéo do import/seed hoặc dữ liệu lịch sử.
+            if ($hasTopics) {
+                $linkedResources[] = 'đề tài đồ án';
+            }
+            if ($hasGroups) {
+                $linkedResources[] = 'nhóm đồ án';
+            }
+
             throw new \InvalidArgumentException(
-                'Không thể xóa đợt này vì đã có đề tài, khai báo thực tập hoặc nhóm đồ án gắn với đợt. Vui lòng xử lý dữ liệu liên quan trước.'
+                'Không thể xóa đợt TTTN này vì đã có '.implode(', ', $linkedResources).' gắn với đợt. Vui lòng xử lý dữ liệu liên quan trước.'
             );
         }
 
@@ -413,8 +444,8 @@ class DotService
 
         $query = Dot::where('loai_dot', $loaiDot)
             ->where(function ($q) use ($now) {
-                $q->whereNull('ngay_ket_thuc_cham_diem')
-                    ->orWhere('ngay_ket_thuc_cham_diem', '>=', $now);
+                $q->whereNull('ngay_ket_thuc')
+                    ->orWhere('ngay_ket_thuc', '>=', $now);
             });
 
         if ($excludeDotId) {
@@ -425,7 +456,7 @@ class DotService
         if ($dangHoatDong) {
             $tenLoai = $loaiDot === 'DATN' ? 'ĐATN' : 'TTTN';
             throw new \InvalidArgumentException(
-                "Đợt \"{$dangHoatDong->ten_dot}\" ({$tenLoai}) đang hoạt động (ngày kết thúc chấm điểm {$dangHoatDong->ngay_ket_thuc_cham_diem} chưa qua). Mỗi loại đợt chỉ được có tối đa 1 đợt hoạt động cùng lúc."
+                "Đợt \"{$dangHoatDong->ten_dot}\" ({$tenLoai}) đang hoạt động (ngày kết thúc {$dangHoatDong->ngay_ket_thuc} chưa qua). Mỗi loại đợt chỉ được có tối đa 1 đợt hoạt động cùng lúc."
             );
         }
     }
@@ -816,15 +847,15 @@ class DotService
             throw new \InvalidArgumentException('Ngày kết thúc chấm điểm phải trước ngày kết thúc đợt học!');
         }
 
-        // 3. Kiểm tra tất cả các mốc thời gian phải nằm trong khoảng năm học (từ 01/09 của năm bắt đầu đến 31/08 của năm kết thúc)
+        // 3. Kiểm tra tất cả các mốc thời gian phải nằm trong khoảng năm học (từ 01/01 của năm bắt đầu đến 31/12 của năm kết thúc)
         if ($schoolYear) {
             $match = [];
             if (preg_match('/^(\d{4})-(\d{4})$/', $schoolYear, $match)) {
                 $startYear = (int) $match[1];
                 $endYear = (int) $match[2];
 
-                $schoolYearStart = Carbon::create($startYear, 9, 1, 0, 0, 0)->startOfDay();
-                $schoolYearEnd = Carbon::create($endYear, 8, 31, 23, 59, 59)->endOfDay();
+                $schoolYearStart = Carbon::create($startYear, 1, 1, 0, 0, 0)->startOfDay();
+                $schoolYearEnd = Carbon::create($endYear, 12, 31, 23, 59, 59)->endOfDay();
 
                 $datesToCheck = [
                     'Ngày bắt đầu đợt' => $startDate,
@@ -848,10 +879,10 @@ class DotService
                     if ($dateValue) {
                         $parsedDate = Carbon::parse($dateValue);
                         if ($parsedDate->lt($schoolYearStart) || $parsedDate->gt($schoolYearEnd)) {
-                            $suggestedStartYear = $parsedDate->month >= 9 ? $parsedDate->year : $parsedDate->year - 1;
+                            $suggestedStartYear = $parsedDate->year;
                             $suggestedSchoolYear = "{$suggestedStartYear}-".($suggestedStartYear + 1);
                             throw new \InvalidArgumentException(
-                                "{$label} ({$parsedDate->format('d/m/Y')}) không thuộc năm học {$schoolYear} (01/09/{$startYear} - 31/08/{$endYear}).".
+                                "{$label} ({$parsedDate->format('d/m/Y')}) không thuộc năm học {$schoolYear} (01/01/{$startYear} - 31/12/{$endYear}).".
                                 " Ngày này thuộc năm học {$suggestedSchoolYear} — hãy đổi lại \"{$label}\" cho khớp năm học {$schoolYear},".
                                 " hoặc đổi \"Năm học\" thành {$suggestedSchoolYear}."
                             );
