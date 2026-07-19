@@ -235,6 +235,21 @@ class DeTaiController extends Controller
             ], 404);
         }
 
+        LichSuHoatDong::ghiLog(
+            'XOA_DE_TAI',
+            "Giảng viên {$teacher->ho_ten} đã xoá đề tài {$dbTopic->ten_de_tai}",
+            null,
+            null,
+            null,
+            'giang_vien',
+            $teacher->ho_ten,
+            [
+                'topic_id' => $id,
+                'topic_title' => $dbTopic->ten_de_tai,
+                'dot_id' => $dbTopic->dot_id
+            ]
+        );
+
         RealtimeService::broadcast('slot_updated', [
             'type' => 'topic_deleted',
             'topicId' => $id,

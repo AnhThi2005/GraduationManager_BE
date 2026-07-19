@@ -205,6 +205,15 @@ class DeTaiController extends Controller
             ], 400);
         }
 
+        // Kiểm tra số lượng thành viên trong nhóm (yêu cầu ít nhất 2 người)
+        $memberCount = DB::table('thanhviennhom')->where('nhom_id', $nhom->nhom_id)->count();
+        if ($memberCount < 2) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Nhóm của bạn phải có đủ ít nhất 2 thành viên mới được đăng ký đề tài!',
+            ], 400);
+        }
+
         // Kiểm tra xem sinh viên hiện tại có phải là trưởng nhóm hay không. Chỉ trưởng nhóm mới được đăng ký đề tài.
         $pivot = DB::table('thanhviennhom')
             ->where('nhom_id', $nhom->nhom_id)
