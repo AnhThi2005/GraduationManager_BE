@@ -22,8 +22,8 @@ class DiemController extends Controller
         $sinhVienId = $sinhVien->sinh_vien_id;
         $lopId = $sinhVien->lop_id;
 
-        // 1. Kiểm tra xem sinh viên có đợt TTTN nào đang hoạt động (chưa đóng) hay không
-        $hasActiveTttn = Dot::where('loai_dot', 'TTTN')
+        // 1. Kiểm tra xem sinh viên có đợt TTTN nào đang hoạt động (chưa đóng) mà sinh viên đó THỰC SỰ THAM GIA (đã khai báo thực tập) hay không
+        $activeTttnDotId = Dot::where('loai_dot', 'TTTN')
             ->where('trang_thai', '!=', 'DA_DONG')
             ->where(function ($query) use ($lopId, $sinhVienId) {
                 $query->whereHas('lops', function ($q) use ($lopId) {
@@ -32,27 +32,30 @@ class DiemController extends Controller
                     $q->where('sinhvien.sinh_vien_id', $sinhVienId);
                 });
             })
-            ->exists();
+            ->whereExists(function ($query) use ($sinhVienId) {
+                $query->select(DB::raw(1))
+                    ->from('dangkythuctap')
+                    ->whereColumn('dangkythuctap.dot_id', 'dot.dot_id')
+                    ->where('dangkythuctap.sinh_vien_id', $sinhVienId);
+            })
+            ->value('dot_id');
 
-        if ($hasActiveTttn) {
-            // Nếu đang trong đợt hoạt động, bắt buộc lấy điểm đợt hoạt động (chấp nhận chưa có điểm)
+        if ($activeTttnDotId) {
+            // Nếu đang trong đợt hoạt động và thực sự tham gia, bắt buộc lấy điểm đợt hoạt động đó (chấp nhận chưa có điểm)
             $diemTttn = DB::table('diemthuctap')
-                ->join('dot', 'diemthuctap.dot_id', '=', 'dot.dot_id')
-                ->where('diemthuctap.sinh_vien_id', $sinhVienId)
-                ->where('dot.trang_thai', '!=', 'DA_DONG')
-                ->select('diemthuctap.*')
-                ->orderBy('dot.dot_id', 'desc')
+                ->where('sinh_vien_id', $sinhVienId)
+                ->where('dot_id', $activeTttnDotId)
                 ->first();
         } else {
-            // Nếu không có đợt hoạt động nào, mới lấy điểm của đợt cũ gần nhất
+            // Nếu không tham gia đợt hoạt động nào, lấy điểm của đợt cũ gần nhất
             $diemTttn = DB::table('diemthuctap')
                 ->where('sinh_vien_id', $sinhVienId)
                 ->orderBy('dot_id', 'desc')
                 ->first();
         }
 
-        // 2. Kiểm tra xem sinh viên có đợt ĐATN nào đang hoạt động (chưa đóng) hay không
-        $hasActiveDatn = Dot::where('loai_dot', 'DATN')
+        // 2. Kiểm tra xem sinh viên có đợt ĐATN nào đang hoạt động (chưa đóng) mà sinh viên đó THỰC SỰ THAM GIA (đã vào nhóm) hay không
+        $activeDatnDotId = Dot::where('loai_dot', 'DATN')
             ->where('trang_thai', '!=', 'DA_DONG')
             ->where(function ($query) use ($lopId, $sinhVienId) {
                 $query->whereHas('lops', function ($q) use ($lopId) {
@@ -61,20 +64,25 @@ class DiemController extends Controller
                     $q->where('sinhvien.sinh_vien_id', $sinhVienId);
                 });
             })
-            ->exists();
+            ->whereExists(function ($query) use ($sinhVienId) {
+                $query->select(DB::raw(1))
+                    ->from('thanhviennhom')
+                    ->join('nhomsvda', 'thanhviennhom.nhom_id', '=', 'nhomsvda.nhom_id')
+                    ->whereColumn('nhomsvda.dot_id', 'dot.dot_id')
+                    ->where('thanhviennhom.sinh_vien_id', $sinhVienId);
+            })
+            ->value('dot_id');
 
-        if ($hasActiveDatn) {
-            // Nếu đang trong đợt hoạt động, bắt buộc lấy điểm đợt hoạt động (chấp nhận chưa có điểm)
+        if ($activeDatnDotId) {
+            // Nếu đang trong đợt hoạt động và thực sự tham gia, bắt buộc lấy điểm đợt hoạt động đó (chấp nhận chưa có điểm)
             $diemDatn = DB::table('diemtongketdatn')
                 ->join('nhomsvda', 'diemtongketdatn.nhom_id', '=', 'nhomsvda.nhom_id')
-                ->join('dot', 'nhomsvda.dot_id', '=', 'dot.dot_id')
                 ->where('diemtongketdatn.sinh_vien_id', $sinhVienId)
-                ->where('dot.trang_thai', '!=', 'DA_DONG')
+                ->where('nhomsvda.dot_id', $activeDatnDotId)
                 ->select('diemtongketdatn.*')
-                ->orderBy('nhomsvda.dot_id', 'desc')
                 ->first();
         } else {
-            // Nếu không có đợt hoạt động nào, mới lấy điểm của đợt cũ gần nhất
+            // Nếu không tham gia đợt hoạt động nào, lấy điểm của đợt cũ gần nhất
             $diemDatn = DB::table('diemtongketdatn')
                 ->join('nhomsvda', 'diemtongketdatn.nhom_id', '=', 'nhomsvda.nhom_id')
                 ->where('diemtongketdatn.sinh_vien_id', $sinhVienId)
