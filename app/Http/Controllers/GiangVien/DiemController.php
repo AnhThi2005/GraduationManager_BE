@@ -72,11 +72,41 @@ class DiemController extends Controller
             ->all();
 
         // 2. Councils & Groups under this teacher (chỉ hiện hội đồng đã được admin công bố, chưa phải bản nháp)
-        $councils = HoiDong::where('dot_id', $dotId)
+        //
+        // Giảng viên có thể liên quan đến 1 hội đồng qua 2 nguồn dữ liệu tách biệt:
+        // - thanhvienhoidong: danh sách thành viên CHÍNH THỨC (Chủ tịch/Thư ký/Ủy viên), chỉ được
+        //   ghi khi tạo/sửa hội đồng từ mảng "members" cố định.
+        // - lichbaove.giang_vien_pb_id / giang_vien_cham_id: GVPB và giảng viên chấm được gán
+        //   RIÊNG cho từng đề tài/nhóm, kể cả khi họ là giảng viên "luân chuyển" từ ngoài hội
+        //   đồng vào (tính năng "Luân chuyển Giảng viên chấm" bên admin) - trường hợp này
+        //   KHÔNG BAO GIỜ được thêm vào thanhvienhoidong, nên nếu chỉ lọc theo whereHas('giangViens')
+        //   như trước đây thì giảng viên luân chuyển sẽ không thấy hội đồng này ở đâu cả.
+        $councilIdsFromMembership = HoiDong::where('dot_id', $dotId)
             ->where('trang_thai', '!=', 'NHAP')
             ->whereHas('giangViens', function ($q) use ($teacherId) {
                 $q->where('giangvien.giang_vien_id', $teacherId);
             })
+            ->pluck('hoi_dong_id');
+
+        $councilIdsFromLich = collect();
+        DB::table('lichbaove')
+            ->join('hoidong', 'lichbaove.hoi_dong_id', '=', 'hoidong.hoi_dong_id')
+            ->where('hoidong.dot_id', $dotId)
+            ->where('hoidong.trang_thai', '!=', 'NHAP')
+            ->select('lichbaove.hoi_dong_id', 'lichbaove.giang_vien_pb_id', 'lichbaove.giang_vien_cham_id')
+            ->get()
+            ->each(function ($l) use ($teacherId, $councilIdsFromLich) {
+                $examinerIds = $l->giang_vien_cham_id ? (json_decode($l->giang_vien_cham_id, true) ?: []) : [];
+                $isRelated = (string) $l->giang_vien_pb_id === (string) $teacherId
+                    || in_array((string) $teacherId, array_map('strval', $examinerIds), true);
+                if ($isRelated) {
+                    $councilIdsFromLich->push($l->hoi_dong_id);
+                }
+            });
+
+        $allCouncilIds = $councilIdsFromMembership->merge($councilIdsFromLich)->unique()->values();
+
+        $councils = HoiDong::whereIn('hoi_dong_id', $allCouncilIds)
             ->with(['giangViens', 'nhoms.members.lop', 'nhoms.deTai.giangVien'])
             ->get();
 
@@ -114,6 +144,19 @@ class DiemController extends Controller
                 ->map(fn ($id) => (string) $id)
                 ->unique();
 
+            // Giảng viên chấm "luân chuyển" (từ ngoài hội đồng, gán riêng cho 1 đề tài qua
+            // lichbaove.giang_vien_cham_id) cũng không có trong thanhvienhoidong.vai_tro - đối
+            // chiếu tương tự reviewer ở trên để nhận diện đúng vai trò của họ.
+            $examinerIdsInCouncil = $hd->nhoms
+                ->flatMap(function ($g) use ($lichByNhom) {
+                    $lich = $lichByNhom->get($g->nhom_id);
+                    if (! $lich || ! $lich->giang_vien_cham_id) {
+                        return [];
+                    }
+                    return array_map('strval', json_decode($lich->giang_vien_cham_id, true) ?: []);
+                })
+                ->unique();
+
             $myPivot = $hd->giangViens->firstWhere('giang_vien_id', $teacherId);
             $roleText = 'Ủy viên';
             if ($myPivot) {
@@ -122,6 +165,10 @@ class DiemController extends Controller
                 } elseif ($reviewerIdsInCouncil->contains((string) $teacherId)) {
                     $roleText = 'GVPB';
                 }
+            } elseif ($reviewerIdsInCouncil->contains((string) $teacherId)) {
+                $roleText = 'GVPB';
+            } elseif ($examinerIdsInCouncil->contains((string) $teacherId)) {
+                $roleText = 'Giảng viên chấm luân chuyển';
             }
 
             $members = $hd->giangViens->map(function ($gv) use ($reviewerIdsInCouncil) {
@@ -307,21 +354,29 @@ class DiemController extends Controller
             }
         }
 
-        // Chỉ GVHD, GVPB, hoặc thành viên hội đồng của nhóm mới được xem chi tiết chấm điểm của nhóm này
+        // Chỉ GVHD, GVPB, thành viên hội đồng, hoặc giảng viên chấm "luân chuyển" (được gán
+        // riêng cho nhóm này qua lichbaove.giang_vien_cham_id, không nằm trong thanhvienhoidong)
+        // mới được xem chi tiết chấm điểm của nhóm này.
         $isCouncilMember = $group->hoi_dong_id ? DB::table('thanhvienhoidong')
             ->where('hoi_dong_id', $group->hoi_dong_id)
             ->where('giang_vien_id', $teacherId)
             ->exists() : false;
 
-        if ($teacherId != $gvhdId && $teacherId != $gvpbId && ! $isCouncilMember) {
+        $examinerIdsForGroup = [];
+        if ($lich && $lich->giang_vien_cham_id) {
+            $examinerIdsForGroup = array_map('strval', json_decode($lich->giang_vien_cham_id, true) ?: []);
+        }
+        $isExaminer = in_array((string) $teacherId, $examinerIdsForGroup, true);
+
+        if ($teacherId != $gvhdId && $teacherId != $gvpbId && ! $isCouncilMember && ! $isExaminer) {
             return response()->json(['success' => false, 'message' => 'Bạn không có quyền xem điểm của nhóm này.'], 403);
         }
 
         // Fetch council members list
         $councilMembers = [];
+        $examinerIdsFromLich = [];
         if ($group->hoi_dong_id) {
             $gvpbIdFromLich = $gvpbId;
-            $examinerIdsFromLich = [];
             if ($lich) {
                 if ($lich->giang_vien_cham_id) {
                     $decodedEx = json_decode($lich->giang_vien_cham_id, true);
@@ -398,6 +453,30 @@ class DiemController extends Controller
                         'id' => (string) $gvpbId,
                         'name' => $gv->ho_ten,
                         'role' => 'Ủy viên phản biên',
+                    ];
+                }
+            }
+        }
+
+        // Giảng viên chấm "luân chuyển" (ngoài hội đồng, gán riêng cho nhóm này qua
+        // lichbaove.giang_vien_cham_id) cũng chưa từng nằm trong thanhvienhoidong - tự thêm vào
+        // danh sách hiển thị như đã làm với GVHD/GVPB ở trên, để mọi người trong hội đồng đều
+        // thấy đúng ai đang chấm nhóm này.
+        foreach ($examinerIdsFromLich as $examinerId) {
+            $hasExaminer = false;
+            foreach ($councilMembers as $m) {
+                if ((string) $m['id'] === (string) $examinerId) {
+                    $hasExaminer = true;
+                    break;
+                }
+            }
+            if (! $hasExaminer) {
+                $gv = DB::table('giangvien')->where('giang_vien_id', $examinerId)->first();
+                if ($gv) {
+                    $councilMembers[] = [
+                        'id' => (string) $examinerId,
+                        'name' => $gv->ho_ten,
+                        'role' => 'Giảng viên chấm luân chuyển',
                     ];
                 }
             }
