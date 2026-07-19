@@ -654,19 +654,27 @@ class DiemController extends Controller
             }
         }
 
-        // Chỉ GVHD, GVPB được phân công, hoặc thành viên hội đồng của nhóm mới được phép chấm điểm nhóm này
+        // Chỉ GVHD, GVPB được phân công, thành viên hội đồng của nhóm, hoặc giảng viên chấm
+        // "luân chuyển" (gán riêng cho nhóm này qua lichbaove.giang_vien_cham_id, không nằm
+        // trong thanhvienhoidong) mới được phép chấm điểm nhóm này.
         $isCouncilMember = $hoiDongId ? DB::table('thanhvienhoidong')
             ->where('hoi_dong_id', $hoiDongId)
             ->where('giang_vien_id', $teacherId)
             ->exists() : false;
 
-        if ($teacherId != $gvhdId && $teacherId != $reviewerId && ! $isCouncilMember) {
+        $examinerIds = [];
+        if ($lich && $lich->giang_vien_cham_id) {
+            $examinerIds = array_map('strval', json_decode($lich->giang_vien_cham_id, true) ?: []);
+        }
+        $isExaminer = in_array((string) $teacherId, $examinerIds, true);
+
+        if ($teacherId != $gvhdId && $teacherId != $reviewerId && ! $isCouncilMember && ! $isExaminer) {
             return response()->json(['success' => false, 'message' => 'Bạn không có quyền chấm điểm cho nhóm này.'], 403);
         }
 
         $completedStudents = [];
         try {
-            DB::transaction(function () use ($rows, $groupId, $gvhdId, $reviewerId, $teacherId, $isCouncilMember, &$completedStudents, $hoiDongId) {
+            DB::transaction(function () use ($rows, $groupId, $gvhdId, $reviewerId, $teacherId, $isCouncilMember, $isExaminer, &$completedStudents, $hoiDongId) {
                 foreach ($rows as $row) {
                     $studentCode = $row['id'] ?? '';
                     $sv = SinhVien::where('ma_so_sinh_vien', $studentCode)->first();
@@ -729,7 +737,7 @@ class DiemController extends Controller
                     // Tránh: (1) GVHD/GVPB không thuộc hội đồng vô tình ghi đè bằng điểm 0;
                     // (2) payload gửi cả nhóm mỗi lần Lưu khiến các sinh viên CHƯA được chấm
                     // cũng bị tạo bản ghi rác (điểm 0) chỉ vì đứng chung nhóm với người vừa được chấm.
-                    $canGradeDefense = $isCouncilMember || ($teacherId == $gvhdId) || ($teacherId == $reviewerId);
+                    $canGradeDefense = $isCouncilMember || $isExaminer || ($teacherId == $gvhdId) || ($teacherId == $reviewerId);
                     if ($canGradeDefense && ($presentation !== null || $demo !== null || $qna !== null)) {
                         // 1. Tính điểm bảo vệ của từng giảng viên: diem_bao_ve = diem_thuyet_trinh + diem_demo + diem_van_dap
                         $diemBaoVeGv = round(($presentation ?? 0) + ($demo ?? 0) + ($qna ?? 0), 2);
