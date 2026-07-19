@@ -537,6 +537,28 @@ class NhomController extends Controller
 
         $g->save();
 
+        // Tự động loại bỏ nhóm khỏi hội đồng nếu GVHD hoặc GVPB đánh giá KHONG_DAT
+        if ($g->ket_qua_huong_dan === 'KHONG_DAT' || $g->ket_qua_phan_bien === 'KHONG_DAT') {
+            if ($g->hoi_dong_id) {
+                $councilId = $g->hoi_dong_id;
+                // Xóa lịch bảo vệ trong bảng lichbaove
+                DB::table('lichbaove')->where('nhom_id', $g->nhom_id)->delete();
+                // Set hội đồng về null
+                $g->hoi_dong_id = null;
+                $g->save();
+
+                // Chuyển trạng thái hội đồng về NHAP để admin công bố lại
+                DB::table('hoidong')->where('hoi_dong_id', $councilId)->update([
+                    'trang_thai' => 'NHAP'
+                ]);
+
+                RealtimeService::broadcast('slot_updated', [
+                    'type' => 'council_updated',
+                    'councilId' => $councilId,
+                ]);
+            }
+        }
+
         $membersList = $g->members->map(function ($m) {
             return [
                 'id' => (string) $m->ma_so_sinh_vien,
