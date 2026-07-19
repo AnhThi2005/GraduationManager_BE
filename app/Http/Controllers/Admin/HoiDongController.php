@@ -291,6 +291,14 @@ class HoiDongController extends Controller
 
                 $hdLoad = HoiDong::with(['giangViens', 'nhoms.members', 'nhoms.deTai.giangVien'])->find($hd->hoi_dong_id);
 
+                // Tự động tính toán lại điểm tổng kết cho tất cả sinh viên trong các nhóm thuộc hội đồng ngay lập tức
+                $diemSinhVienService = app(\App\Services\DiemSinhVienService::class);
+                foreach ($hdLoad->nhoms as $g) {
+                    foreach ($g->members as $m) {
+                        $diemSinhVienService->recalculateScores($m->sinh_vien_id, $g->nhom_id);
+                    }
+                }
+
                 return response()->json([
                     'code' => 200,
                     'results' => [
@@ -593,6 +601,14 @@ class HoiDongController extends Controller
                 // Gửi thông báo & Ghi nhận lịch sử hoạt động khi công bố hội đồng
                 if ($newStatus === 'DA_CONG_BO' && $oldStatus !== 'DA_CONG_BO') {
                     $this->ghiLogVaThongBaoCongBoHoiDong($hdLoad);
+                }
+
+                // Tự động tính toán lại điểm tổng kết cho tất cả sinh viên trong các nhóm thuộc hội đồng ngay lập tức sau khi luân chuyển/cập nhật
+                $diemSinhVienService = app(\App\Services\DiemSinhVienService::class);
+                foreach ($hdLoad->nhoms as $g) {
+                    foreach ($g->members as $m) {
+                        $diemSinhVienService->recalculateScores($m->sinh_vien_id, $g->nhom_id);
+                    }
                 }
 
                 return response()->json([
