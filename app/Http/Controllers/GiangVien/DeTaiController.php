@@ -355,9 +355,14 @@ class DeTaiController extends Controller
             ]);
 
             $teacher = $request->user();
+            // Nhúng thẳng tên đề tài vào mô tả - không dựa vào cơ chế thay "nhóm" bằng tên nhóm
+            // thật (HistoryController::getGroupDisplayName) vì nhomsvda.de_tai_id đã được set ở
+            // trên nên cơ chế đó cũng sẽ chèn tên đề tài, nhưng chỉ có với sinh viên thì "nhóm"
+            // được thay thành "nhóm bạn" (không có tên đề tài) - viết trực tiếp để chắc chắn
+            // sinh viên vẫn thấy đúng tên đề tài vừa được duyệt.
             LichSuHoatDong::ghiLog(
                 'DUYET_DE_TAI',
-                "Giảng viên {$teacher->ho_ten} đã phê duyệt đề tài đăng ký cho nhóm.",
+                "Giảng viên {$teacher->ho_ten} đã phê duyệt đề tài \"{$topic->ten_de_tai}\" của nhóm.",
                 null,
                 null,
                 $groupId,
@@ -366,6 +371,8 @@ class DeTaiController extends Controller
                 ['topic_id' => $dangkydetai->de_tai_id]
             );
         } else {
+            $topic = DeTai::find($dangkydetai->de_tai_id);
+
             DB::table('dangkydetai')->where('nhom_id', $groupId)->update(['trang_thai_duyet' => 'TU_CHOI']);
             DB::table('nhomsvda')->where('nhom_id', $groupId)->update([
                 'de_tai_id' => null,
@@ -374,9 +381,12 @@ class DeTaiController extends Controller
 
             $teacher = $request->user();
             $lyDo = $request->input('note', '');
+            // Nhúng thẳng tên đề tài (giống nhánh accept) - đặc biệt cần thiết ở đây vì
+            // nhomsvda.de_tai_id vừa bị xóa null nên getGroupDisplayName() không còn cách nào
+            // lấy lại tên đề tài đã bị từ chối để hiển thị.
             LichSuHoatDong::ghiLog(
                 'TU_CHOI_DE_TAI',
-                "Giảng viên {$teacher->ho_ten} đã từ chối đề tài đăng ký cho nhóm.".($lyDo ? " Lý do: {$lyDo}" : ''),
+                "Giảng viên {$teacher->ho_ten} đã từ chối đề tài \"{$topic->ten_de_tai}\" của nhóm.".($lyDo ? " Lý do: {$lyDo}" : ''),
                 null,
                 null,
                 $groupId,
