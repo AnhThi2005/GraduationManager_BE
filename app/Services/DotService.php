@@ -451,12 +451,16 @@ class DotService
      */
     private function assertKhongTrungDotDangHoatDong($loaiDot, $trangThaiMoi, $excludeDotId = null)
     {
-        $now = Carbon::now('Asia/Ho_Chi_Minh')->format('Y-m-d');
+        // Đợt vẫn còn khả dụng thêm 7 ngày sau ngày kết thúc chính thức (cùng quy ước gia hạn 7
+        // ngày cho admin ở KiemTraTrangThaiDot::chanNeuDotDaDong), nên chỉ coi là "đã đóng hẳn"
+        // (được phép tạo đợt mới cùng loại) khi đã qua khỏi mốc ngay_ket_thuc + 7 ngày, không
+        // phải ngay khi qua ngay_ket_thuc.
+        $graceThreshold = Carbon::now('Asia/Ho_Chi_Minh')->subDays(7)->format('Y-m-d');
 
         $query = Dot::where('loai_dot', $loaiDot)
-            ->where(function ($q) use ($now) {
+            ->where(function ($q) use ($graceThreshold) {
                 $q->whereNull('ngay_ket_thuc')
-                    ->orWhere('ngay_ket_thuc', '>=', $now);
+                    ->orWhere('ngay_ket_thuc', '>=', $graceThreshold);
             });
 
         if ($excludeDotId) {
@@ -466,8 +470,12 @@ class DotService
         $dangHoatDong = $query->first();
         if ($dangHoatDong) {
             $tenLoai = $loaiDot === 'DATN' ? 'ĐATN' : 'TTTN';
+            $khaDungDenStr = $dangHoatDong->ngay_ket_thuc
+                ? Carbon::parse($dangHoatDong->ngay_ket_thuc)->addDays(7)->format('d/m/Y')
+                : null;
+            $khaDungText = $khaDungDenStr ? "đang còn khả dụng đến {$khaDungDenStr}" : 'đang hoạt động (chưa có ngày kết thúc)';
             throw new \InvalidArgumentException(
-                "Đợt \"{$dangHoatDong->ten_dot}\" ({$tenLoai}) đang hoạt động (ngày kết thúc {$dangHoatDong->ngay_ket_thuc} chưa qua). Mỗi loại đợt chỉ được có tối đa 1 đợt hoạt động cùng lúc."
+                "Đợt \"{$dangHoatDong->ten_dot}\" ({$tenLoai}) {$khaDungText}, không thể tạo đợt mới. Mỗi loại đợt chỉ được có tối đa 1 đợt hoạt động cùng lúc."
             );
         }
     }
