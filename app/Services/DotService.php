@@ -191,11 +191,22 @@ class DotService
         $this->validatePeriodDatesAndSchoolYear($data, $dot);
 
         if ($dot->daKhoaHoanToan()) {
-            $disallowedKeys = array_diff(array_keys($data), ['status', 'type']);
-            if (! empty($disallowedKeys)) {
-                throw new \InvalidArgumentException(
-                    "Đợt \"{$dot->ten_dot}\" đã đóng, không thể chỉnh sửa thông tin cấu hình của đợt này nữa."
-                );
+            // Đợt vừa đóng vẫn cho Admin gia hạn sửa thêm 7 ngày kể từ ngày kết thúc đợt
+            // (cùng quy tắc với KiemTraTrangThaiDot::chanNeuDotDaDong — route cập nhật đợt
+            // chỉ Admin mới gọi được nên không cần kiểm tra lại vai trò ở đây).
+            $trongThoiGianGiaHan = false;
+            if ($dot->ngay_ket_thuc) {
+                $gracePeriodEnd = \Carbon\Carbon::parse($dot->ngay_ket_thuc)->endOfDay()->addDays(7);
+                $trongThoiGianGiaHan = \Carbon\Carbon::now('Asia/Ho_Chi_Minh')->lte($gracePeriodEnd);
+            }
+
+            if (! $trongThoiGianGiaHan) {
+                $disallowedKeys = array_diff(array_keys($data), ['status', 'type']);
+                if (! empty($disallowedKeys)) {
+                    throw new \InvalidArgumentException(
+                        "Đợt \"{$dot->ten_dot}\" đã đóng, không thể chỉnh sửa thông tin cấu hình của đợt này nữa."
+                    );
+                }
             }
         }
 
