@@ -953,8 +953,13 @@ class DeTaiController extends Controller
                 'dieu_kien_lam_do_an' => 'DAT',
             ]);
 
-            // Từ chối tất cả lời mời chờ khác của sinh viên này trong đợt hiện tại
-            LoiMoiNhom::where('sinh_vien_duoc_moi_id', $sinhVien->sinh_vien_id)
+            // Từ chối tất cả lời mời chờ khác của tất cả thành viên trong nhóm này trong đợt hiện tại
+            $memberIds = DB::table('thanhviennhom')
+                ->where('nhom_id', $nhom->nhom_id)
+                ->pluck('sinh_vien_id')
+                ->toArray();
+
+            LoiMoiNhom::whereIn('sinh_vien_duoc_moi_id', $memberIds)
                 ->where('trang_thai_xac_nhan', 'CHO_XAC_NHAN')
                 ->update(['trang_thai_xac_nhan' => 'TU_CHOI']);
 
