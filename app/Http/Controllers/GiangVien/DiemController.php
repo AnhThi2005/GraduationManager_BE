@@ -422,18 +422,23 @@ class DiemController extends Controller
             $report = null;
 
             if ($teacherId == $gvhdId) {
+                // GVHD nhập điểm CỦA CHÍNH MÌNH - chưa chấm thì phải để trống cho họ tự nhập,
+                // không được lấy điểm trung bình/tổng kết (đó là điểm của người khác/đã gộp).
                 $report = $dbc ? ($dbc->diem_gvhd !== null ? floatval($dbc->diem_gvhd) : null) : null;
             } elseif ($teacherId == $gvpbId) {
+                // Tương tự cho GVPB - trước đây rơi vào fallback bên dưới lấy nhầm điểm trung
+                // bình đã tính sẵn, khiến cột "Điểm báo cáo" hiện sẵn giá trị dù GVPB chưa chấm.
                 $report = $dbc ? ($dbc->diem_gvpb !== null ? floatval($dbc->diem_gvpb) : null) : null;
             } else {
+                // Thành viên hội đồng khác chỉ xem (không tự chấm điểm báo cáo), nên hiển thị
+                // điểm trung bình để tham khảo là hợp lý - fallback sang diemtongketdatn nếu
+                // diembaocao chưa có cũng chỉ áp dụng cho trường hợp xem này.
                 $report = $dbc ? ($dbc->diem_trung_binh !== null ? floatval($dbc->diem_trung_binh) : null) : null;
-            }
-
-            // Fallback to diemtongketdatn if diembaocao is not created yet
-            if ($report === null) {
-                $scoreRecord = DB::table('diemtongketdatn')->where('sinh_vien_id', $m->sinh_vien_id)->where('nhom_id', $groupId)->first();
-                if ($scoreRecord && $scoreRecord->diem_bao_cao_chung !== null) {
-                    $report = floatval($scoreRecord->diem_bao_cao_chung);
+                if ($report === null) {
+                    $scoreRecord = DB::table('diemtongketdatn')->where('sinh_vien_id', $m->sinh_vien_id)->where('nhom_id', $groupId)->first();
+                    if ($scoreRecord && $scoreRecord->diem_bao_cao_chung !== null) {
+                        $report = floatval($scoreRecord->diem_bao_cao_chung);
+                    }
                 }
             }
 
