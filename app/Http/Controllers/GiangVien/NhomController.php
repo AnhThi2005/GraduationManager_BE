@@ -436,13 +436,34 @@ class NhomController extends Controller
             ->all();
 
         // 2. Review Groups
+        // Chỉ lấy lịch bảo vệ thuộc hội đồng ĐÃ CÔNG BỐ (tránh lộ phân công trước khi admin bấm
+        // "Công bố"), TRỪ nhóm đã có kết quả phản biện (ket_qua_phan_bien) - nhóm đó có thể vừa
+        // bị tự động gỡ khỏi hội đồng (về NHAP) do bị đánh giá KHONG_DAT (xem
+        // updateReviewGroupStatus), nhưng vẫn cần giữ trong danh sách để giảng viên phản biện
+        // theo dõi lại lịch sử đánh giá của chính mình - dùng LEFT JOIN vì lichbaove.hoi_dong_id
+        // đã bị null hóa (không xóa row) đúng lúc nhóm bị gỡ khỏi hội đồng.
         $myReviewGroupIds = DB::table('lichbaove')
-            ->where('giang_vien_pb_id', $teacherId)
-            ->pluck('nhom_id')
+            ->leftJoin('hoidong', 'lichbaove.hoi_dong_id', '=', 'hoidong.hoi_dong_id')
+            ->leftJoin('nhomsvda', 'lichbaove.nhom_id', '=', 'nhomsvda.nhom_id')
+            ->where('lichbaove.giang_vien_pb_id', $teacherId)
+            ->where(function ($q) {
+                $q->where('hoidong.trang_thai', 'DA_CONG_BO')
+                    ->orWhereNotNull('nhomsvda.ket_qua_phan_bien');
+            })
+            ->pluck('lichbaove.nhom_id')
             ->all();
 
-        // Fallback kiểm tra thêm trong ghi_chu JSON (nếu có)
-        $allLich = DB::table('lichbaove')->whereNotNull('ghi_chu')->get();
+        // Fallback kiểm tra thêm trong ghi_chu JSON (nếu có) - cùng điều kiện như trên
+        $allLich = DB::table('lichbaove')
+            ->leftJoin('hoidong', 'lichbaove.hoi_dong_id', '=', 'hoidong.hoi_dong_id')
+            ->leftJoin('nhomsvda', 'lichbaove.nhom_id', '=', 'nhomsvda.nhom_id')
+            ->where(function ($q) {
+                $q->where('hoidong.trang_thai', 'DA_CONG_BO')
+                    ->orWhereNotNull('nhomsvda.ket_qua_phan_bien');
+            })
+            ->whereNotNull('lichbaove.ghi_chu')
+            ->select('lichbaove.*')
+            ->get();
         foreach ($allLich as $l) {
             $decoded = json_decode($l->ghi_chu, true);
             if (isset($decoded['reviewer_id']) && (string) $decoded['reviewer_id'] === (string) $teacherId) {
@@ -517,8 +538,30 @@ class NhomController extends Controller
             return response()->json(['success' => false, 'message' => 'Không tìm thấy nhóm này!'], 404);
         }
 
-        if ($resp = $this->chanNeuDotDaDong(Dot::find($g->dot_id))) {
+        $dot = Dot::find($g->dot_id);
+        if ($resp = $this->chanNeuDotDaDong($dot)) {
             return $resp;
+        }
+
+        // Chỉ cho đánh giá (cả GVHD lẫn GVPB) trong đúng khung thời gian phản biện của đợt -
+        // trước đây không có ràng buộc này nên có thể đánh giá bất kỳ lúc nào.
+        if ($dot && $dot->ngay_bat_dau_phan_bien && $dot->ngay_ket_thuc_phan_bien) {
+            $now = Carbon::now('Asia/Ho_Chi_Minh')->startOfDay();
+            $start = Carbon::parse($dot->ngay_bat_dau_phan_bien)->startOfDay();
+            $end = Carbon::parse($dot->ngay_ket_thuc_phan_bien)->endOfDay();
+
+            if ($now->lt($start)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Chưa đến thời gian phản biện của đợt (bắt đầu từ '.$start->format('d/m/Y').'), chưa thể đánh giá nhóm này!',
+                ], 422);
+            }
+            if ($now->gt($end)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Đã hết thời gian phản biện của đợt (kết thúc '.Carbon::parse($dot->ngay_ket_thuc_phan_bien)->format('d/m/Y').'), không thể đánh giá nhóm này nữa!',
+                ], 422);
+            }
         }
 
         $segment = 'Nhóm phản biện';
@@ -541,8 +584,15 @@ class NhomController extends Controller
         if ($g->ket_qua_huong_dan === 'KHONG_DAT' || $g->ket_qua_phan_bien === 'KHONG_DAT') {
             if ($g->hoi_dong_id) {
                 $councilId = $g->hoi_dong_id;
-                // Xóa lịch bảo vệ trong bảng lichbaove
-                DB::table('lichbaove')->where('nhom_id', $g->nhom_id)->delete();
+                // Gỡ lịch bảo vệ khỏi hội đồng (chỉ null hoi_dong_id, KHÔNG xóa hẳn row) để
+                // getReviewGroups() vẫn còn giang_vien_pb_id mà nhận ra nhóm này thuộc về đúng
+                // giảng viên phản biện, cho phép trang "Đánh giá" tiếp tục hiện nhóm bị KHONG_DAT
+                // để theo dõi. Nhóm vẫn biến mất khỏi mọi danh sách hội đồng (transformCouncil,
+                // trang chấm điểm) vì các trang đó lọc theo hoi_dong_id, không theo lichbaove có
+                // tồn tại hay không. Nếu nhóm được xếp lại vào hội đồng khác sau này,
+                // HoiDongController::themMoi() đã tự xóa row cũ theo nhom_id trước khi tạo mới
+                // nên không lo trùng lặp.
+                DB::table('lichbaove')->where('nhom_id', $g->nhom_id)->update(['hoi_dong_id' => null]);
                 // Set hội đồng về null
                 $g->hoi_dong_id = null;
                 $g->save();

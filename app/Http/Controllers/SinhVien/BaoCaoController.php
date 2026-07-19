@@ -332,6 +332,20 @@ class BaoCaoController extends Controller
             'thoi_gian_nop' => Carbon::now()->toDateTimeString(),
         ]);
 
+        // Báo cho giảng viên hướng dẫn (khớp qua sinh_vien_id trong phanconghdtt, xem
+        // HistoryController::getTeacherHistory) biết sinh viên vừa nộp báo cáo tiến độ tuần này -
+        // trước đây hàm này thiếu hẳn ghiLog(), khác với bản ĐATN (nopBaoCaoDatn) đã có sẵn.
+        LichSuHoatDong::ghiLog(
+            'NOP_BAO_CAO_TTTN',
+            "Sinh viên {$sinhVien->ho_ten} đã nộp báo cáo tiến độ tuần {$week}.",
+            $sinhVien->sinh_vien_id,
+            $sinhVien->ma_so_sinh_vien,
+            null,
+            'sinh_vien',
+            $sinhVien->ho_ten,
+            ['week' => $week, 'dot_id' => $activePeriod->dot_id]
+        );
+
         $fileUrl = $this->resolveFileUrl($report->duong_dan_file);
 
         return response()->json([

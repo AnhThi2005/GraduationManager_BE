@@ -182,7 +182,13 @@ class HistoryController extends Controller
         // lời mời) không cần thiết để giảng viên biết — chỉ nên hiển thị đầy đủ ở Lịch sử hệ
         // thống bên Admin. Giảng viên chỉ cần thấy các mốc ảnh hưởng thật đến đề tài/nhóm họ
         // hướng dẫn (đăng ký/hủy đăng ký đề tài, giải tán/rời nhóm, lịch bảo vệ...).
-        $teacherIrrelevantActionTypes = ['TAO_NHOM', 'GUI_LOI_MOI', 'CHAP_NHAN_LOI_MOI', 'TU_CHOI_LOI_MOI', 'HUY_LOI_MOI'];
+        // DIEM_*_HOAN_THANH cũng loại trừ vì đó là thông báo gửi CHO SINH VIÊN biết điểm của
+        // chính họ đã hoàn tất - giảng viên vừa là người chấm nên không cần tự nhận lại thông
+        // báo này (trước đây lọt vào do khớp qua nhom_id/sinh_vien_id của học trò họ hướng dẫn).
+        $teacherIrrelevantActionTypes = [
+            'TAO_NHOM', 'GUI_LOI_MOI', 'CHAP_NHAN_LOI_MOI', 'TU_CHOI_LOI_MOI', 'HUY_LOI_MOI',
+            'DIEM_TTTN_HOAN_THANH', 'DIEM_DATN_HOAN_THANH',
+        ];
 
         $query = LichSuHoatDong::query()
             ->where(function ($q) use ($teacher, $groupIdsFromTopics, $guidedStudentIds, $teacherIrrelevantActionTypes) {
@@ -203,7 +209,10 @@ class HistoryController extends Controller
 
                 // Or actions related to the teacher's TTTN students
                 if (! empty($guidedStudentIds)) {
-                    $q->orWhereIn('sinh_vien_id', $guidedStudentIds);
+                    $q->orWhere(function ($sub) use ($guidedStudentIds, $teacherIrrelevantActionTypes) {
+                        $sub->whereIn('sinh_vien_id', $guidedStudentIds)
+                            ->whereNotIn('action_type', $teacherIrrelevantActionTypes);
+                    });
                 }
             });
 
@@ -295,7 +304,11 @@ class HistoryController extends Controller
         }, $description);
 
         if ($log->nhom_id) {
-            $displayName = $this->getGroupDisplayName($log->nhom_id);
+            // getStudentHistory() chỉ trả về log gắn với nhóm của CHÍNH sinh viên đang xem (xem
+            // docblock personalizeLogs ở trên), nên với viewer là sinh viên, mọi "nhóm" còn lại
+            // chắc chắn là nhóm của họ - dùng "nhóm bạn" thay vì tên thật, đúng ý định đã ghi ở
+            // docblock nhưng trước đây chưa thực sự áp dụng (luôn hiện tên thật kể cả cho sinh viên).
+            $displayName = $viewerRole === 'sinh_vien' ? 'nhóm bạn' : $this->getGroupDisplayName($log->nhom_id);
             if (mb_strpos($description, $displayName) === false) {
                 // Avoid replacing parts of words like "trưởng nhóm" or "nhóm bạn"
                 $description = preg_replace('/(?<!Trưởng )(?<!trưởng )\bnhóm\b(?!\s+bạn)/iu', $displayName, $description);
@@ -346,11 +359,12 @@ class HistoryController extends Controller
             }
 
                 if ($viewerRole === 'sinh_vien' && $log->nhom_id) {
-                    // Chuẩn hóa các mẫu câu cũ dễ gây hiểu nhầm như "nhóm bạn của ..."
-                    // hoặc lặp "... của bạn của bạn" để mô tả tự nhiên hơn.
+                    // Chuẩn hóa các trường hợp "nhóm bạn" (vừa được thay ở bước 1 phía trên)
+                    // đứng cạnh "của" gây lặp/nghe ngang như "nhóm bạn của ..." hoặc
+                    // "... của bạn của bạn" - không đổi "nhóm bạn" đứng một mình vì đó là
+                    // cách viết đúng, tự nhiên ("nhóm bạn" = "nhóm của bạn").
                     $description = preg_replace('/\bnhóm bạn của\b/iu', 'nhóm của', $description);
                     $description = preg_replace('/\bcủa bạn của bạn\b/iu', 'của bạn', $description);
-                    $description = preg_replace('/\bnhóm bạn\b/iu', 'nhóm của bạn', $description);
                 }
         }
 
