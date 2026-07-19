@@ -1083,11 +1083,12 @@ class HoiDongController extends Controller
 
         // Nhóm còn nằm trong hội đồng thì KHONG_DAT không bao giờ xuất hiện ở đây - hễ GVHD
         // hoặc GVPB đánh giá không đạt là nhóm bị tự động gỡ khỏi hội đồng ngay
-        // (xem GiangVien/NhomController::updateReviewGroupStatus). "Đạt" chỉ nên đếm nhóm THẬT
-        // SỰ đã được đánh giá đạt - trước đây có fallback mặc định coi TOÀN BỘ nhóm là "đạt"
-        // khi chưa ai đánh giá gì cả, khiến hội đồng vừa tạo xong (chưa duyệt lần nào) đã hiện
-        // "N nhóm đạt" sai sự thật.
-        $achieved = $hd->nhoms->filter(fn ($n) => $n->ket_qua_phan_bien === 'DAT' || $n->ket_qua_huong_dan === 'DAT')->count();
+        // (xem GiangVien/NhomController::updateReviewGroupStatus). "Đạt" chỉ tính khi CẢ HAI
+        // ket_qua_huong_dan và ket_qua_phan_bien đều thực sự = DAT (không phải chỉ 1 trong 2) -
+        // trước đây dùng OR nên mới GVHD hoặc mới GVPB đánh giá đạt (còn lại chưa đánh giá) đã
+        // bị tính là "đạt", và còn có fallback mặc định coi TOÀN BỘ nhóm là "đạt" khi chưa ai
+        // đánh giá gì cả, khiến hội đồng vừa tạo xong đã hiện "N nhóm đạt" sai sự thật.
+        $achieved = $hd->nhoms->filter(fn ($n) => $n->ket_qua_phan_bien === 'DAT' && $n->ket_qua_huong_dan === 'DAT')->count();
         $rejected = $hd->nhoms->filter(fn ($n) => $n->ket_qua_phan_bien === 'KHONG_DAT' || $n->ket_qua_huong_dan === 'KHONG_DAT')->count();
 
         return [
