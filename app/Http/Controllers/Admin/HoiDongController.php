@@ -855,14 +855,8 @@ class HoiDongController extends Controller
         $topics = [];
         $topicGroups = [];
 
-        $nhoms = $hd->nhoms;
-        $dot = $hd->dot;
-
-        // Cho phép được tạo hội đồng mà chưa cần xét nhóm đề tài đạt hay không
-        /*
         if ($dot) {
             $now = date('Y-m-d');
-            $ngayBatDau = $dot->ngay_bat_dau;
             $ngayBatDauPhanBien = $dot->ngay_bat_dau_phan_bien;
 
             $nhoms = $nhoms->filter(function ($n) use ($now, $ngayBatDauPhanBien) {
@@ -870,8 +864,10 @@ class HoiDongController extends Controller
                 $kqPb = $n->ket_qua_phan_bien;
 
                 if ($ngayBatDauPhanBien && $now >= $ngayBatDauPhanBien) {
-                    return $kqHd === 'DAT' && $kqPb === 'DAT';
+                    // Từ ngày bắt đầu phản biện: Loại bỏ các nhóm đề tài có kết quả là KHONG_DAT, giữ lại NULL và DAT
+                    return $kqHd !== 'KHONG_DAT' && $kqPb !== 'KHONG_DAT';
                 } else {
+                    // Trước ngày bắt đầu phản biện: Chỉ lọc các nhóm có hướng dẫn & phản biện là DAT hoặc NULL
                     $isHdValid = is_null($kqHd) || $kqHd === 'DAT';
                     $isPbValid = is_null($kqPb) || $kqPb === 'DAT';
 
@@ -879,7 +875,6 @@ class HoiDongController extends Controller
                 }
             });
         }
-        */
 
         foreach ($nhoms as $nhom) {
             $code = null;
