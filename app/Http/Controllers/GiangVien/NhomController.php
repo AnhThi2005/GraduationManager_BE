@@ -543,9 +543,12 @@ class NhomController extends Controller
             return $resp;
         }
 
-        // Chỉ cho đánh giá (cả GVHD lẫn GVPB) trong đúng khung thời gian phản biện của đợt -
-        // trước đây không có ràng buộc này nên có thể đánh giá bất kỳ lúc nào.
-        if ($dot && $dot->ngay_bat_dau_phan_bien && $dot->ngay_ket_thuc_phan_bien) {
+        $isGvhd = $g->deTai && $g->deTai->giang_vien_id == $teacherId;
+
+        // Ràng buộc thời gian phản biện chỉ áp dụng cho GVPB (giảng viên phản biện) - GVHD được
+        // đánh giá sớm hơn (kể cả trước ngày bắt đầu phản biện) vì đánh giá của GVHD là điều
+        // kiện để nhóm được đưa vào vòng phản biện, đúng thứ tự quy trình.
+        if (! $isGvhd && $dot && $dot->ngay_bat_dau_phan_bien && $dot->ngay_ket_thuc_phan_bien) {
             $now = Carbon::now('Asia/Ho_Chi_Minh')->startOfDay();
             $start = Carbon::parse($dot->ngay_bat_dau_phan_bien)->startOfDay();
             $end = Carbon::parse($dot->ngay_ket_thuc_phan_bien)->endOfDay();
@@ -565,7 +568,7 @@ class NhomController extends Controller
         }
 
         $segment = 'Nhóm phản biện';
-        if ($g->deTai && $g->deTai->giang_vien_id == $teacherId) {
+        if ($isGvhd) {
             if ($g->ket_qua_phan_bien !== null) {
                 return response()->json([
                     'success' => false,
