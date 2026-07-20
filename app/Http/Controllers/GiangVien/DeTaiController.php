@@ -498,6 +498,29 @@ class DeTaiController extends Controller
             $worksheet = $spreadsheet->getActiveSheet();
             $rows = $worksheet->toArray();
 
+            if (empty($rows) || count($rows) < 2) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'File Excel trống hoặc không có dòng dữ liệu.',
+                ], 422);
+            }
+
+            // Kiểm tra cấu trúc dòng tiêu đề để tránh import nhầm file
+            $header0 = mb_strtolower(trim($rows[0][0] ?? ''));
+            $header1 = mb_strtolower(trim($rows[0][1] ?? ''));
+            if (!str_contains($header0, 'đề tài') && !str_contains($header0, 'tên') && !str_contains($header0, 'topic')) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Cấu trúc file không hợp lệ. Cột đầu tiên của file Excel phải là "Tên đề tài".',
+                ], 422);
+            }
+            if (str_contains($header1, 'thuế') || str_contains($header1, 'mst') || str_contains($header1, 'tax')) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'File tải lên không hợp lệ. Bạn đang chọn file danh sách doanh nghiệp, vui lòng tải đúng file danh sách đề tài.',
+                ], 422);
+            }
+
             $errors = [];
             $seenNames = [];
 
