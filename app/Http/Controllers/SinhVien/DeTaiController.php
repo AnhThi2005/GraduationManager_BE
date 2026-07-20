@@ -531,7 +531,14 @@ class DeTaiController extends Controller
             ->get();
 
         if ($targetSvs->isEmpty()) {
-            $targetSvs = SinhVien::where('ho_ten', 'like', '%'.$studentCode.'%')->get();
+            $targetSvs = SinhVien::where(function ($sub) use ($studentCode) {
+                if (!str_contains($studentCode, ' ')) {
+                    $sub->where('ho_ten', 'like', '% '.$studentCode)
+                        ->orWhere('ho_ten', '=', $studentCode);
+                } else {
+                    $sub->where('ho_ten', 'like', '%'.$studentCode.'%');
+                }
+            })->get();
         }
 
         if ($targetSvs->isEmpty()) {
@@ -752,7 +759,14 @@ class DeTaiController extends Controller
             ->where('sinh_vien_id', '!=', $sinhVien->sinh_vien_id)
             ->where(function ($q) use ($keyword) {
                 $q->where('ma_so_sinh_vien', 'like', '%'.$keyword.'%')
-                    ->orWhere('ho_ten', 'like', '%'.$keyword.'%');
+                    ->orWhere(function ($sub) use ($keyword) {
+                        if (!str_contains($keyword, ' ')) {
+                            $sub->where('ho_ten', 'like', '% '.$keyword)
+                                ->orWhere('ho_ten', '=', $keyword);
+                        } else {
+                            $sub->where('ho_ten', 'like', '%'.$keyword.'%');
+                        }
+                    });
             })
             ->orderBy('ho_ten')
             ->limit(10)

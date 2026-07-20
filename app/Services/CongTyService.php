@@ -605,14 +605,25 @@ class CongTyService
             $reviewStatus = 'rejected';
         }
 
+        $firstStudent = DB::table('dangkythuctap')
+            ->join('sinhvien', 'dangkythuctap.sinh_vien_id', '=', 'sinhvien.sinh_vien_id')
+            ->where('dangkythuctap.cong_ty_id', $company->cong_ty_id)
+            ->orderBy('dangkythuctap.dang_ky_id', 'asc')
+            ->select('sinhvien.ho_ten', 'sinhvien.ma_so_sinh_vien')
+            ->first();
+
+        $firstStudentStr = $firstStudent ? "{$firstStudent->ho_ten} ({$firstStudent->ma_so_sinh_vien})" : 'Hệ thống';
+
         return [
             'id' => (string) $company->cong_ty_id,
             'name' => $company->ten_cong_ty,
             'taxId' => $company->ma_so_thue ?? '',
+            'address' => $company->dia_chi ?? '',
             'field' => implode(', ', $fields),
             'contact' => $company->nguoi_lien_he ?? '',
             'phone' => $company->so_dien_thoai_lh ?? '',
             'email' => $company->email_lien_he ?? '',
+            'firstStudent' => $firstStudentStr,
             'partners' => $partnersCount,
             'students' => $studentsCount,
             'status' => $status,

@@ -65,7 +65,12 @@ class DeTaiService
             $query->where(function ($q) use ($keyword) {
                 $q->where('ten_de_tai', 'like', '%'.$keyword.'%')
                     ->orWhereHas('giangVien', function ($sub) use ($keyword) {
-                        $sub->where('ho_ten', 'like', '%'.$keyword.'%');
+                        if (!str_contains($keyword, ' ')) {
+                            $sub->where('ho_ten', 'like', '% '.$keyword)
+                                ->orWhere('ho_ten', '=', $keyword);
+                        } else {
+                            $sub->where('ho_ten', 'like', '%'.$keyword.'%');
+                        }
                     });
             });
         }

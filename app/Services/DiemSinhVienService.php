@@ -154,7 +154,14 @@ class DiemSinhVienService
             $keyword = trim($filters['keyword']);
             $studentsQuery->where(function ($q) use ($keyword, $loai) {
                 $q->where('sinhvien.ma_so_sinh_vien', 'like', '%'.$keyword.'%')
-                    ->orWhere('sinhvien.ho_ten', 'like', '%'.$keyword.'%');
+                    ->orWhere(function ($sub) use ($keyword) {
+                        if (!str_contains($keyword, ' ')) {
+                            $sub->where('sinhvien.ho_ten', 'like', '% '.$keyword)
+                                ->orWhere('sinhvien.ho_ten', '=', $keyword);
+                        } else {
+                            $sub->where('sinhvien.ho_ten', 'like', '%'.$keyword.'%');
+                        }
+                    });
                 if ($loai === 'THUC_TAP') {
                     $q->orWhere('congty.ten_cong_ty', 'like', '%'.$keyword.'%');
                 } else {
