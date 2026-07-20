@@ -166,6 +166,12 @@ class TrangChuController extends Controller
         }
         $expectedScore = $gradesCount > 0 ? round($gpa / $gradesCount, 2) : 0.0;
 
+        $tttnInfo['score'] = ($diemTttn && $diemTttn->diem_so !== null) ? (float) $diemTttn->diem_so : null;
+        $tttnInfo['reportsCount'] = $tttnReportsCount;
+
+        $datnInfo['score'] = ($diemDatn && $diemDatn->diem_tong_ket !== null) ? (float) $diemDatn->diem_tong_ket : null;
+        $datnInfo['reportsCount'] = $datnReportsCount;
+
         // 6. Lộ trình cá nhân (pendingTasks) và Mốc quan trọng (milestones)
         $pendingTasks = [];
         $milestones = [];

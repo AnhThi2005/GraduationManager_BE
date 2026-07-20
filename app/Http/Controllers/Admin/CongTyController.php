@@ -15,6 +15,7 @@ use App\Services\RealtimeService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use PhpOffice\PhpSpreadsheet\IOFactory;
 
 class CongTyController extends Controller
 {
@@ -502,5 +503,125 @@ class CongTyController extends Controller
                 ],
             ],
         ]);
+    }
+
+    public function import(Request $request)
+    {
+        $request->validate([
+            'file' => 'required|file|mimes:xlsx,xls',
+        ]);
+
+        $file = $request->file('file');
+
+        try {
+            $spreadsheet = IOFactory::load($file->getRealPath());
+            $worksheet = $spreadsheet->getActiveSheet();
+            $rows = $worksheet->toArray();
+
+            $errors = [];
+            $seenTaxIds = [];
+
+            // Phase 1: Validate rows
+            foreach ($rows as $index => $row) {
+                if ($index === 0) {
+                    continue; // Skip header
+                }
+
+                $name = trim($row[0] ?? '');
+                $taxId = trim($row[1] ?? '');
+
+                if (empty($name)) {
+                    continue;
+                }
+
+                if (empty($taxId)) {
+                    $errors[] = 'Dòng ' . ($index + 1) . ': Mã số thuế không được để trống.';
+                    continue;
+                }
+
+                // Chấp nhận mã số thuế 10 hoặc 13 số
+                if (!preg_match('/^[0-9]{10}$|^[0-9]{13}$|^[0-9]{10}-[0-9]{3}$/', $taxId)) {
+                    $errors[] = 'Dòng ' . ($index + 1) . ': Mã số thuế "' . $taxId . '" không hợp lệ (phải gồm 10 hoặc 13 chữ số).';
+                    continue;
+                }
+
+                if (in_array($taxId, $seenTaxIds)) {
+                    $errors[] = 'Dòng ' . ($index + 1) . ': Mã số thuế "' . $taxId . '" bị trùng lặp trong file Excel.';
+                    continue;
+                }
+                $seenTaxIds[] = $taxId;
+            }
+
+            if (!empty($errors)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Lỗi dữ liệu import:',
+                    'errors' => $errors,
+                ], 422);
+            }
+
+            // Phase 2: Create/Update companies
+            $importedCount = 0;
+            DB::beginTransaction();
+            try {
+                foreach ($rows as $index => $row) {
+                    if ($index === 0) {
+                        continue; // Skip header
+                    }
+
+                    $name = trim($row[0] ?? '');
+                    $taxId = trim($row[1] ?? '');
+                    $fieldVal = trim($row[2] ?? '');
+                    $address = trim($row[3] ?? '');
+
+                    if (empty($name)) {
+                        continue;
+                    }
+
+                    // Tạo mới hoặc cập nhật công ty theo Mã số thuế
+                    $company = \App\Models\CongTy::updateOrCreate(
+                        ['ma_so_thue' => $taxId],
+                        [
+                            'ten_cong_ty' => $name,
+                            'dia_chi' => $address,
+                            'trang_thai' => 'HOAT_DONG',
+                            'da_cong_bo' => 1,
+                        ]
+                    );
+
+                    // Đồng bộ lĩnh vực
+                    if (!empty($fieldVal)) {
+                        DB::table('congtylinhvuc')->where('cong_ty_id', $company->cong_ty_id)->delete();
+                        $fields = array_map('trim', explode(',', $fieldVal));
+                        foreach ($fields as $f) {
+                            if (!empty($f)) {
+                                DB::table('congtylinhvuc')->insert([
+                                    'cong_ty_id' => $company->cong_ty_id,
+                                    'ten_linh_vuc' => $f,
+                                ]);
+                            }
+                        }
+                    }
+
+                    $importedCount++;
+                }
+                DB::commit();
+            } catch (\Exception $e) {
+                DB::rollBack();
+                throw $e;
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => "Import thành công $importedCount doanh nghiệp.",
+                'imported_count' => $importedCount,
+            ], 200);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Lỗi đọc file Excel: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 }

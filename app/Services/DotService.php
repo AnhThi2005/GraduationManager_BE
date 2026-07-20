@@ -703,29 +703,6 @@ class DotService
     {
         $loaiDot = strtoupper($data['type'] ?? ($existingDot ? $existingDot->loai_dot : 'TTTN'));
 
-        // 0. Kiểm tra Tên đợt (name) phải tuân thủ quy tắc và không lẫn lộn loại đợt
-        $name = $data['name'] ?? ($existingDot ? $existingDot->ten_dot : null);
-        if ($name) {
-            $isTttnName = preg_match('/thực\s+tập|thuc\s+tap|\btt\b|\btt\d/ui', $name);
-            $isDatnName = preg_match('/đồ\s+án|do\s+an|\bda\b|\bda\d/ui', $name);
-
-            if ($loaiDot === 'TTTN') {
-                if ($isDatnName) {
-                    throw new \InvalidArgumentException('Tên đợt chứa ký tự của ĐATN (đồ án/DA), vui lòng kiểm tra lại để tránh nhầm đợt!');
-                }
-                if (! $isTttnName) {
-                    throw new \InvalidArgumentException('Tên đợt TTTN phải chứa ký tự liên quan như "Thực tập" hoặc "TT"!');
-                }
-            } elseif ($loaiDot === 'DATN') {
-                if ($isTttnName) {
-                    throw new \InvalidArgumentException('Tên đợt chứa ký tự của TTTN (thực tập/TT), vui lòng kiểm tra lại để tránh nhầm đợt!');
-                }
-                if (! $isDatnName) {
-                    throw new \InvalidArgumentException('Tên đợt ĐATN phải chứa ký tự liên quan như "Đồ án" hoặc "DA"!');
-                }
-            }
-        }
-
         // 0. Kiểm tra tên đợt duy nhất (Unique period name)
         $name = $data['name'] ?? ($existingDot ? $existingDot->ten_dot : null);
         if ($name) {

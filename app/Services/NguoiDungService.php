@@ -19,8 +19,15 @@ class NguoiDungService
         if (! empty($filters['ho_ten'])) {
             $keyword = trim($filters['ho_ten']);
             $query->where(function ($q) use ($keyword) {
-                $q->where('ho_ten', 'LIKE', '%'.$keyword.'%')
-                    ->orWhere('ma_so_sinh_vien', 'LIKE', '%'.$keyword.'%');
+                $q->where('ma_so_sinh_vien', 'LIKE', '%'.$keyword.'%')
+                    ->orWhere(function ($sub) use ($keyword) {
+                        if (!str_contains($keyword, ' ')) {
+                            $sub->where('ho_ten', 'LIKE', '% '.$keyword)
+                                ->orWhere('ho_ten', '=', $keyword);
+                        } else {
+                            $sub->where('ho_ten', 'LIKE', '%'.$keyword.'%');
+                        }
+                    });
             });
         }
 
@@ -48,8 +55,15 @@ class NguoiDungService
         if (! empty($filters['ho_ten'])) {
             $keyword = trim($filters['ho_ten']);
             $query->where(function ($q) use ($keyword) {
-                $q->where('ho_ten', 'LIKE', '%'.$keyword.'%')
-                    ->orWhere('giang_vien_id', 'LIKE', '%'.$keyword.'%');
+                $q->where('giang_vien_id', 'LIKE', '%'.$keyword.'%')
+                    ->orWhere(function ($sub) use ($keyword) {
+                        if (!str_contains($keyword, ' ')) {
+                            $sub->where('ho_ten', 'LIKE', '% '.$keyword)
+                                ->orWhere('ho_ten', '=', $keyword);
+                        } else {
+                            $sub->where('ho_ten', 'LIKE', '%'.$keyword.'%');
+                        }
+                    });
             });
         }
 

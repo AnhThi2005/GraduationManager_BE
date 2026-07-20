@@ -190,6 +190,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::patch('/private/v1/companies/{id}', [CongTyController::class, 'capNhat']);
         Route::delete('/private/v1/companies/{id}', [CongTyController::class, 'xoa']);
         Route::post('/private/v1/companies/publish', [CongTyController::class, 'congBo']);
+        Route::post('/private/v1/companies/import', [CongTyController::class, 'import']);
+        Route::post('/private/v1/topics/import', [\App\Http\Controllers\GiangVien\DeTaiController::class, 'import']);
 
         Route::get('/private/v1/internships/confirmations', [CongTyController::class, 'layDanhSachXacNhan']);
 
