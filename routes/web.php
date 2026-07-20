@@ -54,12 +54,13 @@ Route::middleware([
     Route::delete('/private/v1/classes/{id}', [LopController::class, 'xoa']);
 
     Route::get('/private/v1/companies/lookup-tax', [CongTyController::class, 'traCuuMaSoThue']);
+    Route::post('/private/v1/companies/publish', [CongTyController::class, 'congBo']);
+    Route::post('/private/v1/companies/import', [CongTyController::class, 'import']);
     Route::get('/private/v1/companies', [CongTyController::class, 'layDanhSach']);
     Route::get('/private/v1/companies/{id}', [CongTyController::class, 'xemChiTiet']);
     Route::post('/private/v1/companies', [CongTyController::class, 'themMoi']);
     Route::patch('/private/v1/companies/{id}', [CongTyController::class, 'capNhat']);
     Route::delete('/private/v1/companies/{id}', [CongTyController::class, 'xoa']);
-    Route::post('/private/v1/companies/publish', [CongTyController::class, 'congBo']);
 
     Route::get('/private/v1/internships/confirmations', [CongTyController::class, 'layDanhSachXacNhan']);
 
@@ -219,6 +220,7 @@ Route::middleware([
     Route::post('/private/v1/upload', [TaiLenController::class, 'upload']);
 
     Route::get('/private/v1/topic-directions', [DeTaiController::class, 'layDanhSachHuong']);
+    Route::post('/private/v1/topics/import', [\App\Http\Controllers\GiangVien\DeTaiController::class, 'import'])->middleware('quyen:ADMIN');
     Route::get('/private/v1/topics', [DeTaiController::class, 'layDanhSach']);
     Route::get('/private/v1/topics/{id}', [DeTaiController::class, 'xemChiTiet']);
     Route::post('/private/v1/topics', [DeTaiController::class, 'themMoi']);
