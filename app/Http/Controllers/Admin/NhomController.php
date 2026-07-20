@@ -582,9 +582,12 @@ class NhomController extends Controller
 
         DB::beginTransaction();
         try {
-            // Hoán đổi nhom_id của 2 thành viên
-            DB::table('thanhviennhom')->where('sinh_vien_id', $svA->sinh_vien_id)->update(['nhom_id' => $groupBId]);
-            DB::table('thanhviennhom')->where('sinh_vien_id', $svB->sinh_vien_id)->update(['nhom_id' => $groupAId]);
+            // Hoán đổi nhom_id của 2 thành viên - lọc thêm theo nhom_id hiện tại (không chỉ
+            // sinh_vien_id) vì 1 sinh viên có thể có nhiều dòng thanhviennhom cũ từ các đợt
+            // trước đó; nếu không lọc, update có thể khớp nhiều dòng cùng lúc và đụng unique
+            // key (nhom_id, sinh_vien_id) khi 2 dòng cùng bị set về 1 nhom_id đích.
+            DB::table('thanhviennhom')->where('sinh_vien_id', $svA->sinh_vien_id)->where('nhom_id', $groupAId)->update(['nhom_id' => $groupBId]);
+            DB::table('thanhviennhom')->where('sinh_vien_id', $svB->sinh_vien_id)->where('nhom_id', $groupBId)->update(['nhom_id' => $groupAId]);
 
             $admin = $request->user();
             LichSuHoatDong::ghiLog(
