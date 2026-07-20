@@ -168,6 +168,15 @@ class NhomController extends Controller
                     ->first();
 
                 if ($student) {
+                    $otherGroupIdsInPeriod = DB::table('nhomsvda')
+                        ->where('dot_id', $g->dot_id)
+                        ->pluck('nhom_id');
+
+                    DB::table('thanhviennhom')
+                        ->whereIn('nhom_id', $otherGroupIdsInPeriod)
+                        ->where('sinh_vien_id', $student->sinh_vien_id)
+                        ->delete();
+
                     DB::table('thanhviennhom')->insert([
                         'nhom_id' => $id,
                         'sinh_vien_id' => $student->sinh_vien_id,
@@ -272,6 +281,15 @@ class NhomController extends Controller
                     ->first();
 
                 if ($student) {
+                    $otherGroupIdsInPeriod = DB::table('nhomsvda')
+                        ->where('dot_id', $g->dot_id)
+                        ->pluck('nhom_id');
+
+                    DB::table('thanhviennhom')
+                        ->whereIn('nhom_id', $otherGroupIdsInPeriod)
+                        ->where('sinh_vien_id', $student->sinh_vien_id)
+                        ->delete();
+
                     DB::table('thanhviennhom')->insert([
                         'nhom_id' => $g->nhom_id,
                         'sinh_vien_id' => $student->sinh_vien_id,
@@ -569,9 +587,42 @@ class NhomController extends Controller
             return ['success' => false, 'message' => 'Không tìm thấy sinh viên!', 'status' => 400];
         }
 
-        // Tìm nhóm của hai sinh viên
-        $tvA = DB::table('thanhviennhom')->where('sinh_vien_id', $svA->sinh_vien_id)->first();
-        $tvB = DB::table('thanhviennhom')->where('sinh_vien_id', $svB->sinh_vien_id)->first();
+        // Tìm nhóm của hai sinh viên trong đợt học hiện tại (chưa đóng hoặc đợt mới nhất)
+        $tvA = DB::table('thanhviennhom')
+            ->join('nhomsvda', 'thanhviennhom.nhom_id', '=', 'nhomsvda.nhom_id')
+            ->join('dot', 'nhomsvda.dot_id', '=', 'dot.dot_id')
+            ->where('thanhviennhom.sinh_vien_id', $svA->sinh_vien_id)
+            ->where('dot.trang_thai', '!=', 'DA_DONG')
+            ->select('thanhviennhom.*', 'nhomsvda.dot_id')
+            ->orderBy('dot.dot_id', 'desc')
+            ->first();
+
+        if (! $tvA) {
+            $tvA = DB::table('thanhviennhom')
+                ->join('nhomsvda', 'thanhviennhom.nhom_id', '=', 'nhomsvda.nhom_id')
+                ->where('thanhviennhom.sinh_vien_id', $svA->sinh_vien_id)
+                ->select('thanhviennhom.*', 'nhomsvda.dot_id')
+                ->orderBy('nhomsvda.dot_id', 'desc')
+                ->first();
+        }
+
+        $tvB = DB::table('thanhviennhom')
+            ->join('nhomsvda', 'thanhviennhom.nhom_id', '=', 'nhomsvda.nhom_id')
+            ->join('dot', 'nhomsvda.dot_id', '=', 'dot.dot_id')
+            ->where('thanhviennhom.sinh_vien_id', $svB->sinh_vien_id)
+            ->where('dot.trang_thai', '!=', 'DA_DONG')
+            ->select('thanhviennhom.*', 'nhomsvda.dot_id')
+            ->orderBy('dot.dot_id', 'desc')
+            ->first();
+
+        if (! $tvB) {
+            $tvB = DB::table('thanhviennhom')
+                ->join('nhomsvda', 'thanhviennhom.nhom_id', '=', 'nhomsvda.nhom_id')
+                ->where('thanhviennhom.sinh_vien_id', $svB->sinh_vien_id)
+                ->select('thanhviennhom.*', 'nhomsvda.dot_id')
+                ->orderBy('nhomsvda.dot_id', 'desc')
+                ->first();
+        }
 
         // Kiểm tra điều kiện làm đồ án của svB trong đợt hiện tại
         if ($tvA) {
@@ -596,16 +647,24 @@ class NhomController extends Controller
         $groupAId = $tvA->nhom_id;
         $groupBId = $tvB->nhom_id;
 
+        $nhomA = DB::table('nhomsvda')->where('nhom_id', $groupAId)->first();
+        $nhomB = DB::table('nhomsvda')->where('nhom_id', $groupBId)->first();
+
+        if (($nhomA && $nhomA->trang_thai_duyet === 'TU_CHOI') || ($nhomB && $nhomB->trang_thai_duyet === 'TU_CHOI')) {
+            return ['success' => false, 'message' => 'Không thể hoán đổi thành viên của nhóm đã bị từ chối hoặc khóa!', 'status' => 400];
+        }
+
         if ($groupAId === $groupBId) {
             return ['success' => false, 'message' => 'Hai sinh viên phải thuộc hai nhóm khác nhau!', 'status' => 400];
         }
 
         DB::beginTransaction();
         try {
-            // Hoán đổi nhom_id của 2 thành viên - lọc thêm theo nhom_id hiện tại (không chỉ
-            // sinh_vien_id) vì 1 sinh viên có thể có nhiều dòng thanhviennhom cũ từ các đợt
-            // trước đó; nếu không lọc, update có thể khớp nhiều dòng cùng lúc và đụng unique
-            // key (nhom_id, sinh_vien_id) khi 2 dòng cùng bị set về 1 nhom_id đích.
+            // Xóa sạch các dòng trùng lặp ngoài ý muốn trong 2 nhóm đích để tránh lỗi Duplicate Key
+            DB::table('thanhviennhom')->where('sinh_vien_id', $svA->sinh_vien_id)->where('nhom_id', $groupBId)->delete();
+            DB::table('thanhviennhom')->where('sinh_vien_id', $svB->sinh_vien_id)->where('nhom_id', $groupAId)->delete();
+
+            // Hoán đổi nhom_id của 2 thành viên
             DB::table('thanhviennhom')->where('sinh_vien_id', $svA->sinh_vien_id)->where('nhom_id', $groupAId)->update(['nhom_id' => $groupBId]);
             DB::table('thanhviennhom')->where('sinh_vien_id', $svB->sinh_vien_id)->where('nhom_id', $groupBId)->update(['nhom_id' => $groupAId]);
 
