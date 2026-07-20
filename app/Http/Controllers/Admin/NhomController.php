@@ -147,8 +147,15 @@ class NhomController extends Controller
             );
         }
 
-        // 2. Cập nhật danh sách thành viên nếu có truyền lên
-        if (isset($body['members']) && is_array($body['members'])) {
+        // 2a. Hoán đổi thành viên (nếu FE gửi kèm swapStudentIdA/B lúc bấm "Cập nhật" của
+        // form hoán đổi xem-trước) - tách riêng khỏi khối "members" bên dưới vì hoán đổi cần
+        // cập nhật CẢ 2 nhóm (nhóm này + nhóm đối phương), không chỉ ghi đè members của 1 nhóm.
+        if (! empty($body['swapStudentIdA']) && ! empty($body['swapStudentIdB'])) {
+            $swapResult = $this->performMemberSwap($body['swapStudentIdA'], $body['swapStudentIdB'], $request->user());
+            if (! $swapResult['success']) {
+                return response()->json(['success' => false, 'message' => $swapResult['message']], $swapResult['status'] ?? 400);
+            }
+        } elseif (isset($body['members']) && is_array($body['members'])) {
             // Xóa thành viên cũ
             DB::table('thanhviennhom')->where('nhom_id', $id)->delete();
 
@@ -539,14 +546,27 @@ class NhomController extends Controller
             'studentIdB' => 'required',
         ]);
 
-        $studentIdA = $request->input('studentIdA');
-        $studentIdB = $request->input('studentIdB');
+        $result = $this->performMemberSwap($request->input('studentIdA'), $request->input('studentIdB'), $request->user());
+        $status = $result['success'] ? 200 : ($result['status'] ?? 400);
+        unset($result['status']);
 
+        return response()->json($result, $status);
+    }
+
+    /**
+     * Hoán đổi chéo nhom_id của 2 sinh viên đang ở 2 nhóm khác nhau. Dùng chung cho cả
+     * endpoint swap-members (gọi ngay lập tức) và capNhat() (khi FE gửi kèm swapAction để
+     * hoán đổi chỉ chính thức lưu lúc bấm "Cập nhật").
+     *
+     * @return array{success: bool, message: string, status?: int, groupAId?: int, groupBId?: int}
+     */
+    private function performMemberSwap($studentIdA, $studentIdB, $admin = null)
+    {
         $svA = SinhVien::where('ma_so_sinh_vien', $studentIdA)->orWhere('sinh_vien_id', $studentIdA)->first();
         $svB = SinhVien::where('ma_so_sinh_vien', $studentIdB)->orWhere('sinh_vien_id', $studentIdB)->first();
 
         if (! $svA || ! $svB) {
-            return response()->json(['success' => false, 'message' => 'Không tìm thấy sinh viên!'], 400);
+            return ['success' => false, 'message' => 'Không tìm thấy sinh viên!', 'status' => 400];
         }
 
         // Tìm nhóm của hai sinh viên
@@ -564,20 +584,20 @@ class NhomController extends Controller
                     ->first();
                 $eligible = ($eRecord ? ($eRecord->dieu_kien_lam_do_an ?? 'DAT') : 'DAT') === 'DAT';
                 if (! $eligible) {
-                    return response()->json(['success' => false, 'message' => "Sinh viên {$svB->ho_ten} không đủ điều kiện làm đồ án!"], 400);
+                    return ['success' => false, 'message' => "Sinh viên {$svB->ho_ten} không đủ điều kiện làm đồ án!", 'status' => 400];
                 }
             }
         }
 
         if (! $tvA || ! $tvB) {
-            return response()->json(['success' => false, 'message' => 'Cả hai sinh viên phải đang ở trong một nhóm nào đó!'], 400);
+            return ['success' => false, 'message' => 'Cả hai sinh viên phải đang ở trong một nhóm nào đó!', 'status' => 400];
         }
 
         $groupAId = $tvA->nhom_id;
         $groupBId = $tvB->nhom_id;
 
         if ($groupAId === $groupBId) {
-            return response()->json(['success' => false, 'message' => 'Hai sinh viên phải thuộc hai nhóm khác nhau!'], 400);
+            return ['success' => false, 'message' => 'Hai sinh viên phải thuộc hai nhóm khác nhau!', 'status' => 400];
         }
 
         DB::beginTransaction();
@@ -589,7 +609,6 @@ class NhomController extends Controller
             DB::table('thanhviennhom')->where('sinh_vien_id', $svA->sinh_vien_id)->where('nhom_id', $groupAId)->update(['nhom_id' => $groupBId]);
             DB::table('thanhviennhom')->where('sinh_vien_id', $svB->sinh_vien_id)->where('nhom_id', $groupBId)->update(['nhom_id' => $groupAId]);
 
-            $admin = $request->user();
             LichSuHoatDong::ghiLog(
                 'CAP_NHAT_NHOM',
                 'Admin '.($admin ? $admin->ho_ten : 'Hệ thống')." đã hoán đổi vị trí nhóm của sinh viên {$svA->ho_ten} và sinh viên {$svB->ho_ten}.",
@@ -618,14 +637,11 @@ class NhomController extends Controller
             RealtimeService::broadcast('slot_updated', ['type' => 'group_updated', 'groupId' => $groupAId]);
             RealtimeService::broadcast('slot_updated', ['type' => 'group_updated', 'groupId' => $groupBId]);
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Hoán đổi thành viên thành công!',
-            ]);
+            return ['success' => true, 'message' => 'Hoán đổi thành viên thành công!', 'groupAId' => $groupAId, 'groupBId' => $groupBId];
         } catch (\Exception $e) {
             DB::rollBack();
 
-            return response()->json(['success' => false, 'message' => 'Lỗi hệ thống: '.$e->getMessage()], 500);
+            return ['success' => false, 'message' => 'Lỗi hệ thống: '.$e->getMessage(), 'status' => 500];
         }
     }
 }
