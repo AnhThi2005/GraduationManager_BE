@@ -83,6 +83,7 @@ class CongTyService
     public function createCompany(array $data)
     {
         $status = isset($data['status']) ? $this->mapFrontendStatusToBackend($data['status']) : 'CHO_DUYET';
+        $daCongBo = ($status === 'HOAT_DONG');
 
         $company = CongTy::create([
             'ten_cong_ty' => $data['name'] ?? '',
@@ -92,6 +93,7 @@ class CongTyService
             'email_lien_he' => $data['email'] ?? '',
             'so_dien_thoai_lh' => $data['phone'] ?? '',
             'trang_thai' => $status,
+            'da_cong_bo' => $daCongBo,
         ]);
 
         $companyId = $company->cong_ty_id;
@@ -144,9 +146,13 @@ class CongTyService
         }
         if (isset($data['status'])) {
             $updateData['trang_thai'] = $this->mapFrontendStatusToBackend($data['status']);
+            if ($updateData['trang_thai'] === 'HOAT_DONG') {
+                $updateData['da_cong_bo'] = true;
+            }
         } elseif (isset($data['reviewStatus'])) {
             if ($data['reviewStatus'] === 'approved') {
                 $updateData['trang_thai'] = 'HOAT_DONG';
+                $updateData['da_cong_bo'] = true;
             } elseif ($data['reviewStatus'] === 'rejected') {
                 $updateData['trang_thai'] = 'NGUNG_HOAT_DONG';
             } else {
