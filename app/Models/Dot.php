@@ -106,21 +106,28 @@ class Dot extends Model
     public function tinhTrangThaiTheoThoiGian(): string
     {
         $now = Carbon::now('Asia/Ho_Chi_Minh')->format('Y-m-d');
-        
-        $regOpen = $this->ngay_bat_dau_dang_ky;
-        $gradingStart = $this->ngay_bat_dau_cham_diem;
-        $endDate = $this->ngay_ket_thuc;
 
+        $regOpen      = $this->ngay_bat_dau_dang_ky;
+        $gradingStart = $this->ngay_bat_dau_cham_diem;
+        $gradingEnd   = $this->ngay_ket_thuc_cham_diem; // mốc kết thúc chấm điểm
+        $endDate      = $this->ngay_ket_thuc;           // mốc kết thúc đợt
+
+        // Trước khi mở đăng ký
         if ($regOpen && $now < $regOpen) {
             return 'DA_CONG_BO';
         }
+        // Đang mở đăng ký (chưa đến giai đoạn chấm điểm)
         if ($regOpen && $gradingStart && $now >= $regOpen && $now < $gradingStart) {
             return 'DANG_MO';
         }
-        if ($gradingStart && $endDate && $now >= $gradingStart && $now < $endDate) {
+        // Giai đoạn chấm điểm: từ gradingStart đến hết gradingEnd
+        // Dùng gradingEnd (không phải endDate) làm mốc kết thúc phase này
+        $chamDiemEnd = $gradingEnd ?: $endDate; // fallback sang endDate nếu chưa set gradingEnd
+        if ($gradingStart && $chamDiemEnd && $now >= $gradingStart && $now <= $chamDiemEnd) {
             return 'CHAM_DIEM';
         }
-        if ($endDate && $now >= $endDate) {
+        // Sau khi kết thúc chấm điểm (hoặc sau endDate) → đóng
+        if (($chamDiemEnd && $now > $chamDiemEnd) || ($endDate && $now > $endDate)) {
             return 'DA_DONG';
         }
 
