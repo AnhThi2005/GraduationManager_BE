@@ -391,6 +391,15 @@ class CongTyService
 
         $reg->update($updateData);
 
+        // Khi duyệt khai báo → công ty tự động HOAT_DONG + công bố cho sinh viên thấy.
+        // Tránh admin phải duyệt công ty riêng: 2 bước gộp thành 1.
+        if (isset($updateData['trang_thai']) && in_array($updateData['trang_thai'], ['DA_DUYET', 'CHO_CAP_GIAY'])) {
+            $reg->congTy?->update([
+                'trang_thai' => 'HOAT_DONG',
+                'da_cong_bo' => true,
+            ]);
+        }
+
         return $this->getConfirmationRequestDetail($id);
     }
 
