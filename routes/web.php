@@ -65,10 +65,11 @@ Route::middleware([
     Route::get('/private/v1/internships/confirmations', [CongTyController::class, 'layDanhSachXacNhan']);
 
     Route::get('/private/v1/internships/declarations', [CongTyController::class, 'layDanhSachKhaiBao']);
-    Route::get('/private/v1/internships/declarations/{id}', [CongTyController::class, 'xemChiTietXacNhan']);
+    Route::post('/private/v1/internships/declarations/batch-approve', [CongTyController::class, 'capNhatHangLoat']);
+    Route::get('/private/v1/internships/declarations/{id}', [CongTyController::class, 'xemChiTietXacNhan'])->where('id', '[0-9]+');
     Route::post('/private/v1/internships/declarations', [CongTyController::class, 'themMoiXacNhan']);
-    Route::patch('/private/v1/internships/declarations/{id}', [CongTyController::class, 'capNhatXacNhan']);
-    Route::delete('/private/v1/internships/declarations/{id}', [CongTyController::class, 'xoaXacNhan']);
+    Route::patch('/private/v1/internships/declarations/{id}', [CongTyController::class, 'capNhatXacNhan'])->where('id', '[0-9]+');
+    Route::delete('/private/v1/internships/declarations/{id}', [CongTyController::class, 'xoaXacNhan'])->where('id', '[0-9]+');
 
     Route::get('/private/v1/internships/no-company', [CongTyController::class, 'layDanhSachChuaThucTap']);
     Route::get('/private/v1/internships/no-company/{id}', [CongTyController::class, 'xemChiTietChuaThucTap']);
