@@ -375,6 +375,87 @@ class CongTyController extends Controller
         ], 200);
     }
 
+    /**
+     * Xác nhận đã cấp giấy giới thiệu hàng loạt (sau khi in + hiệu trưởng ký).
+     * Chỉ xử lý các hồ sơ đang ở trạng thái CHO_CAP_GIAY → DA_DUYET.
+     * Broadcast realtime riêng cho từng sinh viên để thông báo "Giấy sẵn sàng".
+     */
+    public function capNhatHangLoat(Request $request)
+    {
+        $ids = $request->input('ids', []);
+        if (empty($ids)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Danh sách ID không được để trống!',
+            ], 422);
+        }
+
+        $updatedCount = 0;
+        $skippedCount = 0;
+        $admin = $request->user();
+
+        foreach ($ids as $id) {
+            $existing = DangKyThucTap::find($id);
+            if (! $existing) {
+                $skippedCount++;
+                continue;
+            }
+
+            // Chỉ xử lý hồ sơ đang CHO_CAP_GIAY — tránh vô tình đổi trạng thái sai
+            if ($existing->trang_thai !== 'CHO_CAP_GIAY') {
+                $skippedCount++;
+                continue;
+            }
+
+            $reg = $this->congTyService->updateConfirmationRequest($id, ['status' => 'approved']);
+            if (! $reg) {
+                $skippedCount++;
+                continue;
+            }
+
+            $updatedCount++;
+            $studentName = $reg['studentName'] ?? '';
+
+            LichSuHoatDong::ghiLog(
+                'DUYET_TTTN',
+                "Sinh viên {$studentName} đã được xác nhận cấp giấy giới thiệu thực tập.",
+                $existing->sinh_vien_id,
+                $reg['studentId'] ?? null,
+                null,
+                'admin',
+                $admin ? $admin->ho_ten : 'Hệ thống',
+                ['old_status' => 'CHO_CAP_GIAY', 'new_status' => 'DA_DUYET']
+            );
+
+            // Thông báo riêng cho sinh viên đó: giấy đã sẵn sàng, lên nhận được rồi
+            RealtimeService::broadcast('notification', [
+                'title' => 'Giấy giới thiệu thực tập đã sẵn sàng',
+                'message' => "Sinh viên {$studentName}: Giấy giới thiệu thực tập đã được ký và sẵn sàng. Vui lòng lên phòng CTCT-HSSV để nhận giấy.",
+                'type' => 'certificate_ready',
+                'payload' => [
+                    'studentId' => $existing->sinh_vien_id,
+                    'studentName' => $studentName,
+                    'companyName' => $reg['companyName'] ?? '',
+                ],
+            ]);
+        }
+
+        $message = $updatedCount > 0
+            ? "Đã xác nhận cấp giấy thành công cho {$updatedCount} sinh viên."
+            : 'Không có sinh viên nào được cập nhật (có thể trạng thái đã thay đổi trước đó).';
+
+        if ($skippedCount > 0) {
+            $message .= " ({$skippedCount} hồ sơ bị bỏ qua do không hợp lệ.)";
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => $message,
+            'updatedCount' => $updatedCount,
+            'skippedCount' => $skippedCount,
+        ], 200);
+    }
+
     // ==========================================================
     // 3. NO COMPANY STUDENTS ENDPOINTS
     // ==========================================================

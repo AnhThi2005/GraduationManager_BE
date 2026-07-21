@@ -198,6 +198,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/private/v1/internships/declarations', [CongTyController::class, 'layDanhSachKhaiBao']);
         Route::get('/private/v1/internships/declarations/{id}', [CongTyController::class, 'xemChiTietXacNhan']);
         Route::post('/private/v1/internships/declarations', [CongTyController::class, 'themMoiXacNhan']);
+        Route::post('/private/v1/internships/declarations/batch-approve', [CongTyController::class, 'capNhatHangLoat']);
         Route::patch('/private/v1/internships/declarations/{id}', [CongTyController::class, 'capNhatXacNhan']);
         Route::delete('/private/v1/internships/declarations/{id}', [CongTyController::class, 'xoaXacNhan']);
 
