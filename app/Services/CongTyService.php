@@ -41,14 +41,21 @@ class CongTyService
                 ->groupBy('cong_ty_id')
                 ->pluck('total', 'cong_ty_id');
 
+            // SV đang chờ duyệt — sẽ bị tự động từ chối nếu công ty bị tạm dừng
+            $pendingStudentsCountByCompany = DangKyThucTap::whereIn('cong_ty_id', $companyIds)
+                ->where('trang_thai', 'CHO_DUYET')
+                ->selectRaw('cong_ty_id, count(*) as total')
+                ->groupBy('cong_ty_id')
+                ->pluck('total', 'cong_ty_id');
+
             $partnersCountByCompany = DangKyThucTap::whereIn('cong_ty_id', $companyIds)
                 ->selectRaw('cong_ty_id, count(distinct dot_id) as total')
                 ->groupBy('cong_ty_id')
                 ->pluck('total', 'cong_ty_id');
         }
 
-        $rows = $companies->map(function ($company) use ($fieldsByCompany, $studentsCountByCompany, $partnersCountByCompany) {
-            return $this->transformCompany($company, $fieldsByCompany, $studentsCountByCompany, $partnersCountByCompany);
+        $rows = $companies->map(function ($company) use ($fieldsByCompany, $studentsCountByCompany, $pendingStudentsCountByCompany, $partnersCountByCompany) {
+            return $this->transformCompany($company, $fieldsByCompany, $studentsCountByCompany, $partnersCountByCompany, $pendingStudentsCountByCompany);
         })->all();
 
         return [
@@ -587,7 +594,7 @@ class CongTyService
      * gộp sẵn cho CẢ TRANG, truyền từ getListCompany() để tránh N+1. Không truyền thì tự
      * query riêng cho công ty này (dùng ở getCompanyDetail, chỉ 1 dòng nên không N+1).
      */
-    private function transformCompany($company, $fieldsByCompany = null, $studentsCountByCompany = null, $partnersCountByCompany = null)
+    private function transformCompany($company, $fieldsByCompany = null, $studentsCountByCompany = null, $partnersCountByCompany = null, $pendingStudentsCountByCompany = null)
     {
         $fields = $fieldsByCompany !== null
             ? ($fieldsByCompany->get($company->cong_ty_id) ?? [])
@@ -599,6 +606,12 @@ class CongTyService
                 ->whereIn('trang_thai', ['DA_DUYET', 'CHO_CAP_GIAY'])
                 ->count();
 
+        // SV đang chờ duyệt tại công ty này (sẽ bị tự động TU_CHOI nếu công ty bị tạm dừng)
+        $pendingStudentsCount = $pendingStudentsCountByCompany !== null
+            ? ($pendingStudentsCountByCompany->get($company->cong_ty_id) ?? 0)
+            : DangKyThucTap::where('cong_ty_id', $company->cong_ty_id)
+                ->where('trang_thai', 'CHO_DUYET')
+                ->count();
         $partnersCount = $partnersCountByCompany !== null
             ? ($partnersCountByCompany->get($company->cong_ty_id) ?? 0)
             : DangKyThucTap::where('cong_ty_id', $company->cong_ty_id)->distinct()->count('dot_id');
@@ -635,6 +648,8 @@ class CongTyService
             'firstStudent' => $firstStudentStr,
             'partners' => $partnersCount,
             'students' => $studentsCount,
+            // SV đang chờ duyệt — FE dùng để cảnh báo khi admin tạm dừng công ty
+            'pendingStudents' => $pendingStudentsCount,
             'status' => $status,
             'reviewStatus' => $reviewStatus,
             'published' => (bool) $company->da_cong_bo,
